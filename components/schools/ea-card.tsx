@@ -16,16 +16,16 @@ import {
 interface EAData {
   "School Name": string;
   "Grade": string;
-  "EGRA Baseline (Median)": number;
-  "EGRA Endline (Median)": number;
-  "Improvement": number;
-  "Total Sessions (Median)": number;
-  "Moving Too Fast (Count)": number;
-  "Same Letter Groups (Count)": number;
+  "EGRA Baseline (Median)": number | null;
+  "EGRA Endline (Median)": number | null;
+  "Improvement": number | null;
+  "Total Sessions (Median)": number | null;
+  "Moving Too Fast (Count)": number | null;
+  "Same Letter Groups (Count)": number | null;
   "EA Names": string;
   "Most Common Cohort": string;
   "Languages": string;
-  "Total Assessments": number;
+  "Total Assessments": number | null;
 }
 
 interface EACardProps {
@@ -34,7 +34,14 @@ interface EACardProps {
 
 export default function EACard({ data }: EACardProps) {
   // Performance color based on Improvement (Gain)
-  const getPerformanceColor = (improvement: number) => {
+  const getPerformanceColor = (improvement: number | null) => {
+    if (!improvement || improvement < 5) return {
+      bg: "bg-gradient-to-br from-red-50 to-rose-50",
+      border: "border-red-500",
+      badge: "bg-red-500",
+      text: "text-red-700",
+      label: "Low Gain"
+    };
     if (improvement >= 10) return {
       bg: "bg-gradient-to-br from-green-50 to-emerald-50",
       border: "border-green-500",
@@ -42,24 +49,19 @@ export default function EACard({ data }: EACardProps) {
       text: "text-green-700",
       label: "High Impact"
     };
-    if (improvement >= 5) return {
+    return {
       bg: "bg-gradient-to-br from-yellow-50 to-amber-50",
       border: "border-yellow-500",
       badge: "bg-yellow-500",
       text: "text-yellow-700",
       label: "Good Progress"
     };
-    return {
-      bg: "bg-gradient-to-br from-red-50 to-rose-50",
-      border: "border-red-500",
-      badge: "bg-red-500",
-      text: "text-red-700",
-      label: "Low Gain"
-    };
   };
 
   const performance = getPerformanceColor(data.Improvement);
-  const improvementPercent = ((data.Improvement / data["EGRA Baseline (Median)"]) * 100).toFixed(0);
+  const improvementPercent = (data.Improvement && data["EGRA Baseline (Median)"]) 
+    ? ((data.Improvement / data["EGRA Baseline (Median)"]) * 100).toFixed(0)
+    : "0";
 
   return (
     <Card className={`${performance.bg} ${performance.border} border-l-4 hover:shadow-xl transition-all duration-300 overflow-hidden group`}>
@@ -93,7 +95,7 @@ export default function EACard({ data }: EACardProps) {
           <div className="bg-white/70 rounded-lg p-3 text-center">
             <div className="text-xs text-gray-500 mb-1">Baseline</div>
             <div className="text-2xl font-bold text-gray-900">
-              {data["EGRA Baseline (Median)"]}
+              {data["EGRA Baseline (Median)"] ?? "N/A"}
             </div>
           </div>
 
@@ -101,7 +103,7 @@ export default function EACard({ data }: EACardProps) {
           <div className="bg-white/70 rounded-lg p-3 text-center">
             <div className="text-xs text-gray-500 mb-1">Endline</div>
             <div className="text-2xl font-bold text-primary">
-              {data["EGRA Endline (Median)"]}
+              {data["EGRA Endline (Median)"] ?? "N/A"}
             </div>
           </div>
 
@@ -110,7 +112,7 @@ export default function EACard({ data }: EACardProps) {
             <div className="text-xs text-gray-500 mb-1">Gain</div>
             <div className={`text-2xl font-bold ${performance.text} flex items-center justify-center gap-1`}>
               <TrendingUp className="h-4 w-4" />
-              +{data.Improvement}
+              +{data.Improvement ?? 0}
             </div>
             <div className="text-xs font-semibold text-gray-600">
               ({improvementPercent}%)
@@ -125,7 +127,7 @@ export default function EACard({ data }: EACardProps) {
             <div>
               <div className="text-xs text-gray-500">Sessions</div>
               <div className="text-lg font-bold text-gray-900">
-                {data["Total Sessions (Median)"]}
+                {data["Total Sessions (Median)"] ?? "N/A"}
               </div>
             </div>
           </div>
@@ -135,7 +137,7 @@ export default function EACard({ data }: EACardProps) {
             <div>
               <div className="text-xs text-gray-500">Assessments</div>
               <div className="text-lg font-bold text-gray-900">
-                {data["Total Assessments"]}
+                {data["Total Assessments"] ?? "N/A"}
               </div>
             </div>
           </div>
@@ -166,15 +168,15 @@ export default function EACard({ data }: EACardProps) {
           </div>
 
           {/* Flags */}
-          {(data["Moving Too Fast (Count)"] > 0 || data["Same Letter Groups (Count)"] > 0) && (
+          {((data["Moving Too Fast (Count)"] || 0) > 0 || (data["Same Letter Groups (Count)"] || 0) > 0) && (
             <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-200">
-              {data["Moving Too Fast (Count)"] > 0 && (
+              {(data["Moving Too Fast (Count)"] || 0) > 0 && (
                 <Badge variant="outline" className="text-xs gap-1 bg-red-50 border-red-400 text-red-700">
                   <AlertTriangle className="h-3 w-3" />
                   Moving Fast: {data["Moving Too Fast (Count)"]}
                 </Badge>
               )}
-              {data["Same Letter Groups (Count)"] > 0 && (
+              {(data["Same Letter Groups (Count)"] || 0) > 0 && (
                 <Badge variant="outline" className="text-xs gap-1 bg-orange-50 border-orange-400 text-orange-700">
                   <AlertTriangle className="h-3 w-3" />
                   Same Groups: {data["Same Letter Groups (Count)"]}

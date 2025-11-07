@@ -5,50 +5,12 @@ import SchoolMap from "@/components/schools/school-map";
 import { MapPin, Filter, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import eaDataRaw from "@/data/ea-data.json";
-import { promises as fs } from "fs";
-import path from "path";
+import schoolLocations from "@/data/school-locations.json";
 
 // Filter out entries without School Name
 const eaData = eaDataRaw.filter(ea => ea["School Name"] && ea["School Name"].trim() !== "");
 
-// Parse CSV data
-async function getSchoolLocations() {
-  const filePath = path.join(process.cwd(), "data", "all-sites-coordinates.csv");
-  const fileContent = await fs.readFile(filePath, "utf-8");
-  
-  const lines = fileContent.split("\n");
-  const headers = lines[0].split(",");
-  
-  const schools = lines.slice(1)
-    .filter(line => line.trim())
-    .map(line => {
-      const values = line.split(",");
-      const row: any = {};
-      
-      headers.forEach((header, index) => {
-        row[header.trim()] = values[index]?.trim() || "";
-      });
-      
-      return {
-        name: row["Official_Institution_Name"] || row["NatEmis"] || "Unknown",
-        latitude: parseFloat(row["Matched_GPS_Coordinates"]?.split(",")[0]) || 0,
-        longitude: parseFloat(row["Matched_GPS_Coordinates"]?.split(",")[1]) || 0,
-        area: row["Matched_Area"] || "Unknown",
-        circuit: row["EICircuit"] || "N/A",
-        phase: row["Phase_PED"] || "N/A",
-        grR: parseInt(row["Gr R"]) || 0,
-        gr1: parseInt(row["Gr 1"]) || 0,
-        years: row["Year(s) on the Programme"] || "N/A",
-      };
-    })
-    .filter(school => school.latitude !== 0 && school.longitude !== 0);
-  
-  return schools;
-}
-
-export default async function SchoolsPage() {
-  const schoolLocations = await getSchoolLocations();
-
+export default function SchoolsPage() {
   return (
     <>
       <Header />
@@ -85,28 +47,42 @@ export default async function SchoolsPage() {
               </div>
               
               {/* Map Legend */}
-              <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-gray-600">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded-full bg-primary border-2 border-white"></div>
-                  <span>Individual School</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center text-white text-xs font-bold">
-                    5
+              <div className="mt-4 space-y-2">
+                <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+                  <span className="font-semibold text-gray-700">Individual Schools:</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full bg-green-500 border-2 border-white"></div>
+                    <span>High Impact</span>
                   </div>
-                  <span>Small Cluster (1-9 schools)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold">
-                    15
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full bg-yellow-500 border-2 border-white"></div>
+                    <span>Good Progress</span>
                   </div>
-                  <span>Medium Cluster (10-29 schools)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center text-white text-xs font-bold">
-                    30+
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full bg-red-500 border-2 border-white"></div>
+                    <span>Needs Support</span>
                   </div>
-                  <span>Large Cluster (30+ schools)</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+                  <span className="font-semibold text-gray-700">Clusters:</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center text-white text-xs font-bold">
+                      5
+                    </div>
+                    <span>Small (1-9)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold">
+                      15
+                    </div>
+                    <span>Medium (10-29)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center text-white text-xs font-bold">
+                      30+
+                    </div>
+                    <span>Large (30+)</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -160,14 +136,14 @@ export default async function SchoolsPage() {
               <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-lg p-6 border-l-4 border-purple-500">
                 <div className="text-sm text-gray-600 mb-1">Total Assessments</div>
                 <div className="text-3xl font-bold text-purple-700">
-                  {eaData.reduce((sum, d) => sum + d["Total Assessments"], 0)}
+                  {eaData.reduce((sum, d) => sum + (d["Total Assessments"] || 0), 0)}
                 </div>
               </div>
 
               <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-lg p-6 border-l-4 border-orange-500">
                 <div className="text-sm text-gray-600 mb-1">Avg Improvement</div>
                 <div className="text-3xl font-bold text-orange-700">
-                  +{(eaData.reduce((sum, d) => sum + d.Improvement, 0) / eaData.length).toFixed(1)}
+                  +{(eaData.reduce((sum, d) => sum + (d.Improvement || 0), 0) / eaData.length).toFixed(1)}
                 </div>
               </div>
             </div>
