@@ -22,8 +22,11 @@ export default function AboutPage() {
               <h1 className="text-5xl md:text-6xl font-bold mb-6 animate-fadeIn">
                 About Zazi iZandi
               </h1>
+              <p className="text-xl md:text-2xl mb-2 text-white/90">
+                Transforming early literacy and creating opportunities.
+              </p>
               <p className="text-xl md:text-2xl mb-8 text-white/90">
-                Transforming early literacy and creating opportunities—one child, one community at a time
+                One classroom, one school at a time.
               </p>
               
               {/* Core Values */}
@@ -48,7 +51,7 @@ export default function AboutPage() {
                   <Heart className="h-10 w-10 mx-auto mb-3" />
                   <h3 className="font-bold text-lg mb-2">Impact-Focused</h3>
                   <p className="text-sm text-white/80">
-                    Measurable outcomes that improve both literacy and livelihoods
+                    Addressing literacy and unemployment in one go
                   </p>
                 </div>
               </div>
@@ -63,11 +66,17 @@ export default function AboutPage() {
         <section className="py-20 bg-gradient-to-b from-gray-50 to-white">
           <div className="container">
             <div className="text-center mb-16">
-              <h2 className="text-4xl md:text-5xl font-bold text-primary mb-4">
-                Our Journey: 3 Years of Growth
+              <div className="flex items-center justify-center gap-3 mb-3">
+                <div className="w-8 h-1 bg-accent-yellow" />
+                <span className="text-sm font-semibold uppercase tracking-widest text-primary">
+                  Our Journey
+                </span>
+              </div>
+              <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+                3 Years of Growth
               </h2>
               <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-                From pilot launch to nationwide scale—see how we've evolved, tested, and 
+                From pilot launch to nationwide scale—see how we've evolved, tested, and
                 improved our approach to early literacy intervention.
               </p>
             </div>
@@ -79,6 +88,12 @@ export default function AboutPage() {
         {/* Testing & Innovation Philosophy */}
         <section className="py-16 bg-primary text-white">
           <div className="container max-w-4xl text-center">
+            <div className="flex items-center justify-center gap-3 mb-3">
+              <div className="w-8 h-1 bg-accent-yellow" />
+              <span className="text-sm font-semibold uppercase tracking-widest text-white/70">
+                Our Approach
+              </span>
+            </div>
             <h2 className="text-3xl md:text-4xl font-bold mb-6">
               Continuous Testing & Learning
             </h2>
