@@ -3,25 +3,25 @@ import { Users, School, BookOpen, TrendingUp } from "lucide-react";
 const stats = [
   {
     icon: School,
-    value: "50+",
+    value: "250+",
     label: "Schools Reached",
-    description: "Across South Africa",
+    description: "in Eastern Cape",
   },
   {
     icon: Users,
-    value: "5,000+",
+    value: "25,000+",
     label: "Learners Supported",
-    description: "Grade R & Grade 1",
+    description: "ECD, Grade R & Grade 1",
   },
   {
     icon: BookOpen,
-    value: "100+",
+    value: "500+",
     label: "Teaching Assistants",
     description: "Trained & Active",
   },
   {
     icon: TrendingUp,
-    value: "40%",
+    value: "45%",
     label: "Improvement",
     description: "In reading benchmarks",
   },
@@ -35,6 +35,7 @@ export default function StatsSection() {
           <h2 className="text-4xl md:text-5xl font-bold mb-4">
             Our Impact in Numbers
           </h2>
+          <div className="w-12 h-1 bg-accent-yellow mx-auto mb-5" />
           <p className="text-xl text-white/90 max-w-2xl mx-auto">
             Real results from our data-driven approach to early literacy intervention
           </p>
@@ -48,8 +49,11 @@ export default function StatsSection() {
                 key={stat.label}
                 className="text-center p-6 bg-white/10 backdrop-blur-sm rounded-lg hover:bg-white/20 transition-all duration-300"
               >
-                <Icon className="h-12 w-12 mx-auto mb-4" />
-                <div className="text-5xl font-bold mb-2">{stat.value}</div>
+                <Icon className="h-12 w-12 mx-auto mb-4 text-accent-yellow" />
+                <div className="text-5xl font-bold mb-2 relative inline-block">
+                  {stat.value}
+                  <div className="absolute -bottom-1 left-0 right-0 h-0.5 bg-accent-yellow/60 rounded-full" />
+                </div>
                 <div className="text-xl font-semibold mb-1">{stat.label}</div>
                 <div className="text-sm text-white/80">{stat.description}</div>
               </div>
