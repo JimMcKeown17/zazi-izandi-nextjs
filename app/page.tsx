@@ -5,7 +5,7 @@ import PartnersSection from "@/components/home/partners-section";
 import StatsSection from "@/components/home/stats-section";
 import VideoSection from "@/components/home/video-section";
 import ResearchSection from "@/components/home/research-section";
-import OverviewSection from "@/components/home/overview-section";
+import ImpactSection from "@/components/home/impact-section";
 import CTASection from "@/components/home/cta-section";
 
 export default function Home() {
@@ -14,11 +14,10 @@ export default function Home() {
       <Header />
       <main>
         <HeroSection />
+        <ImpactSection />
         <StatsSection />
         <ResearchSection />
         <VideoSection />
-        <OverviewSection />
-        <CTASection />
         <PartnersSection />
       </main>
       <Footer />
