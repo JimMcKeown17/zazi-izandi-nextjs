@@ -54,9 +54,9 @@ export default function TimelineMilestone({
   const c = colorMap[color];
 
   return (
-    <div className={`flex items-center gap-8 mb-16 ${side === "left" ? "flex-row-reverse" : ""}`}>
+    <div className={`flex flex-col lg:flex-row items-center gap-8 mb-16 ${side === "left" ? "lg:flex-row-reverse" : ""}`}>
       {/* Content Card */}
-      <div className="flex-1">
+      <div className="flex-1 w-full lg:w-auto">
         <div className={`bg-white rounded-2xl shadow-xl p-8 border-t-4 ${c.border} hover:shadow-2xl transition-shadow duration-300`}>
           {/* Header */}
           <div className="flex items-start justify-between mb-4">
@@ -100,7 +100,7 @@ export default function TimelineMilestone({
       </div>
 
       {/* Timeline Dot */}
-      <div className="relative flex flex-col items-center">
+      <div className="relative hidden lg:flex flex-col items-center">
         <div className={`w-16 h-16 rounded-full ${c.bg} flex items-center justify-center shadow-lg z-10`}>
           <span className="text-white font-bold text-lg">{year}</span>
         </div>

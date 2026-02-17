@@ -8,7 +8,7 @@ export default function AboutPage() {
   return (
     <>
       <Header />
-      <main className="pt-20">
+      <main className="pt-20 overflow-x-hidden">
         {/* Hero Section */}
         <section className="relative bg-gradient-to-br from-primary via-primary-700 to-primary-900 text-white py-24 overflow-hidden">
           <div className="absolute inset-0 opacity-10">

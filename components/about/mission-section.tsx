@@ -2,7 +2,7 @@ import Image from "next/image";
 
 export default function MissionSection() {
   return (
-    <section className="py-16 bg-white">
+    <section className="py-16 bg-white overflow-x-hidden">
       <div className="container max-w-6xl">
         {/* The Crisis */}
         <div className="mb-16">
@@ -94,8 +94,7 @@ export default function MissionSection() {
               <strong>Partnership Model:</strong> Zazi iZandi was developed and launched in
               partnership by <strong>Binding Constraints Labs</strong> and <strong>Masinyusane</strong>,
               with input from leading South African educational organizations including
-              <strong> Wordworks</strong> and <strong>Funda Wande</strong>, as well as experts
-              such as <strong>Shelley O'Carroll</strong> and <strong>Jenny Kratz</strong>.
+              <strong> Wordworks</strong> and <strong>Funda Wande</strong>, as well as experts in the field.
             </p>
           </div>
         </div>
