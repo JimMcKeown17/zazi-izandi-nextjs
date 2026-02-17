@@ -1,21 +1,42 @@
 "use client";
 
-import { ReactNode } from "react";
+import Image from "next/image";
 import { LucideIcon } from "lucide-react";
+
+type ColorKey = "blue" | "green" | "purple";
+
+const colorMap: Record<ColorKey, { border: string; bg: string; text: string; iconBg: string }> = {
+  blue: {
+    border: "border-blue-600",
+    bg: "bg-blue-600",
+    text: "text-blue-600",
+    iconBg: "bg-blue-100",
+  },
+  green: {
+    border: "border-green-600",
+    bg: "bg-green-600",
+    text: "text-green-600",
+    iconBg: "bg-green-100",
+  },
+  purple: {
+    border: "border-purple-600",
+    bg: "bg-purple-600",
+    text: "text-purple-600",
+    iconBg: "bg-purple-100",
+  },
+};
 
 interface TimelineMilestoneProps {
   year: string;
   title: string;
   period: string;
   description: string;
-  stats: {
-    label: string;
-    value: string;
-  }[];
+  stats: { label: string; value: string }[];
   highlights?: string[];
   icon: LucideIcon;
-  color: string;
+  color: ColorKey;
   side?: "left" | "right";
+  image?: string;
 }
 
 export default function TimelineMilestone({
@@ -28,22 +49,23 @@ export default function TimelineMilestone({
   icon: Icon,
   color,
   side = "right",
+  image,
 }: TimelineMilestoneProps) {
+  const c = colorMap[color];
+
   return (
     <div className={`flex items-center gap-8 mb-16 ${side === "left" ? "flex-row-reverse" : ""}`}>
       {/* Content Card */}
       <div className="flex-1">
-        <div className={`bg-white rounded-2xl shadow-xl p-8 border-t-4 ${color} hover:shadow-2xl transition-shadow duration-300`}>
+        <div className={`bg-white rounded-2xl shadow-xl p-8 border-t-4 ${c.border} hover:shadow-2xl transition-shadow duration-300`}>
           {/* Header */}
           <div className="flex items-start justify-between mb-4">
             <div>
-              <div className={`text-sm font-bold ${color.replace('border-', 'text-')} mb-1`}>
-                {period}
-              </div>
+              <div className={`text-sm font-bold ${c.text} mb-1`}>{period}</div>
               <h3 className="text-2xl font-bold text-gray-900 mb-2">{title}</h3>
             </div>
-            <div className={`${color.replace('border-', 'bg-').replace('600', '100')} p-3 rounded-lg`}>
-              <Icon className={`h-6 w-6 ${color.replace('border-', 'text-')}`} />
+            <div className={`${c.iconBg} p-3 rounded-lg`}>
+              <Icon className={`h-6 w-6 ${c.text}`} />
             </div>
           </div>
 
@@ -54,9 +76,7 @@ export default function TimelineMilestone({
           <div className="grid grid-cols-3 gap-4 mb-6">
             {stats.map((stat, index) => (
               <div key={index} className="text-center p-4 bg-gray-50 rounded-lg">
-                <div className={`text-2xl font-bold ${color.replace('border-', 'text-')}`}>
-                  {stat.value}
-                </div>
+                <div className={`text-2xl font-bold ${c.text}`}>{stat.value}</div>
                 <div className="text-xs text-gray-600 mt-1">{stat.label}</div>
               </div>
             ))}
@@ -69,7 +89,7 @@ export default function TimelineMilestone({
               <ul className="space-y-1">
                 {highlights.map((highlight, index) => (
                   <li key={index} className="text-sm text-gray-600 flex items-start">
-                    <span className={`${color.replace('border-', 'text-')} mr-2`}>•</span>
+                    <span className={`${c.text} mr-2`}>•</span>
                     {highlight}
                   </li>
                 ))}
@@ -81,13 +101,25 @@ export default function TimelineMilestone({
 
       {/* Timeline Dot */}
       <div className="relative flex flex-col items-center">
-        <div className={`w-16 h-16 rounded-full ${color.replace('border-', 'bg-')} flex items-center justify-center shadow-lg z-10`}>
+        <div className={`w-16 h-16 rounded-full ${c.bg} flex items-center justify-center shadow-lg z-10`}>
           <span className="text-white font-bold text-lg">{year}</span>
         </div>
       </div>
 
-      {/* Spacer for other side */}
-      <div className="flex-1 hidden lg:block"></div>
+      {/* Photo for other side */}
+      <div className="flex-1 hidden lg:flex items-center justify-center">
+        {image && (
+          <div className="w-full rounded-2xl overflow-hidden shadow-lg">
+            <Image
+              src={image}
+              alt=""
+              width={600}
+              height={450}
+              className="w-full h-72 object-cover"
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -98,14 +98,7 @@ export default function AboutPage() {
               Continuous Testing & Learning
             </h2>
             <p className="text-lg mb-6 text-white/90">
-              Each year, we test something new as we iterate towards the best possible program. 
-              We embrace variation in our results because it helps us understand what works, 
-              where, and why.
-            </p>
-            <p className="text-base text-white/80">
-              We expect different outcomes from different cohorts—full-time youth versus 
-              part-time, government TAs with varying time allocations—and we use this 
-              data to continuously refine our approach.
+              Each year, we build and test many new things as we iterate towards the best possible programme. We are constantly learning, growing, and improving.
             </p>
           </div>
         </section>

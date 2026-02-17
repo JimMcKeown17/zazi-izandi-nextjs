@@ -5,12 +5,11 @@ import { Lightbulb, TrendingUp, Rocket, Users } from "lucide-react";
 
 export default function ProgramTimeline() {
   return (
-    <div className="relative max-w-7xl mx-auto px-4">
-      {/* Vertical Timeline Line */}
-      <div className="absolute left-1/2 transform -translate-x-1/2 w-1 bg-gradient-to-b from-blue-600 via-green-600 to-purple-600 h-full hidden lg:block"></div>
-
-      {/* Timeline Milestones */}
-      <div className="space-y-0">
+    <div className="max-w-7xl mx-auto px-4">
+      {/* Timeline Milestones wrapped in relative so the line stops here */}
+      <div className="relative space-y-0">
+        {/* Vertical Timeline Line */}
+        <div className="absolute left-1/2 transform -translate-x-1/2 w-1 bg-gradient-to-b from-blue-600 via-green-600 to-purple-600 h-full hidden lg:block"></div>
         {/* 2023: Pilot Launch */}
         <TimelineMilestone
           year="2023"
@@ -28,8 +27,9 @@ export default function ProgramTimeline() {
             "Partnership with Wordworks and Funda Wande",
           ]}
           icon={Lightbulb}
-          color="border-blue-600"
+          color="blue"
           side="right"
+          image="/images/gallery/Gallery 1.jpg"
         />
 
         {/* 2024: Expansion */}
@@ -51,8 +51,9 @@ export default function ProgramTimeline() {
             "Applied lessons learned from 2023",
           ]}
           icon={TrendingUp}
-          color="border-green-600"
+          color="green"
           side="left"
+          image="/images/gallery/Gallery 3.jpg"
         />
 
         {/* 2025: Scale */}
@@ -77,21 +78,23 @@ export default function ProgramTimeline() {
             "Major partnership with Department of Education",
           ]}
           icon={Rocket}
-          color="border-purple-600"
+          color="purple"
           side="right"
+          image="/images/gallery/Gallery 5.jpg"
         />
       </div>
 
       {/* Future Vision */}
       <div className="mt-20 text-center">
-        <div className="inline-block bg-gradient-to-r from-primary to-purple-600 text-white rounded-full px-8 py-4 shadow-lg">
+        <a
+          href="/reports/Zazi iZandi - 2026 & Beyond.pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center bg-gradient-to-r from-accent-yellow to-yellow-400 text-gray-900 rounded-full px-8 py-4 shadow-lg font-bold text-lg hover:shadow-xl transition-shadow duration-200"
+        >
           <Users className="inline-block h-6 w-6 mr-2" />
-          <span className="font-bold text-lg">Continuous Innovation & Growth</span>
-        </div>
-        <p className="mt-6 text-gray-600 max-w-2xl mx-auto">
-          We continue to test, learn, and iterate towards the most effective and scalable
-          literacy intervention model for South Africa's children.
-        </p>
+          2026 &amp; Beyond Plan
+        </a>
       </div>
     </div>
   );
