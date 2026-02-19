@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Roboto, Open_Sans } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 const roboto = Roboto({
@@ -34,10 +35,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${roboto.variable} ${openSans.variable}`}>
-      <body className={`${openSans.className} antialiased`}>
-        {children}
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en" className={`${roboto.variable} ${openSans.variable}`}>
+        <body className={`${openSans.className} antialiased`}>
+          {children}
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

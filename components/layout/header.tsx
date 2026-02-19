@@ -5,21 +5,46 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth, useUser, UserButton } from "@clerk/nextjs";
 
-const navigation = [
-  { name: "Home", href: "/" },
-  { name: "About", href: "/about" },
-  { name: "Schools", href: "/schools" },
-  { name: "Media", href: "/media" },
-  { name: "Methodology", href: "/methodology" },
-  { name: "Impact", href: "/impact" },
-  { name: "Resources", href: "/resources" },
+// Role hierarchy — mirrors middleware.ts
+type Role = "funder" | "junior_staff" | "senior_staff" | "admin";
+
+const ROLE_LEVELS: Record<Role, number> = {
+  funder: 1,
+  junior_staff: 2,
+  senior_staff: 3,
+  admin: 4,
+};
+
+function hasAccess(userRole: Role | undefined, minRole: Role): boolean {
+  if (!userRole) return false;
+  return (ROLE_LEVELS[userRole] ?? 0) >= ROLE_LEVELS[minRole];
+}
+
+const ALL_NAV = [
+  { name: "Home", href: "/", minRole: null },
+  { name: "About", href: "/about", minRole: null },
+  { name: "Schools", href: "/schools", minRole: "funder" as Role },
+  { name: "Media", href: "/media", minRole: null },
+  { name: "Methodology", href: "/methodology", minRole: null },
+  { name: "Impact", href: "/impact", minRole: null },
+  { name: "Resources", href: "/resources", minRole: null },
 ];
 
 export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const pathname = usePathname();
+  const { isSignedIn } = useAuth();
+  const { user } = useUser();
+
+  const userRole = user?.publicMetadata?.role as Role | undefined;
+
+  const visibleNav = ALL_NAV.filter((item) => {
+    if (!item.minRole) return true;
+    return isSignedIn && hasAccess(userRole, item.minRole);
+  });
 
   useEffect(() => {
     const handleScroll = () => {
@@ -51,7 +76,7 @@ export default function Header() {
 
         {/* Desktop Navigation */}
         <div className="hidden lg:flex items-center space-x-8">
-          {navigation.map((item) => (
+          {visibleNav.map((item) => (
             <Link
               key={item.name}
               href={item.href}
@@ -64,6 +89,7 @@ export default function Header() {
               {item.name}
             </Link>
           ))}
+
           <Button
             asChild
             className="bg-primary hover:bg-primary-800 text-white"
@@ -76,6 +102,18 @@ export default function Header() {
               Data Portal
             </a>
           </Button>
+
+          {/* Auth: show UserButton when signed in, Login link when not */}
+          {isSignedIn ? (
+            <UserButton afterSignOutUrl="/" />
+          ) : (
+            <Link
+              href="/login"
+              className="font-medium text-gray-700 hover:text-primary transition-colors duration-200"
+            >
+              Login
+            </Link>
+          )}
         </div>
 
         {/* Mobile Menu Button */}
@@ -96,7 +134,7 @@ export default function Header() {
       {mobileMenuOpen && (
         <div className="lg:hidden bg-white border-t border-gray-200 shadow-lg">
           <div className="container py-4 space-y-4">
-            {navigation.map((item) => (
+            {visibleNav.map((item) => (
               <Link
                 key={item.name}
                 href={item.href}
@@ -122,6 +160,24 @@ export default function Header() {
                 Data Portal
               </a>
             </Button>
+
+            {/* Auth in mobile menu */}
+            {isSignedIn ? (
+              <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+                <UserButton afterSignOutUrl="/" />
+                <span className="text-sm text-gray-600">
+                  {user?.firstName ?? user?.emailAddresses?.[0]?.emailAddress}
+                </span>
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block font-medium text-primary hover:text-primary transition-colors duration-200"
+              >
+                Login
+              </Link>
+            )}
           </div>
         </div>
       )}
