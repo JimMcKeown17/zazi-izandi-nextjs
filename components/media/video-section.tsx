@@ -7,8 +7,18 @@ const highlights = [
 
 export default function VideoSection() {
   return (
-    <section className="bg-primary-900 text-white">
-      <div className="container">
+    <section className="relative bg-primary-900 text-white overflow-hidden">
+      {/* Dot texture */}
+      <div
+        className="absolute inset-0 opacity-[0.15]"
+        style={{
+          backgroundImage:
+            'url("data:image/svg+xml,%3Csvg width=\'20\' height=\'20\' viewBox=\'0 0 20 20\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Ccircle cx=\'2\' cy=\'2\' r=\'1.5\' fill=\'%23ffffff\'/%3E%3C/svg%3E")',
+        }}
+      />
+      {/* Radial glow */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_50%_50%,rgba(44,90,160,0.4),transparent)]" />
+      <div className="container relative z-10">
         <div className="text-center mb-16">
           <div className="flex items-center justify-center gap-3 mb-3">
             <div className="w-8 h-1 bg-accent-yellow" />
@@ -58,11 +68,7 @@ export default function VideoSection() {
                 </li>
               ))}
             </ul>
-            <p className="text-white/60 text-sm leading-relaxed">
-              As South Africa confronts the twin challenges of youth
-              unemployment and early learning gaps, programmes like Zazi iZandi
-              offer a practical, proven path forward.
-            </p>
+
           </div>
         </div>
       </div>

@@ -7,6 +7,7 @@ import VideoSection from "@/components/home/video-section";
 import ResearchSection from "@/components/home/research-section";
 import ImpactSection from "@/components/home/impact-section";
 import CTASection from "@/components/home/cta-section";
+import HomeDoEPartnershipSection from "@/components/home/doe-partnership-section";
 
 export default function Home() {
   return (
@@ -14,6 +15,7 @@ export default function Home() {
       <Header />
       <main>
         <HeroSection />
+        <HomeDoEPartnershipSection />
         <ImpactSection />
         <StatsSection />
         <ResearchSection />

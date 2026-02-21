@@ -6,7 +6,7 @@ import DoEPartnershipSection from "@/components/methodology/doe-partnership-sect
 import TaRLSection from "@/components/methodology/tarl-section";
 import EATrainingSection from "@/components/methodology/ea-training-section";
 import EGRASection from "@/components/methodology/egra-section";
-import GamesVideosSection from "@/components/methodology/games-videos-section";
+import GamesVideosCta from "@/components/methodology/games-videos-cta";
 import MethodologyCTA from "@/components/methodology/methodology-cta";
 
 export const metadata = {
@@ -26,7 +26,7 @@ export default function MethodologyPage() {
         <TaRLSection />
         <EATrainingSection />
         <EGRASection />
-        <GamesVideosSection />
+        <GamesVideosCta />
         <MethodologyCTA />
       </main>
       <Footer />

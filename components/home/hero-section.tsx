@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Pencil, Target, Globe } from "lucide-react";
+import { ArrowRight, Briefcase, Target, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function HeroSection() {
@@ -29,27 +29,24 @@ export default function HeroSection() {
           Teaching Children Their Letter Sounds
         </h1>
 
-        {/* Feature bullets — matching Django screenshot layout */}
-        <ul className="space-y-6 mb-12 max-w-xl animate-fadeIn">
-          <li className="flex items-start gap-4">
-            <Pencil className="h-6 w-6 mt-0.5 shrink-0 text-accent-yellow" />
-            <p className="text-base md:text-lg text-white/90">
-              Working with existing Teacher Assistants in classrooms. Zazi iZandi
-              TAs are more effective and efficient than a typical TA.
+        {/* Feature bullets */}
+        <ul className="space-y-4 mb-12 max-w-lg animate-fadeIn">
+          <li className="flex items-center gap-4">
+            <Briefcase className="h-5 w-5 shrink-0 text-accent-yellow" />
+            <p className="text-lg font-semibold text-white">
+              Creating local jobs
             </p>
           </li>
-          <li className="flex items-start gap-4">
-            <Target className="h-6 w-6 mt-0.5 shrink-0 text-accent-yellow" />
-            <p className="text-base md:text-lg text-white/90">
-              Working with children at THEIR level providing targeted support to
-              ensure no child is left behind.
+          <li className="flex items-center gap-4">
+            <Target className="h-5 w-5 shrink-0 text-accent-yellow" />
+            <p className="text-lg font-semibold text-white">
+              Teaching every child at their level
             </p>
           </li>
-          <li className="flex items-start gap-4">
-            <Globe className="h-6 w-6 mt-0.5 shrink-0 text-accent-yellow" />
-            <p className="text-base md:text-lg text-white/90">
-              Built to scale. Zazi iZandi is open-source, easy to implement, and
-              designed for scale.
+          <li className="flex items-center gap-4">
+            <Globe className="h-5 w-5 shrink-0 text-accent-yellow" />
+            <p className="text-lg font-semibold text-white">
+              Built to scale with government
             </p>
           </li>
         </ul>
@@ -61,8 +58,8 @@ export default function HeroSection() {
             size="lg"
             className="bg-accent-yellow text-gray-900 hover:bg-yellow-400 font-bold text-base px-8"
           >
-            <Link href="/about">
-              Learn About Our Program
+            <Link href="/methodology">
+              Learn About Methodology
               <ArrowRight className="ml-2 h-5 w-5" />
             </Link>
           </Button>
@@ -72,7 +69,7 @@ export default function HeroSection() {
             variant="outline"
             className="border-2 border-white text-white hover:bg-white hover:text-primary text-base px-8"
           >
-            <Link href="/impact">View Our Impact</Link>
+            <Link href="/impact">View Impact</Link>
           </Button>
         </div>
       </div>

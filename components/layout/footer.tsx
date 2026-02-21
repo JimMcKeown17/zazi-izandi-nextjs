@@ -24,19 +24,16 @@ export default function Footer() {
               <div className="flex items-start">
                 <Mail className="h-5 w-5 mr-3 mt-0.5 flex-shrink-0" />
                 <a
-                  href="mailto:info@zaziizandi.org"
+                  href="mailto:zama@masinyusane.org"
                   className="hover:text-white transition-colors"
                 >
-                  info@zaziizandi.org
+                  joy@bindingconstraintslab.org
                 </a>
               </div>
-              <div className="flex items-start">
-                <Phone className="h-5 w-5 mr-3 mt-0.5 flex-shrink-0" />
-                <span>+27 (0) 21 123 4567</span>
-              </div>
+
               <div className="flex items-start">
                 <MapPin className="h-5 w-5 mr-3 mt-0.5 flex-shrink-0" />
-                <span>Cape Town, South Africa</span>
+                <span>Eastern Cape, South Africa</span>
               </div>
             </div>
           </div>
@@ -71,37 +68,14 @@ export default function Footer() {
             </ul>
 
             {/* Social Media Links */}
-            <div className="flex space-x-4">
-              <a
-                href="#"
-                className="hover:text-white transition-colors"
-                aria-label="Facebook"
-              >
-                <Facebook className="h-5 w-5" />
-              </a>
-              <a
-                href="#"
-                className="hover:text-white transition-colors"
-                aria-label="Twitter"
-              >
-                <Twitter className="h-5 w-5" />
-              </a>
-              <a
-                href="#"
-                className="hover:text-white transition-colors"
-                aria-label="LinkedIn"
-              >
-                <Linkedin className="h-5 w-5" />
-              </a>
-            </div>
+
           </div>
         </div>
 
         {/* Copyright */}
         <div className="border-t border-gray-800 mt-8 pt-8 text-center text-sm">
           <p>
-            © {currentYear} Zazi iZandi. All rights reserved. | Empowering
-            early literacy through data-driven interventions.
+            © {currentYear} Zazi iZandi. All rights reserved. | Website by AI5 Labs.
           </p>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
-import MediaHeroSection from "@/components/media/hero-section";
 import VideoSection from "@/components/media/video-section";
+import AllVideosSection from "@/components/media/all-videos-section";
 import NewsSection from "@/components/media/news-section";
 import TestimonialsSection from "@/components/media/testimonials-section";
 import GallerySection from "@/components/media/gallery-section";
@@ -17,9 +17,9 @@ export default function MediaPage() {
     <>
       <Header />
       <main className="pt-20 overflow-x-hidden">
-        <MediaHeroSection />
         <VideoSection />
         <NewsSection />
+        <AllVideosSection />
         <TestimonialsSection />
         <GallerySection />
       </main>

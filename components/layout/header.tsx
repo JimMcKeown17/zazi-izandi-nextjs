@@ -2,10 +2,30 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  Menu,
+  X,
+  ChevronDown,
+  Users,
+  BookOpen,
+  TrendingUp,
+  LayoutDashboard,
+  Newspaper,
+  FolderOpen,
+  MapPin,
+  CalendarDays,
+} from "lucide-react";
 import { useAuth, useUser, UserButton } from "@clerk/nextjs";
+import {
+  NavigationMenu,
+  NavigationMenuContent,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  NavigationMenuTrigger,
+} from "@/components/ui/navigation-menu";
 
 // Role hierarchy — mirrors middleware.ts
 type Role = "funder" | "junior_staff" | "senior_staff" | "admin";
@@ -22,18 +42,97 @@ function hasAccess(userRole: Role | undefined, minRole: Role): boolean {
   return (ROLE_LEVELS[userRole] ?? 0) >= ROLE_LEVELS[minRole];
 }
 
-const ALL_NAV = [
-  { name: "Home", href: "/", minRole: null },
-  { name: "About", href: "/about", minRole: null },
-  { name: "Schools", href: "/schools", minRole: "funder" as Role },
-  { name: "Media", href: "/media", minRole: null },
-  { name: "Methodology", href: "/methodology", minRole: null },
-  { name: "Impact", href: "/impact", minRole: null },
-  { name: "Resources", href: "/resources", minRole: null },
+interface NavItem {
+  name: string;
+  href: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+interface NavGroup {
+  label: string;
+  minRole: Role | null;
+  items: NavItem[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "About",
+    minRole: null,
+    items: [
+      {
+        name: "About Zazi iZandi",
+        href: "/about",
+        description: "Learn about the Zazi iZandi programme",
+        icon: Users,
+      },
+      {
+        name: "Methodology",
+        href: "/methodology",
+        description: "Our evidence-based literacy approach",
+        icon: BookOpen,
+      },
+    ],
+  },
+  {
+    label: "Impact",
+    minRole: null,
+    items: [
+      {
+        name: "Our Impact",
+        href: "/impact",
+        description: "Results and outcomes from our schools",
+        icon: TrendingUp,
+      },
+      {
+        name: "Data Portal",
+        href: "/data-portal",
+        description: "Live dashboards and analytics",
+        icon: LayoutDashboard,
+      },
+    ],
+  },
+  {
+    label: "Resources",
+    minRole: null,
+    items: [
+      {
+        name: "News & Media",
+        href: "/media",
+        description: "Videos, photos, and press coverage",
+        icon: Newspaper,
+      },
+      {
+        name: "Materials",
+        href: "/resources",
+        description: "Tools and materials we've published",
+        icon: FolderOpen,
+      },
+    ],
+  },
+  {
+    label: "Project Management",
+    minRole: "funder" as Role,
+    items: [
+      {
+        name: "2024 Schools",
+        href: "/schools",
+        description: "Education assistant data for 2024",
+        icon: MapPin,
+      },
+      {
+        name: "2025 Schools",
+        href: "/schools-2025",
+        description: "Education assistant data for 2025",
+        icon: CalendarDays,
+      },
+    ],
+  },
 ];
 
 export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [scrolled, setScrolled] = useState(false);
   const pathname = usePathname();
   const { isSignedIn } = useAuth();
@@ -41,25 +140,24 @@ export default function Header() {
 
   const userRole = user?.publicMetadata?.role as Role | undefined;
 
-  const visibleNav = ALL_NAV.filter((item) => {
-    if (!item.minRole) return true;
-    return isSignedIn && hasAccess(userRole, item.minRole);
+  const visibleGroups = NAV_GROUPS.filter((group) => {
+    if (!group.minRole) return true;
+    return isSignedIn && hasAccess(userRole, group.minRole);
   });
 
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 50);
     };
-
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const isActive = (href: string) => {
-    if (href === "/") {
-      return pathname === "/";
-    }
-    return pathname.startsWith(href);
+  const isGroupActive = (group: NavGroup) =>
+    group.items.some((item) => pathname.startsWith(item.href));
+
+  const toggleGroup = (label: string) => {
+    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
   };
 
   return (
@@ -71,37 +169,73 @@ export default function Header() {
       <nav className="container flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex items-center">
-          <span className="text-2xl font-bold text-primary">Zazi iZandi</span>
+          <Image
+            src="/zazi_izandi_logo.png"
+            alt="Zazi iZandi"
+            width={175}
+            height={60}
+            className="h-[3.125rem] w-auto"
+            priority
+          />
         </Link>
 
         {/* Desktop Navigation */}
-        <div className="hidden lg:flex items-center space-x-8">
-          {visibleNav.map((item) => (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={`font-medium transition-colors duration-200 ${
-                isActive(item.href)
-                  ? "text-primary border-b-2 border-primary"
-                  : "text-gray-700 hover:text-primary"
-              }`}
-            >
-              {item.name}
-            </Link>
-          ))}
-
-          <Button
-            asChild
-            className="bg-primary hover:bg-primary-800 text-white"
-          >
-            <a
-              href="https://data.zazi-izandi.co.za/"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Data Portal
-            </a>
-          </Button>
+        <div className="hidden lg:flex items-center gap-1">
+          <NavigationMenu viewport={false}>
+            <NavigationMenuList>
+              {visibleGroups.map((group) => (
+                <NavigationMenuItem key={group.label}>
+                  <NavigationMenuTrigger
+                    className={`font-medium text-sm px-3 ${
+                      isGroupActive(group)
+                        ? "text-primary"
+                        : "text-gray-700 hover:text-primary"
+                    }`}
+                  >
+                    {group.label}
+                  </NavigationMenuTrigger>
+                  <NavigationMenuContent className="bg-white border-t-2 border-primary shadow-lg">
+                    <ul className="w-[260px] p-2">
+                      {group.items.map((item) => (
+                        <li key={item.href}>
+                          <NavigationMenuLink asChild>
+                            <Link
+                              href={item.href}
+                              className={`block select-none rounded-md p-3 no-underline outline-none transition-colors hover:bg-gray-50 ${
+                                pathname.startsWith(item.href)
+                                  ? "bg-primary/5"
+                                  : ""
+                              }`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-md bg-primary/10 text-primary mt-0.5">
+                                  <item.icon className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <div
+                                    className={`text-sm font-semibold leading-none mb-1 ${
+                                      pathname.startsWith(item.href)
+                                        ? "text-primary"
+                                        : "text-gray-800"
+                                    }`}
+                                  >
+                                    {item.name}
+                                  </div>
+                                  <p className="text-xs leading-snug text-gray-500">
+                                    {item.description}
+                                  </p>
+                                </div>
+                              </div>
+                            </Link>
+                          </NavigationMenuLink>
+                        </li>
+                      ))}
+                    </ul>
+                  </NavigationMenuContent>
+                </NavigationMenuItem>
+              ))}
+            </NavigationMenuList>
+          </NavigationMenu>
 
           {/* Auth: show UserButton when signed in, Login link when not */}
           {isSignedIn ? (
@@ -109,7 +243,7 @@ export default function Header() {
           ) : (
             <Link
               href="/login"
-              className="font-medium text-gray-700 hover:text-primary transition-colors duration-200"
+              className="ml-2 font-medium text-gray-700 hover:text-primary transition-colors duration-200"
             >
               Login
             </Link>
@@ -133,51 +267,61 @@ export default function Header() {
       {/* Mobile Menu */}
       {mobileMenuOpen && (
         <div className="lg:hidden bg-white border-t border-gray-200 shadow-lg">
-          <div className="container py-4 space-y-4">
-            {visibleNav.map((item) => (
-              <Link
-                key={item.name}
-                href={item.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className={`block font-medium transition-colors duration-200 ${
-                  isActive(item.href)
-                    ? "text-primary font-bold"
-                    : "text-gray-700 hover:text-primary"
-                }`}
-              >
-                {item.name}
-              </Link>
+          <div className="container py-4 space-y-1">
+            {visibleGroups.map((group) => (
+              <div key={group.label}>
+                <button
+                  className="flex items-center justify-between w-full py-2 font-medium text-gray-700 hover:text-primary transition-colors"
+                  onClick={() => toggleGroup(group.label)}
+                >
+                  <span>{group.label}</span>
+                  <ChevronDown
+                    className={`h-4 w-4 transition-transform duration-200 ${
+                      openGroups[group.label] ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+                {openGroups[group.label] && (
+                  <div className="pl-4 pb-2 space-y-1">
+                    {group.items.map((item) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`flex items-center gap-2 py-2 text-sm transition-colors duration-200 ${
+                          pathname.startsWith(item.href)
+                            ? "text-primary font-semibold"
+                            : "text-gray-600 hover:text-primary"
+                        }`}
+                      >
+                        <item.icon className="w-3.5 h-3.5 shrink-0" />
+                        {item.name}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
-            <Button
-              asChild
-              className="w-full bg-primary hover:bg-primary-800 text-white"
-            >
-              <a
-                href="https://data.zazi-izandi.co.za/"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Data Portal
-              </a>
-            </Button>
 
             {/* Auth in mobile menu */}
-            {isSignedIn ? (
-              <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
-                <UserButton afterSignOutUrl="/" />
-                <span className="text-sm text-gray-600">
-                  {user?.firstName ?? user?.emailAddresses?.[0]?.emailAddress}
-                </span>
-              </div>
-            ) : (
-              <Link
-                href="/login"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block font-medium text-primary hover:text-primary transition-colors duration-200"
-              >
-                Login
-              </Link>
-            )}
+            <div className="pt-3 border-t border-gray-100">
+              {isSignedIn ? (
+                <div className="flex items-center gap-3 pt-2">
+                  <UserButton afterSignOutUrl="/" />
+                  <span className="text-sm text-gray-600">
+                    {user?.firstName ?? user?.emailAddresses?.[0]?.emailAddress}
+                  </span>
+                </div>
+              ) : (
+                <Link
+                  href="/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block py-2 font-medium text-primary hover:text-primary transition-colors duration-200"
+                >
+                  Login
+                </Link>
+              )}
+            </div>
           </div>
         </div>
       )}

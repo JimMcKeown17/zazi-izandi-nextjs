@@ -18,6 +18,7 @@ const openSans = Open_Sans({
 });
 
 export const metadata: Metadata = {
+  icons: { icon: "/zazi_izandi_favicon.ico" },
   title: "Zazi iZandi - Data-Driven Early Literacy Intervention",
   description: "Zazi iZandi is a data-driven early literacy intervention program supporting Foundation Phase learners in South African schools.",
   keywords: ["education", "literacy", "South Africa", "early learning", "foundation phase"],
