@@ -95,7 +95,7 @@ export default function Header() {
             className="bg-primary hover:bg-primary-800 text-white"
           >
             <a
-              href="https://dataportal.zaziizandi.org"
+              href="https://data.zazi-izandi.co.za/"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -153,7 +153,7 @@ export default function Header() {
               className="w-full bg-primary hover:bg-primary-800 text-white"
             >
               <a
-                href="https://dataportal.zaziizandi.org"
+                href="https://data.zazi-izandi.co.za/"
                 target="_blank"
                 rel="noopener noreferrer"
               >
