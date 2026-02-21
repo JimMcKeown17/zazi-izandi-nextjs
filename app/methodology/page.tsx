@@ -1,49 +1,33 @@
 import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
+import MethodologyHero from "@/components/methodology/hero-section";
+import ProgrammeOverview from "@/components/methodology/programme-overview";
+import DoEPartnershipSection from "@/components/methodology/doe-partnership-section";
+import TaRLSection from "@/components/methodology/tarl-section";
+import EATrainingSection from "@/components/methodology/ea-training-section";
+import EGRASection from "@/components/methodology/egra-section";
+import GamesVideosSection from "@/components/methodology/games-videos-section";
+import MethodologyCTA from "@/components/methodology/methodology-cta";
+
+export const metadata = {
+  title: "Our Methodology | Zazi iZandi",
+  description:
+    "How Zazi iZandi teaches early literacy: structured sound instruction, Teaching at the Right Level (TaRL), trained Education Assistants, and a data-driven approach.",
+};
 
 export default function MethodologyPage() {
   return (
     <>
       <Header />
-      <main className="pt-20">
-        {/* Hero Section */}
-        <section className="bg-gradient-to-br from-purple-600 to-purple-800 text-white py-20">
-          <div className="container text-center">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              Our Methodology
-            </h1>
-            <p className="text-lg md:text-xl max-w-2xl mx-auto">
-              Learn about our teaching approach, training materials, and evidence-based interventions
-            </p>
-          </div>
-        </section>
-
-        {/* Content Placeholder */}
-        <section className="py-16">
-          <div className="container">
-            <div className="max-w-4xl mx-auto text-center">
-              <h2 className="text-3xl font-bold text-primary mb-6">
-                Coming Soon: Comprehensive Methodology
-              </h2>
-              <p className="text-lg text-gray-600 mb-8">
-                We'll detail our teaching approach, training program, and evidence-based interventions.
-              </p>
-              <div className="bg-gray-50 p-8 rounded-lg">
-                <p className="text-gray-500">
-                  This page will include:
-                </p>
-                <ul className="mt-4 space-y-2 text-left max-w-md mx-auto">
-                  <li>✓ Teaching methodology overview</li>
-                  <li>✓ TA training program details</li>
-                  <li>✓ Assessment framework</li>
-                  <li>✓ Intervention strategies</li>
-                  <li>✓ Research foundations</li>
-                  <li>✓ Training materials download</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </section>
+      <main className="pt-20 overflow-x-hidden">
+        <MethodologyHero />
+        <ProgrammeOverview />
+        <DoEPartnershipSection />
+        <TaRLSection />
+        <EATrainingSection />
+        <EGRASection />
+        <GamesVideosSection />
+        <MethodologyCTA />
       </main>
       <Footer />
     </>

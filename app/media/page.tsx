@@ -19,8 +19,8 @@ export default function MediaPage() {
       <main className="pt-20 overflow-x-hidden">
         <MediaHeroSection />
         <VideoSection />
-        <TestimonialsSection />
         <NewsSection />
+        <TestimonialsSection />
         <GallerySection />
       </main>
       <Footer />

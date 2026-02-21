@@ -1,25 +1,25 @@
 import Image from "next/image";
-import { ExternalLink, Calendar } from "lucide-react";
+import { ExternalLink, Calendar, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const newsItems = [
   {
-    image: "/images/news/In The News - President.png",
-    title: "President Ramaphosa Visits Zazi iZandi Schools",
-    source: "Office of the Presidency",
-    date: "2024",
+    image: "/images/news/Ramaphosa SONA 2026.jpeg",
+    title: "Zazi iZandi Featured in President Ramaphosa's State of the Nation Address",
+    source: "SONA 2025 Report",
+    date: "2025",
     excerpt:
-      "President Cyril Ramaphosa recognized the Zazi iZandi early literacy program during a visit to Eastern Cape schools, highlighting it as a model for evidence-based education interventions across the country.",
-    link: "#",
+      "President Cyril Ramaphosa highlighted Zazi iZandi in his State of the Nation Address, citing the programme as a leading example of youth employment and early literacy impact — with Education Assistants central to his vision for expanding youth jobs in South African schools.",
+    link: "/reports/SONA 2025 Report.pdf",
   },
   {
     image: "/images/news/In The News - President 2.png",
-    title: "Presidential Recognition for Literacy Innovation",
-    source: "Government Communications",
-    date: "2024",
+    title: "President Launches Fifth Phase of Basic Education Employment Initiative",
+    source: "Office of the Presidency",
+    date: "2025",
     excerpt:
-      "The Zazi iZandi program received national attention for its measurable impact on Foundation Phase reading outcomes in under-resourced communities.",
-    link: "#",
+      "President Cyril Ramaphosa announces the fifth phase of the BEEI — South Africa's largest youth employment programme — placing 200,000 young people in schools as reading champions, curriculum assistants, and more.",
+    link: "https://www.thepresidency.gov.za/node/9033",
   },
   {
     image: "/images/news/In The News - Dispatch.png",
@@ -28,7 +28,7 @@ const newsItems = [
     date: "2023",
     excerpt:
       "A Daily Dispatch feature on how Zazi iZandi's structured phonics approach is transforming reading outcomes in Gqeberha township schools.",
-    link: "#",
+    link: "https://dailydispatch.co.za/news/2025-06-09-npo-making-a-real-difference-one-school-at-a-time/",
   },
 ];
 
@@ -82,14 +82,35 @@ export default function NewsSection() {
                 <p className="text-gray-600 text-sm leading-relaxed mb-4">
                   {item.excerpt}
                 </p>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-primary hover:text-primary-800 p-0 h-auto font-semibold"
-                >
-                  Read Article
-                  <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
-                </Button>
+                {item.link !== "#" ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-primary hover:text-primary-800 p-0 h-auto font-semibold"
+                    asChild
+                  >
+                    {item.link.endsWith(".pdf") ? (
+                      <a href={item.link} download>
+                        Download Report
+                        <Download className="h-3.5 w-3.5 ml-1.5" />
+                      </a>
+                    ) : (
+                      <a href={item.link} target="_blank" rel="noopener noreferrer">
+                        Read Article
+                        <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
+                      </a>
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-primary hover:text-primary-800 p-0 h-auto font-semibold"
+                  >
+                    Read Article
+                    <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
+                  </Button>
+                )}
               </div>
             </article>
           ))}
