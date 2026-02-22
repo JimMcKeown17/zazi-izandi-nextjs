@@ -73,7 +73,7 @@ export default function TaRLSection() {
             </div>
 
             <p className="text-gray-600 text-sm italic">
-              Groups are fluid — as children progress, they move up. As the
+              Groups are fluid. As children progress, they move up. As the
               data shows gaps, we adjust. The system is always responding.
             </p>
           </div>

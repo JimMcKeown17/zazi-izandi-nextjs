@@ -3,13 +3,13 @@ const whyItMatters = [
     emoji: "📏",
     title: "A Standardised Measure",
     description:
-      "EGRA provides an internationally validated, consistent measure of reading ability — allowing us to compare children's progress against benchmarks and across schools.",
+      "EGRA provides an internationally validated, consistent measure of reading ability allowing us to compare children's progress against benchmarks and across schools.",
   },
   {
     emoji: "🎯",
     title: "Identifies the Right Gaps",
     description:
-      "Unlike grade-level tests, EGRA pinpoints exactly where a child's reading breaks down — whether at letter sounds, blending, decoding, or fluency — so we can intervene precisely.",
+      "Unlike grade-level tests, EGRA pinpoints exactly where a child's reading breaks down whether at letter sounds, blending, decoding, or fluency so we can intervene precisely.",
   },
   {
     emoji: "📈",

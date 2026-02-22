@@ -54,7 +54,7 @@ export default function DoEPartnershipSection() {
             <span className="text-primary">Department of Education</span>
           </h2>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            We don&apos;t work around the system. We work inside it — in
+            We don&apos;t work around the system. We work inside it, in
             partnership with the Eastern Cape Department of Education to deliver
             impact at scale through public schools.
           </p>
@@ -110,7 +110,7 @@ export default function DoEPartnershipSection() {
                 </p>
                 <p className="text-white/85 leading-relaxed">
                   Our partnership with the EC DoE means access, credibility, and
-                  a pathway to scale — so that what works in one school can
+                  a pathway to scale so that what works in one school can
                   reach thousands.
                 </p>
               </div>

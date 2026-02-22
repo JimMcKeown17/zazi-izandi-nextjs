@@ -53,7 +53,7 @@ export default function MethodologyHero() {
             </h1>
             <p className="text-xl text-white/90 leading-relaxed">
               A structured, evidence-based approach that meets every child where
-              they are — and takes them further than they imagined possible.
+              they are and takes them further than they imagined possible.
             </p>
           </div>
 

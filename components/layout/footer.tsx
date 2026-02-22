@@ -12,7 +12,7 @@ export default function Footer() {
           <div>
             <h3 className="text-xl font-bold text-white mb-4">Zazi iZandi</h3>
             <p className="text-sm leading-relaxed">
-              A data-driven early literacy intervention program supporting
+              A data-driven early literacy intervention programme supporting
               Foundation Phase learners in South African schools.
             </p>
           </div>

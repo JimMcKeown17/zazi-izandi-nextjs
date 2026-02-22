@@ -7,28 +7,28 @@ const testimonials = [
     name: "Lulo's Story",
     role: "Grade 1 Learner",
     quote:
-      "When Lulo started the program, he could not identify a single letter sound. After just two terms with his Education Assistant, he was reading simple isiXhosa sentences with confidence and excitement.",
+      "When Lulo started the program, he could only identify two letter sounds. After just three months with his Education Assistant, he had mastered half of the alphabet.",
   },
   {
     image: "/images/children/child_Mbali_0-16.jpg",
     name: "Mbali's Journey",
     role: "Grade R Learner",
     quote:
-      "Mbali's teacher noticed a complete transformation. She went from being withdrawn during reading time to eagerly raising her hand. The structured small-group sessions gave her the confidence she needed.",
+      "Mbali's teacher noticed a complete transformation. She went from being withdrawn in the classroom to participating as she jumped from a zero-letter knowledge child to 16lcpm in 3 months.",
   },
   {
     image: "/images/children/child_Qhamani_2-14.jpg",
     name: "Qhamani's Progress",
-    role: "Grade 2 Learner",
+    role: "Grade R Learner",
     quote:
-      "Qhamani's mother says he now reads signs on the street, labels at the shop, and even tries to read her messages. The program didn't just teach him to read — it made reading part of his life.",
+      "Qhamani was behind in class, but quickly caught up after 2 terms with his superstar Education Assistant.",
   },
   {
     image: "/images/children/child_Yonela_5-12.jpg",
     name: "Yonela's Achievement",
     role: "Grade 1 Learner",
     quote:
-      "Yonela improved from recognizing 2 letter sounds to 15 in a single term. Her Education Assistant worked with her three times a week in small groups, using phonics games and structured reading activities.",
+      "Yonela, having hit the Grade 1 benchmark, is well on her way to becoming a future reader.",
   },
 ];
 

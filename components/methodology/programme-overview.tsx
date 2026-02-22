@@ -59,7 +59,7 @@ export default function ProgrammeOverview() {
             How It Works
           </h2>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Six steps that transform a child&apos;s relationship with reading —
+            Six steps that transform a child&apos;s relationship with reading
             delivered every day inside public school classrooms.
           </p>
         </div>

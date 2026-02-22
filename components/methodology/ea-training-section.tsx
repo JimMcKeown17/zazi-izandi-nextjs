@@ -59,7 +59,7 @@ export default function EATrainingSection() {
           </h2>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
             We recruit unemployed young people from the communities we serve and
-            transform them into skilled literacy practitioners — trained,
+            transform them into skilled literacy practitioners, trained,
             supported, and supervised to deliver results.
           </p>
         </div>
@@ -143,8 +143,8 @@ export default function EATrainingSection() {
           </div>
           <p className="text-xl md:text-2xl font-light leading-relaxed mb-6">
             Our Education Assistants are young people from the same communities
-            as the children they teach. That shared context — shared language,
-            shared culture — makes them uniquely effective.
+            as the children they teach. That shared context, shared language and
+            shared culture makes them uniquely effective.
           </p>
           <div className="w-16 h-0.5 bg-accent-yellow mx-auto" />
         </div>
