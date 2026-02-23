@@ -70,21 +70,21 @@ export default function EGRASection() {
               The Early Grade Reading Assessment is a short, one-on-one oral
               reading assessment designed specifically for early grade learners.
               It measures the foundational skills that predict long-term reading
-              success — from letter-sound knowledge through to reading fluency
+              success, from letter-sound knowledge through to reading fluency
               and comprehension.
             </p>
             <p className="text-gray-700 leading-relaxed mb-6">
               Developed by RTI International and adopted by governments and NGOs
               across the globe, EGRA gives us a precise, reliable window into
-              every child&apos;s reading development — not just whether they
+              every child&apos;s reading development, not just whether they
               passed a grade, but exactly what they can and cannot yet do.
             </p>
             <div className="flex items-start gap-3 p-4 bg-primary/5 border border-primary/15 rounded-xl">
               <span className="text-2xl">⏱️</span>
               <p className="text-sm text-gray-700">
                 <strong>Quick to administer.</strong> Each EGRA takes just
-                15–20 minutes per child and is conducted by trained Education
-                Assistants — making it practical to run at scale across hundreds
+                a few minutes per child and is conducted by trained Education
+                Assistants making it practical to run at scale across hundreds
                 of classrooms.
               </p>
             </div>

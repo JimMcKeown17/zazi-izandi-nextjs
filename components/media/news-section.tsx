@@ -22,13 +22,13 @@ const newsItems = [
     link: "https://www.thepresidency.gov.za/node/9033",
   },
   {
-    image: "/images/news/In The News - Dispatch.png",
+    image: "/images/news/The Herald Zama.png",
     title: "Local Literacy Program Shows Remarkable Results",
     source: "Daily Dispatch",
     date: "2023",
     excerpt:
-      "A Daily Dispatch feature on how Zazi iZandi's structured phonics approach is transforming reading outcomes in Gqeberha township schools.",
-    link: "https://dailydispatch.co.za/news/2025-06-09-npo-making-a-real-difference-one-school-at-a-time/",
+      "The Herald feature on how Zazi iZandi's structured phonics approach is transforming reading outcomes in Gqeberha township schools.",
+    link: "https://www.theherald.co.za/news/2025-06-09-gqeberha-npo-making-a-real-difference-one-school-at-a-time/",
   },
 ];
 
