@@ -115,15 +115,15 @@ const NAV_GROUPS: NavGroup[] = [
     minRole: "funder" as Role,
     items: [
       {
-        name: "2024 Schools",
+        name: "2025 Schools",
         href: "/schools",
-        description: "Education assistant data for 2024",
+        description: "Education assistant data for 2025",
         icon: MapPin,
       },
       {
-        name: "2025 Schools",
-        href: "/schools-2025",
-        description: "Education assistant data for 2025",
+        name: "2026 Schools",
+        href: "/schools-2026",
+        description: "Education assistant data for 2026",
         icon: CalendarDays,
       },
     ],
