@@ -88,7 +88,7 @@ export default async function Schools2026Page() {
                     </h2>
                     <p className="text-gray-600">
                       Session frequency and flag tracking per school — colour
-                      coded by average sessions per child per week
+                      coded by average sessions per group per week
                     </p>
                   </div>
                 </div>

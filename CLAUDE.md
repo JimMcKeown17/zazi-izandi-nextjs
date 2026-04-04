@@ -1,58 +1,112 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Commands
 
 ```bash
-npm run dev       # Start development server at localhost:3000
-npm run build     # Production build
-npm run lint      # Run ESLint
+npm run dev              # Dev server at localhost:3000
+npm run build            # Production build
+npm run lint             # ESLint
+npx playwright test      # E2E tests (requires dev server or uses built-in webServer)
 ```
 
-No test framework is configured.
+No unit test framework is configured.
+
+## Tech Stack
+
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Clerk auth · Radix UI (shadcn "new-york") · Mapbox GL · Embla Carousel · Lucide icons
 
 ## Architecture
 
-This is a **Next.js 16 App Router** site for Zazi iZandi, a South African early literacy intervention program.
+Frontend-only Next.js site for **Zazi iZandi**, a South African early literacy intervention program. No custom API routes — all backend logic lives in a separate [Django app on Render](documentation/data-and-backend.md).
 
-**Tech stack:** Next.js 16, React 19, TypeScript, Tailwind CSS v4, Radix UI primitives (via shadcn-style `components/ui/`), Mapbox GL, Embla Carousel, Lucide icons.
+### Directory Structure
 
-**Fonts:** Roboto (`--font-roboto`) and Open Sans (`--font-open-sans`) loaded via `next/font/google`. Open Sans is the default body font.
+```
+app/                        # App Router pages (each route is a page.tsx)
+├── globals.css             # Theme: colors, animations, custom classes
+├── layout.tsx              # Root layout (fonts only — no Header/Footer)
+├── page.tsx                # Home (/)
+├── about/ impact/ methodology/ media/ resources/
+├── schools/                # Protected (Clerk RBAC, min role: funder)
+├── schools-2025/           # Placeholder "coming soon"
+├── schools-2026/           # Live data from Django API (ISR, 300s)
+├── data-portal/            # Embedded iframe to external BI tool
+└── login/[[...sign-in]]/   # Clerk sign-in
+components/
+├── layout/                 # header.tsx (client), footer.tsx
+├── home/ about/ impact/ methodology/ media/   # Page-specific sections
+├── schools/                # School map (Mapbox), EA cards
+├── schools-2026/           # 2026 school cards (live Django data)
+└── ui/                     # Radix/shadcn primitives
+data/                       # Static JSON/CSV consumed at build time
+middleware.ts               # Clerk RBAC — protects /schools* routes
+```
 
-**Path alias:** `@/` maps to the project root.
+See: [Routes](documentation/routes.md) · [Components](documentation/components.md)
 
-### Directory structure
+### Key Patterns
 
-- `app/` — App Router pages. Each route is a `page.tsx`. Layout wraps pages with font classes but does **not** include `<Header>` or `<Footer>` — each page imports and renders these manually.
-- `components/layout/` — `header.tsx` (client component with scroll/active-link logic) and `footer.tsx`.
-- `components/home/`, `components/about/`, `components/schools/` — Page-specific sections.
-- `components/ui/` — Radix UI-based primitives (Button, Card, Badge, Dialog, Tabs, Carousel, NavigationMenu, Separator).
-- `data/` — Static JSON/CSV files consumed directly by page components at build time. `ea-data.json` contains Education Assistant performance records; `school-locations.json` has geo-coordinates for the Mapbox map.
+- **No shared Header/Footer in layout.** Each `page.tsx` renders `<Header />`, `<main className="pt-20">`, `<Footer />` manually.
+- **Color theming** via CSS custom properties in `globals.css`. Use `text-primary`, `bg-primary`, `bg-accent-yellow`, etc.
+- **Fonts:** Roboto (`--font-roboto`) for sans/headings, Open Sans (`--font-open-sans`) as body default. Loaded in `layout.tsx`.
+- **Path alias:** `@/` maps to project root.
+- **Static data** imported directly in page components (no API). Only `/schools-2026` fetches from Django.
+- **Client components** used for browser APIs: Mapbox map, scroll animations, header nav.
+- **shadcn config:** `components.json` — style "new-york", RSC enabled, Lucide icons, aliases at `@/components`, `@/lib`, `@/components/ui`.
 
-### Key patterns
+## Authentication (Clerk RBAC)
 
-- Pages **do not** use a shared layout that injects `<Header>`/`<Footer>`. Each `page.tsx` wraps content in `<> <Header /> <main> ... </main> <Footer /> </>`.
-- The `<main>` element typically has `pt-20` to clear the fixed header.
-- Color theming uses CSS custom properties. `primary` color is referenced throughout as `text-primary`, `bg-primary`, `border-primary`, etc. — defined in `app/globals.css`.
-- The Mapbox `SchoolMap` component (`components/schools/school-map.tsx`) is a client component since it requires browser APIs.
-- Data filtering (e.g., removing EA entries without a school name) is done inline at the top of page components using the imported JSON.
+Middleware at `middleware.ts` protects `/schools*` routes with role-based access:
+
+| Role | Level | Notes |
+|------|-------|-------|
+| `funder` | 1 | Minimum for `/schools*` |
+| `junior_staff` | 2 | Future route expansion |
+| `senior_staff` | 3 | |
+| `admin` | 4 | Full access |
+
+Roles set in **Clerk Dashboard** → User → publicMetadata: `{ "role": "funder" }`.
+Session token must include custom claim: `{ "metadata": "{{user.public_metadata}}" }`.
+Unauthenticated users redirect to `/login?redirect_url=...`.
+
+## Django Backend
+
+A separate Django app at `DJANGO_API_URL` (hosted on Render) serves live school data. The Next.js frontend consumes it in one place:
+
+- **`/schools-2026`** — Server component fetches `/api/schools-2026/` with ISR (`revalidate: 300`).
+
+Django source repo: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025`
+
+See: [Data & Backend](documentation/data-and-backend.md)
 
 ## Brand & Colors
 
-- **Primary blue:** `#2c5aa0` (referenced as `text-primary`, `bg-primary`, etc.)
-- **Accent yellow:** `#ffd641` — the original Zazi iZandi brand yellow. Use liberally for accents, icons, CTAs, and accent bars. Referenced as `text-accent-yellow`, `bg-accent-yellow`.
-- Django source for content/design reference: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025`
+| Token | Hex | Usage |
+|-------|-----|-------|
+| `primary` | `#2c5aa0` | Primary blue — headings, buttons, borders |
+| `accent-yellow` | `#ffd641` | Brand yellow — accents, CTAs, icons. Use liberally. |
+| `accent-red` | `#e74c3c` | Alert/emphasis |
+| `primary-50`–`primary-900` | — | Full blue palette in `globals.css` |
 
-## Static Assets (public/)
+See: [Styling & Theme](documentation/styling.md)
 
-All assets copied from the Django project are organized under `public/`:
+## Environment Variables
 
-| Path | Contents |
-|---|---|
-| `public/videos/` | `hero-bg.mp4` — hero section video background |
-| `public/images/sponsors/` | Partner/funder logos (Masi, TLT, DoE EC, DGMT, Funda Wande) |
-| `public/images/children/` | Child progress portraits (Lulo, Mbali, Qhamani, Shalom, Yonela) |
-| `public/images/gallery/` | Program photo gallery images |
-| `public/images/news/` | Press/news images (Dispatch, President) |
-| `public/images/misc/` | Research photos, data charts, SVG icons, misc |
+See `.env.example` for all variables. **Required for development:**
+
+| Variable | Purpose |
+|----------|---------|
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | Mapbox GL map on `/schools` |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk auth (public) |
+| `CLERK_SECRET_KEY` | Clerk auth (server) |
+| `DJANGO_API_URL` | Django backend for `/schools-2026` |
+
+## Further Documentation
+
+| File | Contents |
+|------|----------|
+| [documentation/routes.md](documentation/routes.md) | All routes, purpose, protection status |
+| [documentation/components.md](documentation/components.md) | Component directories and key components |
+| [documentation/styling.md](documentation/styling.md) | CSS custom properties, animations, utility classes |
+| [documentation/data-and-backend.md](documentation/data-and-backend.md) | Data files, Django API, ISR |
+| [documentation/assets.md](documentation/assets.md) | Static assets in `public/` |

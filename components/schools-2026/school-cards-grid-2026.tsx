@@ -32,7 +32,7 @@ export default function SchoolCardsGrid2026({
 
     // Dosage filter
     if (dosageFilter !== "all") {
-      const avg = school.avg_sessions_per_child_per_week;
+      const avg = school.avg_sessions_per_group_per_week;
       if (dosageFilter === "green" && avg < 3) return false;
       if (dosageFilter === "yellow" && (avg < 2 || avg >= 3)) return false;
       if (dosageFilter === "red" && avg >= 2) return false;
@@ -85,11 +85,11 @@ export default function SchoolCardsGrid2026({
         </p>
         {/* Dosage Legend */}
         <div className="hidden md:flex flex-wrap gap-3">
-          <Badge className="bg-green-500 text-white">On Track: 3+ /wk</Badge>
+          <Badge className="bg-green-500 text-white">On Track: 3+ sess/grp/wk</Badge>
           <Badge className="bg-yellow-500 text-white">
-            Attention: 2-3 /wk
+            Attention: 2-3 sess/grp/wk
           </Badge>
-          <Badge className="bg-red-500 text-white">Low: &lt;2 /wk</Badge>
+          <Badge className="bg-red-500 text-white">Low: &lt;2 sess/grp/wk</Badge>
         </div>
       </div>
 

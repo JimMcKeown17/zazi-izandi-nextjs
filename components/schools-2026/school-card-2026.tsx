@@ -21,7 +21,7 @@ export interface School2026Data {
   sessions_this_week: number;
   sessions_this_month: number;
   total_sessions: number;
-  avg_sessions_per_child_per_week: number;
+  avg_sessions_per_group_per_week: number;
   flags: {
     same_letter_group: { flagged_eas: number; total_eas: number };
     moving_too_fast: { flagged_eas: number; total_eas: number };
@@ -61,7 +61,7 @@ function getDosageStyle(avg: number) {
 }
 
 export default function SchoolCard2026({ data }: SchoolCard2026Props) {
-  const style = getDosageStyle(data.avg_sessions_per_child_per_week);
+  const style = getDosageStyle(data.avg_sessions_per_group_per_week);
   const hasFlags =
     data.flags.same_letter_group.flagged_eas > 0 ||
     data.flags.moving_too_fast.flagged_eas > 0;
@@ -141,9 +141,9 @@ export default function SchoolCard2026({ data }: SchoolCard2026Props) {
           >
             <Activity className={`h-5 w-5 ${style.text} shrink-0`} />
             <div>
-              <div className="text-xs text-gray-500">Avg/Wk</div>
+              <div className="text-xs text-gray-500">Sess/Grp/Wk</div>
               <div className={`text-lg font-bold ${style.text}`}>
-                {data.avg_sessions_per_child_per_week}
+                {data.avg_sessions_per_group_per_week}
               </div>
             </div>
           </div>
