@@ -104,11 +104,14 @@ export const MOCK_PROGRAMME_OVERVIEW: ProgrammeOverviewResponse = {
 };
 
 // ─── School Performance Rows ─────────────────────────────────────
+// School names are in title case to match real API responses.
+// The cohort filter uses toUpperCase() for comparison, so casing here doesn't matter.
 
 export const MOCK_SCHOOL_ROWS: SchoolPerformanceRow[] = [
+  // ── Treatment schools (8) ──
   {
-    school_name: "Siyazama Primary",
-    school_type: "primary",
+    school_name: "Abraham Levy Primary School",
+    school_type: "Primary School",
     ea_count: 3,
     children_count: 198,
     groups_count: 8,
@@ -119,8 +122,8 @@ export const MOCK_SCHOOL_ROWS: SchoolPerformanceRow[] = [
     flags_count: 1,
   },
   {
-    school_name: "Kwanobuhle Primary",
-    school_type: "primary",
+    school_name: "Canzibe Primary School",
+    school_type: "Primary School",
     ea_count: 2,
     children_count: 156,
     groups_count: 6,
@@ -131,8 +134,8 @@ export const MOCK_SCHOOL_ROWS: SchoolPerformanceRow[] = [
     flags_count: 4,
   },
   {
-    school_name: "Ikhwezi Lokusa PS",
-    school_type: "primary",
+    school_name: "Frank Joubert Primary School",
+    school_type: "Primary School",
     ea_count: 2,
     children_count: 142,
     groups_count: 6,
@@ -143,8 +146,8 @@ export const MOCK_SCHOOL_ROWS: SchoolPerformanceRow[] = [
     flags_count: 2,
   },
   {
-    school_name: "Masakhane Primary",
-    school_type: "primary",
+    school_name: "Walmer Primary School",
+    school_type: "Primary School",
     ea_count: 2,
     children_count: 167,
     groups_count: 7,
@@ -155,8 +158,8 @@ export const MOCK_SCHOOL_ROWS: SchoolPerformanceRow[] = [
     flags_count: 6,
   },
   {
-    school_name: "Ubuntu Primary",
-    school_type: "primary",
+    school_name: "Malabar Primary School",
+    school_type: "Primary School",
     ea_count: 3,
     children_count: 211,
     groups_count: 9,
@@ -167,8 +170,8 @@ export const MOCK_SCHOOL_ROWS: SchoolPerformanceRow[] = [
     flags_count: 2,
   },
   {
-    school_name: "Zanokhanyo PS",
-    school_type: "primary",
+    school_name: "Ilitha Public Primary School",
+    school_type: "Primary School",
     ea_count: 2,
     children_count: 134,
     groups_count: 5,
@@ -179,8 +182,8 @@ export const MOCK_SCHOOL_ROWS: SchoolPerformanceRow[] = [
     flags_count: 0,
   },
   {
-    school_name: "Intsebenziswano PS",
-    school_type: "primary",
+    school_name: "Nomathamsanqa Primary School",
+    school_type: "Primary School",
     ea_count: 2,
     children_count: 148,
     groups_count: 6,
@@ -191,8 +194,8 @@ export const MOCK_SCHOOL_ROWS: SchoolPerformanceRow[] = [
     flags_count: 5,
   },
   {
-    school_name: "Vulamehlo Primary",
-    school_type: "primary",
+    school_name: "Uitenhage Primary School",
+    school_type: "Primary School",
     ea_count: 2,
     children_count: 121,
     groups_count: 5,
@@ -202,9 +205,47 @@ export const MOCK_SCHOOL_ROWS: SchoolPerformanceRow[] = [
     avg_sessions_per_group_per_week: 2.5,
     flags_count: 2,
   },
+  // ── SEF schools (3) ──
   {
-    school_name: "Iqhayiya ECD",
-    school_type: "ecd",
+    school_name: "Kwanoxolo Primary School",
+    school_type: "Primary School",
+    ea_count: 2,
+    children_count: 143,
+    groups_count: 6,
+    sessions_this_week: 22,
+    sessions_this_month: 84,
+    total_sessions: 598,
+    avg_sessions_per_group_per_week: 2.7,
+    flags_count: 1,
+  },
+  {
+    school_name: "Sapphire Road Primary School",
+    school_type: "Primary School",
+    ea_count: 2,
+    children_count: 118,
+    groups_count: 5,
+    sessions_this_week: 14,
+    sessions_this_month: 55,
+    total_sessions: 421,
+    avg_sessions_per_group_per_week: 1.9,
+    flags_count: 3,
+  },
+  {
+    school_name: "Garrett Public Primary School",
+    school_type: "Primary School",
+    ea_count: 1,
+    children_count: 89,
+    groups_count: 4,
+    sessions_this_week: 17,
+    sessions_this_month: 66,
+    total_sessions: 489,
+    avg_sessions_per_group_per_week: 3.0,
+    flags_count: 0,
+  },
+  // ── ECD centres (2) ──
+  {
+    school_name: "Iqhayiya ECD Centre",
+    school_type: "ECD",
     ea_count: 1,
     children_count: 87,
     groups_count: 3,
@@ -216,7 +257,7 @@ export const MOCK_SCHOOL_ROWS: SchoolPerformanceRow[] = [
   },
   {
     school_name: "Thuthuka ECD Centre",
-    school_type: "ecd",
+    school_type: "ECD",
     ea_count: 2,
     children_count: 112,
     groups_count: 4,
@@ -225,30 +266,6 @@ export const MOCK_SCHOOL_ROWS: SchoolPerformanceRow[] = [
     total_sessions: 487,
     avg_sessions_per_group_per_week: 3.1,
     flags_count: 1,
-  },
-  {
-    school_name: "Ikusasa ECD",
-    school_type: "ecd",
-    ea_count: 1,
-    children_count: 74,
-    groups_count: 3,
-    sessions_this_week: 7,
-    sessions_this_month: 28,
-    total_sessions: 198,
-    avg_sessions_per_group_per_week: 1.8,
-    flags_count: 3,
-  },
-  {
-    school_name: "Sikhula Sonke ECD",
-    school_type: "ecd",
-    ea_count: 2,
-    children_count: 97,
-    groups_count: 4,
-    sessions_this_week: 12,
-    sessions_this_month: 45,
-    total_sessions: 342,
-    avg_sessions_per_group_per_week: 2.2,
-    flags_count: 2,
   },
 ];
 

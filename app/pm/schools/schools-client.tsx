@@ -10,6 +10,8 @@ import { SchoolFilters } from "@/components/pm/schools/school-filters";
 
 interface SchoolsClientProps {
   schools: SchoolPerformanceRow[];
+  cohortLabel?: string;
+  totalSchools?: number;
 }
 
 function toSlug(name: string): string {
@@ -21,7 +23,7 @@ function getUniqueTypes(schools: SchoolPerformanceRow[]): string[] {
   return Array.from(types).sort();
 }
 
-export function SchoolsClient({ schools }: SchoolsClientProps) {
+export function SchoolsClient({ schools, cohortLabel = "Treatment", totalSchools }: SchoolsClientProps) {
   const [search, setSearch] = useState("");
   const [selectedType, setSelectedType] = useState("");
   const [selectedDosage, setSelectedDosage] = useState("");
@@ -63,9 +65,9 @@ export function SchoolsClient({ schools }: SchoolsClientProps) {
       {/* Page header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Schools</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{cohortLabel} Schools</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {sorted.length} of {schools.length} schools
+            {sorted.length} of {totalSchools ?? schools.length} schools
           </p>
         </div>
       </div>
