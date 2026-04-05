@@ -284,23 +284,31 @@ When you click a school card, show:
 ### Views
 
 1. **Assessment Overview KPIs**
-   - Children assessed, average EGRA score, eligibility rate (EGRA >= 30), stop rule rate
+   - Children assessed, average LCPM (letters correct per minute), average WCPM (words correct per minute)
+   - % Grade 1 children at 40+ LCPM (primary researcher benchmark)
+   - % Grade R children at 15+ LCPM (informal programme benchmark)
+   - % zero letter knowledge (children scoring 0)
+   - Eligibility rate (EGRA >= 30), stop rule rate
    - Breakdown by language, grade, school type
 
 2. **Score Distribution** (histogram)
-   - X-axis: EGRA score (0-100)
+   - X-axis: LCPM score (0-100)
    - Y-axis: number of children
-   - Vertical line at score = 30 (eligibility threshold)
+   - Vertical lines at key thresholds: 0 (zero knowledge), 15 (Grade R target), 30 (eligibility), 40 (Grade 1 target)
    - Filter by school, grade, language
 
 3. **School Comparison** (bar chart)
-   - Average EGRA score by school, sorted
+   - Average LCPM and WCPM by school, sorted
    - Treatment vs control school comparison
+   - % at benchmark (40+ LCPM for Gr1, 15+ LCPM for Gr R) per school
 
-4. **Cohort Analysis** (when endline data is available)
-   - Score improvement by dosage cohort (0-10 sessions, 11-20, 21-30, 31-40, 41+)
-   - Dose-response visualization: "Do children with more sessions improve more?"
-   - Treatment vs control comparison
+4. **Researcher Impact Metrics** (when endline data is available)
+   - Baseline vs endline comparison: average LCPM improvement, average WCPM improvement
+   - % at 40+ LCPM Grade 1: baseline vs endline (treatment vs control)
+   - % at 15+ LCPM Grade R: baseline vs endline
+   - % zero knowledge: baseline vs endline (should decrease)
+   - Dose-response: improvement by dosage cohort (0-10 sessions, 11-20, 21-30, 31-40, 41+)
+   - Treatment vs control comparison across all metrics
 
 ---
 

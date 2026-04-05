@@ -322,14 +322,32 @@ How to join data across tables:
 
 | Metric | Formula | Aggregation | Purpose |
 |--------|---------|-------------|---------|
-| **EGRA score** | `letters_total_correct` | Child | Baseline/endline letter-sound knowledge |
+| **EGRA score (LCPM)** | `letters_total_correct` (letters correct per minute) | Child | Baseline/endline letter-sound knowledge |
 | **EGRA improvement** | `endline_score - baseline_score` | Child | Individual learning gain |
-| **Average EGRA score** | Mean of `letters_total_correct` | Group, School, Programme | Group/school performance |
+| **Average LCPM** | Mean of `letters_total_correct` | Group, School, Programme | Group/school performance |
+| **Words correct per minute (WCPM)** | `words_total_correct` | Child | Reading fluency indicator |
+| **WCPM improvement** | `endline_words - baseline_words` | Child | Reading fluency gain |
 | **Stop rule rate** | `% of assessments where stop_rule_reached = true` | School | How many children know < 5 letters |
+| **Zero-knowledge rate** | `% of children with letters_total_correct = 0` | School, Grade, Programme | **Key researcher metric.** Children who know no letter sounds at all |
 | **Eligibility rate** | `% of children with EGRA >= 30` | School | Children not needing catch-up |
 | **Cohort session range** | Bucketed session count before endline: 0-10, 11-20, 21-30, 31-40, 41+ | Child | Dose-response analysis |
 | **Non-words score** | `nonwords_total_correct` | Child | Blending ability indicator |
-| **Words score** | `words_total_correct` | Child | Reading ability indicator |
+
+### Researcher Benchmark Metrics
+
+These are the key impact metrics that researchers and funders prioritize:
+
+| Metric | Formula | Benchmark | Aggregation | Purpose |
+|--------|---------|-----------|-------------|---------|
+| **% Grade 1 at 40+ LCPM** | `count(Grade 1 children with letters_total_correct >= 40) / count(Grade 1 children) * 100` | Higher = better | School, Programme | **Primary researcher benchmark.** Indicates Grade 1 children reading at expected level |
+| **% Grade R at 15+ LCPM** | `count(Grade R children with letters_total_correct >= 15) / count(Grade R children) * 100` | Higher = better | School, Programme | **Informal benchmark.** Not a government standard, but a programme target for Grade R |
+| **% Zero letter knowledge** | `count(children with letters_total_correct = 0) / count(children) * 100` | Lower = better | Grade, School, Programme | Indicates children with no letter-sound knowledge at all — the most at-risk group |
+| **Average LCPM** | Mean of `letters_total_correct` | — | Grade, School, Programme | Overall letter fluency |
+| **Average WCPM** | Mean of `words_total_correct` | — | Grade, School, Programme | Overall reading fluency |
+| **LCPM improvement** | Mean of `(endline_letters - baseline_letters)` | Higher = better | Grade, School, Cohort, Programme | Average letter knowledge gain — the core impact metric |
+| **WCPM improvement** | Mean of `(endline_words - baseline_words)` | Higher = better | Grade, School, Cohort, Programme | Average reading fluency gain |
+
+**Benchmark context:** The 40 LCPM Grade 1 target and 15 LCPM Grade R target are applied to endline assessments. Comparing these rates at baseline vs endline (and treatment vs control) is the primary way researchers measure programme impact.
 
 ---
 
@@ -347,6 +365,8 @@ How to join data across tables:
 ---
 
 ## Quality & Data Integrity Flags
+
+> **Blending group exclusion:** Letter-phase flags (Same Letter Groups, Moving Too Fast, Curriculum Gaps, Stagnation) **must exclude blending groups** — groups where `class_name` contains "blending" (case-insensitive). Blending groups follow a different curriculum progression and the letter sequence rules do not apply to them. Dosage flags (Ghost Groups, Unbalanced Groups) still apply to blending groups.
 
 ### Existing Flags
 
@@ -518,6 +538,20 @@ Letter: a  e  i  o  u  b  l  m  k  p  s  h  z  n  d  y  f  w  v  x  g  t  q  r  
 ```
 
 **Vowels first** (a, e, i, o, u), then consonants in order of instructional priority.
+
+### Blending Group Detection
+
+There is no clean "blending" flag in TeamPact. **A group is a blending group if `class_name` contains "blending" or "Blending"** (case-insensitive substring match).
+
+```
+is_blending_group = "blending" in class_name.lower()
+```
+
+**Why this matters:**
+- Letter-phase quality flags (Same Letter Groups, Moving Too Fast, Curriculum Gaps, Stagnation) **do not apply** to blending groups — they follow a different curriculum progression
+- Blending groups should be tracked on the blending progression stages (CVs → 3-letter → 4-letter → complex consonants) rather than the 26-letter sequence
+- Dosage metrics (sessions/group/week) still apply to blending groups
+- Progress metrics need different calculation for blending groups (stage-based, not letter-index-based)
 
 ### Blending Progression Stages
 
