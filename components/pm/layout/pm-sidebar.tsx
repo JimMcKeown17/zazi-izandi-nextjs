@@ -43,13 +43,13 @@ interface PMSidebarProps {
 export function PMSidebar({ flagCount }: PMSidebarProps) {
   const pathname = usePathname();
 
-  function isActive(item: NavItem): boolean {
-    if (item.exact) return pathname === item.href;
-    return pathname.startsWith(item.href);
+  function isActive(href: string, exact?: boolean): boolean {
+    if (exact) return pathname === href;
+    return pathname.startsWith(href);
   }
 
   function NavLink({ item }: { item: NavItem }) {
-    const active = isActive(item);
+    const active = isActive(item.href, item.exact);
     const isFlags = item.href === "/pm/quality-flags";
 
     return (
@@ -74,38 +74,57 @@ export function PMSidebar({ flagCount }: PMSidebarProps) {
   }
 
   return (
-    <aside className="hidden md:flex flex-col w-12 lg:w-52 bg-slate-900 sticky top-0 h-screen shrink-0">
-      {/* Brand */}
-      <div className="px-3 py-4 border-b border-slate-700/50">
-        <span className="hidden lg:block text-accent-yellow font-bold text-sm leading-tight">
-          Zazi iZandi PM
-        </span>
-        <span className="lg:hidden text-accent-yellow font-bold text-sm">
-          ZI
-        </span>
-      </div>
+    <>
+      <aside className="hidden md:flex flex-col w-12 lg:w-52 bg-slate-900 sticky top-0 h-screen shrink-0">
+        {/* Brand */}
+        <div className="px-3 py-4 border-b border-slate-700/50">
+          <span className="hidden lg:block text-accent-yellow font-bold text-sm leading-tight">
+            Zazi iZandi PM
+          </span>
+          <span className="lg:hidden text-accent-yellow font-bold text-sm">
+            ZI
+          </span>
+        </div>
 
-      {/* Primary nav */}
-      <nav className="flex-1 px-2 py-3 flex flex-col gap-0.5 overflow-y-auto">
-        {NAV_ITEMS.map((item) => (
-          <NavLink key={item.href} item={item} />
-        ))}
+        {/* Primary nav */}
+        <nav className="flex-1 px-2 py-3 flex flex-col gap-0.5 overflow-y-auto">
+          {NAV_ITEMS.map((item) => (
+            <NavLink key={item.href} item={item} />
+          ))}
 
-        {/* Separator */}
-        <div className="my-2 border-t border-slate-700/50" />
+          {/* Separator */}
+          <div className="my-2 border-t border-slate-700/50" />
 
-        {SECONDARY_NAV_ITEMS.map((item) => (
-          <NavLink key={item.href} item={item} />
-        ))}
+          {SECONDARY_NAV_ITEMS.map((item) => (
+            <NavLink key={item.href} item={item} />
+          ))}
+        </nav>
+
+        {/* Account section */}
+        <div className="px-3 py-3 border-t border-slate-700/50 flex items-center gap-3">
+          <UserButton afterSignOutUrl="/" />
+          <span className="hidden lg:inline text-slate-400 text-xs truncate">
+            Account
+          </span>
+        </div>
+      </aside>
+
+      {/* Mobile bottom tab bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 flex justify-around py-2 z-50">
+        {NAV_ITEMS.slice(0, 5).map((item) => {
+          const Icon = item.icon;
+          const active = isActive(item.href, item.exact);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn("p-2 rounded-md", active ? "text-accent-yellow" : "text-slate-400")}
+            >
+              <Icon className="h-5 w-5" />
+            </Link>
+          );
+        })}
       </nav>
-
-      {/* Account section */}
-      <div className="px-3 py-3 border-t border-slate-700/50 flex items-center gap-3">
-        <UserButton afterSignOutUrl="/" />
-        <span className="hidden lg:inline text-slate-400 text-xs truncate">
-          Account
-        </span>
-      </div>
-    </aside>
+    </>
   );
 }

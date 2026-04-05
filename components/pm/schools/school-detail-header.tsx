@@ -9,6 +9,12 @@ interface SchoolDetailHeaderProps {
 export function SchoolDetailHeader({ school }: SchoolDetailHeaderProps) {
   const dosageLevel = getDosageLevel(school.avg_sessions_per_group_per_week);
   const dosageColors = DOSAGE_COLORS[dosageLevel];
+  const dosageBorder =
+    dosageLevel === "on_track"
+      ? "border-l-green-500"
+      : dosageLevel === "needs_attention"
+      ? "border-l-yellow-500"
+      : "border-l-red-500";
 
   return (
     <div className="space-y-4">
@@ -44,7 +50,7 @@ export function SchoolDetailHeader({ school }: SchoolDetailHeaderProps) {
           label="Dosage"
           value={school.avg_sessions_per_group_per_week.toFixed(1)}
           subtitle={dosageColors.label}
-          borderColor={`border-l-[${dosageColors.fill}]`}
+          borderColor={dosageBorder}
         />
         <KPICard
           label="Flags"

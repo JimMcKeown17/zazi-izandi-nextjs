@@ -25,7 +25,7 @@ function toSlug(name: string): string {
   return name.toLowerCase().replace(/\s+/g, "-");
 }
 
-function SortIcon({ col, active, dir }: { col: string; active: boolean; dir: SortDir }) {
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
   if (!active) return <ChevronsUpDown className="w-3 h-3 text-slate-400" />;
   return dir === "asc"
     ? <ChevronUp className="w-3 h-3 text-primary" />
@@ -106,7 +106,7 @@ export function SchoolTable({ schools }: SchoolTableProps) {
                 >
                   <span className="inline-flex items-center gap-1">
                     {col.label}
-                    <SortIcon col={col.key} active={sortKey === col.key} dir={sortDir} />
+                    <SortIcon active={sortKey === col.key} dir={sortDir} />
                   </span>
                 </th>
               ))}

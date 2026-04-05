@@ -16,9 +16,11 @@ interface DosageDistributionProps {
 }
 
 function getBucketColor(range: string): string {
+  // Normalize en-dashes to hyphens before comparison
+  const normalized = range.replace(/\u2013/g, "-");
   // 0-1 and 1-2 = red, 2-3 = amber, 3-4 and 4+ = green
-  if (range === "0-1" || range === "1-2") return "#e74c3c";
-  if (range === "2-3") return "#f59e0b";
+  if (normalized === "0-1" || normalized === "1-2") return "#e74c3c";
+  if (normalized === "2-3") return "#f59e0b";
   return "#22c55e";
 }
 
