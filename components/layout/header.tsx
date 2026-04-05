@@ -16,6 +16,12 @@ import {
   FolderOpen,
   MapPin,
   CalendarDays,
+  School,
+  Calendar,
+  AlertTriangle,
+  ClipboardCheck,
+  Eye,
+  GitCompare,
 } from "lucide-react";
 import { useAuth, useUser, UserButton } from "@clerk/nextjs";
 import {
@@ -114,18 +120,16 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Project Management",
     minRole: "funder" as Role,
     items: [
-      {
-        name: "2025 Schools",
-        href: "/schools",
-        description: "Education assistant data for 2025",
-        icon: MapPin,
-      },
-      {
-        name: "2026 Schools",
-        href: "/schools-2026",
-        description: "Education assistant data for 2026",
-        icon: CalendarDays,
-      },
+      { name: "Overview", href: "/pm", description: "Programme health at a glance", icon: LayoutDashboard },
+      { name: "Schools", href: "/pm/schools", description: "School performance and drill-down", icon: School },
+      { name: "Sessions", href: "/pm/sessions", description: "Session activity and EA heatmap", icon: Calendar },
+      { name: "Letter Progress", href: "/pm/letter-progress", description: "Curriculum tracking by group", icon: BookOpen },
+      { name: "Quality Flags", href: "/pm/quality-flags", description: "Quality monitoring and flag lifecycle", icon: AlertTriangle },
+      { name: "Assessments", href: "/pm/assessments", description: "EGRA scores and outcomes", icon: ClipboardCheck },
+      { name: "Mentor Visits", href: "/pm/mentor-visits", description: "Mentor quality and coverage", icon: Eye },
+      { name: "Compare", href: "/pm/compare", description: "Side-by-side region and cohort comparison", icon: GitCompare },
+      { name: "2025 Schools", href: "/schools", description: "Education assistant data for 2025", icon: MapPin },
+      { name: "2026 Schools (Legacy)", href: "/schools-2026", description: "Original 2026 school cards view", icon: CalendarDays },
     ],
   },
 ];
