@@ -24,9 +24,13 @@ Frontend-only Next.js site for **Zazi iZandi**, a South African early literacy i
 ```
 app/                        # App Router pages (each route is a page.tsx)
 ├── globals.css             # Theme: colors, animations, custom classes
-├── layout.tsx              # Root layout (fonts only — no Header/Footer)
+├─�� layout.tsx              # Root layout (fonts only — no Header/Footer)
 ├── page.tsx                # Home (/)
 ├── about/ impact/ methodology/ media/ resources/
+├── pm/                     # PM Dashboard (protected, min role: funder)
+│   ├── layout.tsx          # Dashboard shell — sidebar + content (no Header/Footer)
+│   ├── page.tsx            # /pm → Overview command center
+│   └── schools/            # /pm/schools, /pm/schools/[school-name]
 ├── schools/                # Protected (Clerk RBAC, min role: funder)
 ├── schools-2025/           # Placeholder "coming soon"
 ├── schools-2026/           # Live data from Django API (ISR, 300s)
@@ -34,34 +38,57 @@ app/                        # App Router pages (each route is a page.tsx)
 └── login/[[...sign-in]]/   # Clerk sign-in
 components/
 ├── layout/                 # header.tsx (client), footer.tsx
+├── pm/                     # PM Dashboard components
+│   ├── layout/             # pm-sidebar.tsx, programme-context-bar.tsx, cohort-selector.tsx
+│   ├── shared/             # kpi-card.tsx, health-badge.tsx, dosage-badge.tsx
+│   ├── overview/           # overview-kpis.tsx, sessions-chart.tsx, dosage-distribution.tsx, school-table.tsx
+│   └── schools/            # school-filters.tsx, school-detail-header.tsx
 ├── home/ about/ impact/ methodology/ media/   # Page-specific sections
 ├── schools/                # School map (Mapbox), EA cards
-├── schools-2026/           # 2026 school cards (live Django data)
+├─�� schools-2026/           # 2026 school cards (live Django data)
 └── ui/                     # Radix/shadcn primitives
+lib/pm/                     # PM Dashboard data layer
+├── types.ts                # All TypeScript interfaces for PM API responses
+├── constants.ts            # Dosage thresholds, health status config, chart colors
+├── cohorts.ts              # School cohort lists (Treatment/SEF/ECD) and filter logic
+├── api.ts                  # Data fetching (Django API + mock fallback)
+└── mock-data.ts            # Mock data matching API contracts
 data/                       # Static JSON/CSV consumed at build time
-middleware.ts               # Clerk RBAC — protects /schools* routes
+middleware.ts               # Clerk RBAC — protects /schools* and /pm* routes
 ```
 
 See: [Routes](documentation/routes.md) · [Components](documentation/components.md)
 
 ### Key Patterns
 
-- **No shared Header/Footer in layout.** Each `page.tsx` renders `<Header />`, `<main className="pt-20">`, `<Footer />` manually.
+- **No shared Header/Footer in layout.** Each `page.tsx` renders `<Header />`, `<main className="pt-20">`, `<Footer />` manually. **Exception:** `/pm/*` uses a dashboard layout (sidebar + content) with no Header/Footer.
 - **Color theming** via CSS custom properties in `globals.css`. Use `text-primary`, `bg-primary`, `bg-accent-yellow`, etc.
 - **Fonts:** Roboto (`--font-roboto`) for sans/headings, Open Sans (`--font-open-sans`) as body default. Loaded in `layout.tsx`.
 - **Path alias:** `@/` maps to project root.
-- **Static data** imported directly in page components (no API). Only `/schools-2026` fetches from Django.
-- **Client components** used for browser APIs: Mapbox map, scroll animations, header nav.
+- **Static data** imported directly in page components (no API). Only `/schools-2026` and `/pm/*` fetch from Django.
+- **Client components** used for browser APIs: Mapbox map, scroll animations, header nav, Recharts charts, interactive filters.
 - **shadcn config:** `components.json` — style "new-york", RSC enabled, Lucide icons, aliases at `@/components`, `@/lib`, `@/components/ui`.
+
+### PM Dashboard Architecture
+
+The `/pm/*` pages form a self-contained dashboard app with a distinct layout:
+- **Dashboard shell** (`app/pm/layout.tsx`): left sidebar + content area, no Header/Footer
+- **Sidebar** (`pm-sidebar.tsx`): dark theme, responsive (full → icon-only → mobile bottom tabs)
+- **Programme context bar**: dark header with programme week, cohort selector, health badge, data freshness
+- **Cohort filter**: global `?cohort=treatment|sef|ecd|all` URL param, defaults to `treatment`. Cohort lists in `lib/pm/cohorts.ts`.
+- **Data fetching**: server components fetch from Django API with ISR (5-min revalidation). Falls back to mock data when API unavailable.
+- **Charts**: Recharts (client components) for line charts, bar charts. Wrapped in server component pages.
+- **Spec**: `docs/superpowers/specs/2026-04-05-pm-dashboard-design.md`
+- **Plan**: `docs/superpowers/plans/2026-04-05-pm-dashboard-phase1.md`
 
 ## Authentication (Clerk RBAC)
 
-Middleware at `middleware.ts` protects `/schools*` routes with role-based access:
+Middleware at `middleware.ts` protects `/schools*` and `/pm*` routes with role-based access:
 
 | Role | Level | Notes |
 |------|-------|-------|
-| `funder` | 1 | Minimum for `/schools*` |
-| `junior_staff` | 2 | Future route expansion |
+| `funder` | 1 | Minimum for `/schools*` and `/pm*` |
+| `junior_staff` | 2 | |
 | `senior_staff` | 3 | |
 | `admin` | 4 | Full access |
 
@@ -71,9 +98,11 @@ Unauthenticated users redirect to `/login?redirect_url=...`.
 
 ## Django Backend
 
-A separate Django app at `DJANGO_API_URL` (hosted on Render) serves live school data. The Next.js frontend consumes it in one place:
+A separate Django app at `DJANGO_API_URL` (hosted on Render) serves live school data. The Next.js frontend consumes:
 
-- **`/schools-2026`** — Server component fetches `/api/schools-2026/` with ISR (`revalidate: 300`).
+- **`/schools-2026`** — Fetches `/api/schools-2026/` with ISR (300s)
+- **`/pm`** — Fetches `/api/programme-overview/` with ISR (300s). Falls back to mock data.
+- **`/pm/schools`** — Fetches `/api/schools-2026/` (same endpoint, filtered by cohort in frontend)
 
 Django source repo: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025`
 
