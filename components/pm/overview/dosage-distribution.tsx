@@ -57,7 +57,7 @@ export function DosageDistribution({ data }: DosageDistributionProps) {
               borderRadius: 6,
               border: "1px solid #e2e8f0",
             }}
-            formatter={(value: number) => [value, "Groups"]}
+            formatter={(value) => [value, "Groups"]}
           />
           <Bar dataKey="count" name="Groups" radius={[0, 4, 4, 0]}>
             {data.map((entry, index) => (
