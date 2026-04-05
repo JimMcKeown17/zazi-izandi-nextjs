@@ -94,6 +94,7 @@ Next.js Frontend (ISR, revalidate: 300s)
 | `session_tag_ids` | str | Tag IDs (used for letter extraction) | |
 | `is_flagged` | bool | Manual flag | |
 | `flag_reason` | str | Reason for manual flag | |
+| `is_blending` | bool | **Computed during sync:** `"blending" in class_name.lower()`. Indicates this session is for a blending group, not a letter-phase group | Yes |
 
 **Key note:** To get unique sessions (not per-participant rows), group by `session_id` or deduplicate on `(session_id, class_name, user_name)`.
 
@@ -259,6 +260,62 @@ Next.js Frontend (ISR, revalidate: 300s)
 
 ---
 
+### 7. Group Summaries — `GroupSummary2026`
+
+**Source:** Pre-computed nightly by `compute_group_summaries_2026` management command (runs after session sync)
+**Django model:** `api.models.GroupSummary2026`
+**One row per:** group (unique `program_name` + `class_name` pair)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | AutoField PK | Auto-generated primary key |
+| `program_name` | str | School name |
+| `class_name` | str | Group name (e.g., "Grade R Group 1", "Grade 1 Blending") |
+| `ea_name` | str | Primary EA managing this group (most sessions) |
+| `grade` | str | Detected grade — see [Grade Detection](#grade-detection-logic) below |
+| `phase` | str | **"letters" or "blending"** — derived from `"blending" in class_name.lower()` |
+| `blending_start_date` | date, nullable | First session date where this group's `class_name` contained "blending". Null for letter-phase groups |
+| `children_count` | int | Distinct `participant_name` count in this group |
+| `children_names` | JSON | Array of child names in this group |
+| `current_letter` | str, nullable | Rightmost letter in the sequence from latest session's `letters_taught`. Null for blending groups |
+| `progress_index` | int | Position (0-25) in the letter sequence. -1 or null for blending groups |
+| `progress_pct` | float | `(progress_index + 1) / 26 * 100`. 0 for blending groups |
+| `sessions_this_week` | int | Distinct sessions in current ISO week |
+| `sessions_this_month` | int | Distinct sessions in current calendar month |
+| `total_sessions` | int | Total distinct sessions since programme start |
+| `avg_sessions_per_week` | float | `total_sessions / weeks_since_programme_start` |
+| `last_session_date` | date, nullable | Most recent session date |
+| `flag_same_letter_group` | bool | Part of an EA's same-letter-group flag |
+| `flag_moving_too_fast` | bool | >70% of session transitions have no letter overlap |
+| `flag_ghost_group` | bool | No session in 5+ weekdays |
+| `flag_stagnation` | bool | Same max letter for 2+ weeks with 4+ sessions |
+| `flag_curriculum_gaps` | bool | Skipped letters in the prescribed sequence |
+| `computed_at` | datetime | When this summary was generated |
+
+**Unique constraint:** `(program_name, class_name)`
+
+**Exclusions:** Groups where `class_name` contains "check-in" or "check in" (case-insensitive) are excluded. These are daily work sign-ins, not teaching sessions.
+
+**Consumed by:** PM Dashboard (`/pm/letter-progress`, `/pm/quality-flags`), EA "My Kids" page (`/my-kids`), and the `/api/ea/me/` endpoint.
+
+**Relationship to SchoolSummary2026:** GroupSummary2026 is one level more granular. SchoolSummary2026 can be derived from GroupSummary2026 by aggregating groups per school, though both are computed independently for now.
+
+#### Grade Detection Logic
+
+Grade is resolved via a 3-tier fallback in `compute_group_summaries_2026`:
+
+| Tier | Method | Resolves |
+|------|--------|----------|
+| 1 | **Parse `class_name`** — matches "Grade R", "Gr 1", "PreR", "-RA-", "1A", "1 D", "2B" etc. | Groups with grade info in class name (~34%) |
+| 2 | **Assessment2026 lookup** — queries `(program_name, collected_by) → most common grade` from baseline assessments. 96% of EAs work a single grade. | Groups with `EAName-Letters-Group N` format (~60%) |
+| 3 | **ECD school list** — if `program_name` is in `ECD_LIST` → grade = "ECD" | ECD/daycare schools (~5%) |
+
+**Grade values:** `Grade R`, `Grade 1`, `Grade 2`, `Grade 3`, `ECD`, or `""` (unresolved — typically new EAs without assessments yet).
+
+**Production stats (April 2026):** 1,235 groups — Grade 1: 509, Grade R: 311, Grade 2: 281, ECD: 127, unresolved: 7.
+
+---
+
 ## Linking Keys
 
 How to join data across tables:
@@ -278,6 +335,8 @@ How to join data across tables:
 | Participant → Groups | `classes` JSON | Parse `TeampactParticipant.classes` for `class_id` and `program_id` |
 | Mentor Visit → EA | `ea_name` | `MentorVisit2026.ea_name` = EA name |
 | Mentor Visit → School | `school_name` | `MentorVisit2026.school_name` = school name |
+| Group Summary → Sessions | composite | `GroupSummary2026.(program_name, class_name)` = `TeampactSession2026.(program_name, class_name)` |
+| Group Summary → School Summary | `program_name` | `GroupSummary2026.program_name` = `SchoolSummary2026.school_name` |
 
 **Important:** Linking is name-based (string matching), not ID-based, for sessions ↔ assessments. This means EA name consistency matters.
 
@@ -541,17 +600,22 @@ Letter: a  e  i  o  u  b  l  m  k  p  s  h  z  n  d  y  f  w  v  x  g  t  q  r  
 
 ### Blending Group Detection
 
-There is no clean "blending" flag in TeamPact. **A group is a blending group if `class_name` contains "blending" or "Blending"** (case-insensitive substring match).
+There is no clean "blending" flag in TeamPact. Detection is derived from `class_name`:
 
 ```
-is_blending_group = "blending" in class_name.lower()
+is_blending = "blending" in class_name.lower()
 ```
+
+**This is computed and stored in two places:**
+1. **`TeampactSession2026.is_blending`** — boolean field set during `sync_teampact_sessions_2026`. Every session row knows its phase.
+2. **`GroupSummary2026.phase`** — set to `"letters"` or `"blending"` during `compute_group_summaries_2026`.
 
 **Why this matters:**
 - Letter-phase quality flags (Same Letter Groups, Moving Too Fast, Curriculum Gaps, Stagnation) **do not apply** to blending groups — they follow a different curriculum progression
 - Blending groups should be tracked on the blending progression stages (CVs → 3-letter → 4-letter → complex consonants) rather than the 26-letter sequence
 - Dosage metrics (sessions/group/week) still apply to blending groups
 - Progress metrics need different calculation for blending groups (stage-based, not letter-index-based)
+- `GroupSummary2026.blending_start_date` records when a group transitioned, enabling analysis of how many letter-phase sessions happened before blending began
 
 ### Blending Progression Stages
 
