@@ -4,6 +4,7 @@ import type {
   SchoolDetailResponse,
   SessionsActivityResponse,
   Groups2026Response,
+  FlagEvidenceResponse,
 } from "./types";
 import {
   MOCK_PROGRAMME_OVERVIEW,
@@ -192,6 +193,28 @@ export async function getGroups2026(): Promise<Groups2026Result> {
   } catch (error) {
     console.error("[pm/api] Failed to fetch groups:", error);
     return { data: EMPTY_GROUPS_2026, isLive: false };
+  }
+}
+
+// ─── Flag Evidence (client-side fetch, no ISR) ─────────────────
+
+export async function getFlagEvidence(
+  school: string,
+  group: string
+): Promise<FlagEvidenceResponse | null> {
+  const apiUrl = process.env.NEXT_PUBLIC_DJANGO_API_URL;
+
+  if (!apiUrl) return null;
+
+  try {
+    const res = await fetch(
+      `${apiUrl}/api/flag-evidence/?school=${encodeURIComponent(school)}&group=${encodeURIComponent(group)}`
+    );
+
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
   }
 }
 

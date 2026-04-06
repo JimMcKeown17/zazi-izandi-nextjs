@@ -1,8 +1,7 @@
 import { getGroups2026 } from "@/lib/pm/api";
 import { parseCohort, filterGroupsByCohort, getCohortLabel } from "@/lib/pm/cohorts";
-import { FlagSummaryCards } from "@/components/pm/quality-flags/flag-summary-cards";
-import { FlaggedItemsTable } from "@/components/pm/quality-flags/flagged-items-table";
-import { AlertTriangle } from "lucide-react";
+import { QualityFlagsClient } from "@/components/pm/quality-flags/quality-flags-client";
+import { AlertTriangle, Info } from "lucide-react";
 
 interface Props {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -44,11 +43,22 @@ export default async function QualityFlagsPage({ searchParams }: Props) {
         </p>
       </div>
 
-      {/* Flag summary cards */}
-      <FlagSummaryCards groups={filteredGroups} />
+      {/* Info box */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-start gap-3 text-sm">
+        <Info className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
+        <div className="text-blue-800">
+          <span className="font-semibold">About quality flags:</span>{" "}
+          Flags are computed nightly from session data. They identify groups where teaching quality may need
+          attention — letters skipped, no review between sessions, or lack of curriculum progression.
+          Click the <span className="font-medium">info icon</span> on each flag card to learn what it detects.
+          Click any <span className="font-medium">flagged item row</span> to see the underlying evidence.
+          The <span className="font-medium">EA Quality Summary</span> ranks EAs by the percentage of their
+          groups with quality flags (excludes ghost groups, which are an attendance issue).
+        </div>
+      </div>
 
-      {/* Flagged items table */}
-      <FlaggedItemsTable groups={filteredGroups} />
+      {/* Client components with shared EA filter state */}
+      <QualityFlagsClient groups={filteredGroups} />
     </div>
   );
 }

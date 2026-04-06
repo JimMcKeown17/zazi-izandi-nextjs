@@ -211,3 +211,40 @@ export interface GroupSummary {
     curriculum_gaps: boolean;
   };
 }
+
+// ─── Flag Evidence API Response ───────────────────────────────
+
+export interface FlagEvidenceResponse {
+  program_name: string;
+  class_name: string;
+  sessions: FlagEvidenceSession[];
+  all_letters_taught: string[];
+  letter_sequence: string[];
+  gaps: string[];
+  transitions: FlagEvidenceTransition[];
+  transition_summary: {
+    total: number;
+    no_review: number;
+    pct_no_review: number;
+  };
+  stagnation: {
+    recent_weeks: { sessions: number; max_progress_index: number; max_letter: string };
+    prior_weeks: { sessions: number; max_progress_index: number; max_letter: string };
+    is_stagnant: boolean;
+  };
+}
+
+export interface FlagEvidenceSession {
+  date: string;
+  session_id: number;
+  letters_taught: string[];
+  max_progress_index: number;
+}
+
+export interface FlagEvidenceTransition {
+  from_date: string;
+  to_date: string;
+  from_letters: string[];
+  to_letters: string[];
+  overlap: boolean;
+}
