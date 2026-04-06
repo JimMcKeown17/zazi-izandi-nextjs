@@ -76,8 +76,10 @@ The `/pm/*` pages form a self-contained dashboard app with a distinct layout:
 - **Sidebar** (`pm-sidebar.tsx`): dark theme, responsive (full → icon-only → mobile bottom tabs)
 - **Programme context bar**: dark header with programme week, cohort selector, health badge, data freshness
 - **Cohort filter**: global `?cohort=treatment|sef|ecd|all` URL param, defaults to `treatment`. Cohort lists in `lib/pm/cohorts.ts`.
-- **Data fetching**: server components fetch from Django API with ISR (5-min revalidation). Falls back to mock data when API unavailable.
+- **Data fetching**: server components fetch from Django API with ISR (5-min revalidation). API layer returns `{ data, isLive }` — pages show amber banner when using mock data fallback.
 - **Charts**: Recharts (client components) for line charts, bar charts. Wrapped in server component pages.
+- **Dosage calculation**: per-group `first_session_date` (not global programme start). Teaching start date = 2026-03-08. School holidays excluded from programme-day denominators (see `SCHOOL_HOLIDAYS_2026` in Django `api/views.py`).
+- **KPI layout**: 3 rows — aggregate (schools/EAs/children), group performance (dosage/on-track/flags), EA performance (sessions per day worked/on-track EAs/sessions per programme day).
 - **Spec**: `docs/superpowers/specs/2026-04-05-pm-dashboard-design.md`
 - **Plan**: `docs/superpowers/plans/2026-04-05-pm-dashboard-phase1.md`
 
