@@ -3,7 +3,7 @@ import { parseCohort, filterGroupsByCohort, getCohortLabel } from "@/lib/pm/coho
 import { ProgressOverview } from "@/components/pm/letter-progress/progress-overview";
 import { GradeProgressChart } from "@/components/pm/letter-progress/grade-progress-chart";
 import { GroupDetailTable } from "@/components/pm/letter-progress/group-detail-table";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
 
 interface Props {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -38,6 +38,19 @@ export default async function LetterProgressPage({ searchParams }: Props) {
         <p className="text-sm text-slate-500">
           {cohortLabel} — {letterGroups.length} letter-phase groups
         </p>
+      </div>
+
+      {/* How progress is calculated */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-start gap-3 text-sm">
+        <Info className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
+        <div className="text-blue-800">
+          <span className="font-semibold">How progress is calculated:</span>{" "}
+          Progress is based on the most recent letter practiced in a group&apos;s latest session and that letter&apos;s
+          position on the prescribed 26-letter sequence (a, e, i, o, u, b, l, m, k, p, s, h, ..., j).
+          If an EA is teaching letters out of the prescribed order, the progress bar will be misleading —
+          it may show higher progress than actual curriculum coverage. Check the &quot;Curriculum Gaps&quot; flag
+          on the Quality Flags page to identify groups where letters have been skipped.
+        </div>
       </div>
 
       {/* Row 1: Progress overview + Grade chart */}
