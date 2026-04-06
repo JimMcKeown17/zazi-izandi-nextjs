@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   Eye,
   GitCompare,
+  ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -100,18 +101,27 @@ export function PMSidebar({ flagCount }: PMSidebarProps) {
           ))}
         </nav>
 
-        {/* Account section */}
-        <div className="px-3 py-3 border-t border-slate-700/50 flex items-center gap-3">
-          <UserButton afterSignOutUrl="/" />
-          <span className="hidden lg:inline text-slate-400 text-xs truncate">
-            Account
-          </span>
+        {/* Bottom section */}
+        <div className="px-2 py-3 border-t border-slate-700/50 flex flex-col gap-2">
+          <Link
+            href="/"
+            className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4 shrink-0" />
+            <span className="hidden lg:inline truncate">Back to site</span>
+          </Link>
+          <div className="flex items-center gap-3 px-3">
+            <UserButton afterSignOutUrl="/" />
+            <span className="hidden lg:inline text-slate-400 text-xs truncate">
+              Account
+            </span>
+          </div>
         </div>
       </aside>
 
       {/* Mobile bottom tab bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 flex justify-around py-2 z-50">
-        {NAV_ITEMS.slice(0, 5).map((item) => {
+        {NAV_ITEMS.slice(0, 4).map((item) => {
           const Icon = item.icon;
           const active = isActive(item.href, item.exact);
           return (
@@ -124,6 +134,9 @@ export function PMSidebar({ flagCount }: PMSidebarProps) {
             </Link>
           );
         })}
+        <Link href="/" className="p-2 rounded-md text-slate-400">
+          <ArrowLeft className="h-5 w-5" />
+        </Link>
       </nav>
     </>
   );
