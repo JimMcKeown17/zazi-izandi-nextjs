@@ -48,6 +48,9 @@ export const MOCK_PROGRAMME_OVERVIEW: ProgrammeOverviewResponse = {
     end_date: "2026-11-28",
     current_week: 9,
     total_weeks: 43,
+    teaching_start_date: "2026-03-08",
+    teaching_week: 4,
+    teaching_total_weeks: 38,
   },
   targets: {
     dosage: 3,

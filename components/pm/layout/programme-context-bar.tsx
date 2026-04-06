@@ -26,8 +26,8 @@ function formatDate(iso: string): string {
 
 export function ProgrammeContextBar({ data, cohort }: ProgrammeContextBarProps) {
   const { programme, data_health, health } = data;
-  const weekProgress = programme.total_weeks > 0
-    ? Math.min((programme.current_week / programme.total_weeks) * 100, 100)
+  const weekProgress = programme.teaching_total_weeks > 0
+    ? Math.min((programme.teaching_week / programme.teaching_total_weeks) * 100, 100)
     : 0;
 
   return (
@@ -43,7 +43,7 @@ export function ProgrammeContextBar({ data, cohort }: ProgrammeContextBarProps) 
 
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-slate-300 text-xs whitespace-nowrap">
-            Week {programme.current_week} of {programme.total_weeks}
+            Teaching Week {programme.teaching_week} of {programme.teaching_total_weeks}
           </span>
 
           {/* Mini progress bar — 64px wide */}

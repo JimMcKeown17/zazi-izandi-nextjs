@@ -8,6 +8,9 @@ export interface ProgrammeOverviewResponse {
     end_date: string;
     current_week: number;
     total_weeks: number;
+    teaching_start_date: string;
+    teaching_week: number;
+    teaching_total_weeks: number;
   };
   targets: ProgrammeTargets;
   kpis: ProgrammeKPIs;
