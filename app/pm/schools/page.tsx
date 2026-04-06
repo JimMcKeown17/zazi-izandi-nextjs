@@ -10,7 +10,7 @@ export default async function PMSchoolsPage({ searchParams }: Props) {
   const params = await searchParams;
   const cohort = parseCohort(params.cohort as string | undefined);
 
-  const allSchools = await getSchoolPerformanceRows();
+  const { data: allSchools } = await getSchoolPerformanceRows();
   const filteredSchools = filterSchoolsByCohort(allSchools, cohort);
   const cohortLabel = getCohortLabel(cohort);
 

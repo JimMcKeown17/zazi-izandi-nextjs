@@ -1,5 +1,5 @@
 import { getProgrammeOverview, getSchoolPerformanceRows } from "@/lib/pm/api";
-import { parseCohort, filterSchoolsByCohort } from "@/lib/pm/cohorts";
+import { parseCohort, filterSchoolsByCohort, getCohortLabel } from "@/lib/pm/cohorts";
 import type { ProgrammeKPIs } from "@/lib/pm/types";
 import type { SchoolPerformanceRow } from "@/lib/pm/types";
 import { ProgrammeContextBar } from "@/components/pm/layout/programme-context-bar";
@@ -7,6 +7,7 @@ import { OverviewKPIs } from "@/components/pm/overview/overview-kpis";
 import { SessionsChart } from "@/components/pm/overview/sessions-chart";
 import { DosageDistribution } from "@/components/pm/overview/dosage-distribution";
 import { SchoolTable } from "@/components/pm/overview/school-table";
+import { AlertTriangle } from "lucide-react";
 
 interface Props {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -30,7 +31,6 @@ function recomputeKPIs(
   const totalSessionsAllTime = filteredSchools.reduce((sum, s) => sum + s.total_sessions, 0);
   const activeFlags = filteredSchools.reduce((sum, s) => sum + s.flags_count, 0);
 
-  // Weighted dosage: average of per-school averages, weighted by groups_count
   const totalGroups = filteredSchools.reduce((sum, s) => sum + s.groups_count, 0);
   const weightedDosage =
     totalGroups > 0
@@ -59,14 +59,21 @@ export default async function PMOverviewPage({ searchParams }: Props) {
   const params = await searchParams;
   const cohort = parseCohort(params.cohort as string | undefined);
 
-  const [overview, allSchools] = await Promise.all([
+  const [overviewResult, schoolsResult] = await Promise.all([
     getProgrammeOverview(),
     getSchoolPerformanceRows(),
   ]);
 
+  const overview = overviewResult.data;
+  const allSchools = schoolsResult.data;
   const filteredSchools = filterSchoolsByCohort(allSchools, cohort);
   const filteredKPIs = recomputeKPIs(overview.kpis, filteredSchools);
   const filteredOverview = { ...overview, kpis: filteredKPIs };
+
+  // Determine data source status
+  const overviewIsLive = overviewResult.isLive;
+  const schoolsIsLive = schoolsResult.isLive;
+  const hasMockData = !overviewIsLive || !schoolsIsLive;
 
   const { data_health } = overview;
   const lastSyncDate = new Date(data_health.last_sync).toLocaleDateString("en-ZA", {
@@ -79,6 +86,21 @@ export default async function PMOverviewPage({ searchParams }: Props) {
 
   return (
     <div className="max-w-7xl mx-auto space-y-4">
+      {/* Mock data warning banner */}
+      {hasMockData && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-3 text-sm">
+          <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+          <div className="text-amber-800">
+            <span className="font-semibold">Some data is simulated.</span>{" "}
+            {!overviewIsLive && !schoolsIsLive
+              ? "The API is unavailable — all data shown is sample data."
+              : !overviewIsLive
+                ? "Programme overview API unavailable — KPI targets, health signal, and charts use sample data. School counts and table are live."
+                : "School data API unavailable — school table uses sample data."}
+          </div>
+        </div>
+      )}
+
       {/* Layer 0: Programme context bar */}
       <ProgrammeContextBar data={overview} cohort={cohort} />
 

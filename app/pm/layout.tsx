@@ -11,7 +11,7 @@ export default async function PMLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const data = await getProgrammeOverview();
+  const { data } = await getProgrammeOverview();
   const flagCount = data.kpis.active_flags;
 
   return (

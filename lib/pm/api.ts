@@ -12,12 +12,17 @@ import type { School2026Data } from "@/components/schools-2026/school-card-2026"
 
 // ─── Programme Overview ──────────────────────────────────────────
 
-export async function getProgrammeOverview(): Promise<ProgrammeOverviewResponse> {
+export interface ProgrammeOverviewResult {
+  data: ProgrammeOverviewResponse;
+  isLive: boolean;
+}
+
+export async function getProgrammeOverview(): Promise<ProgrammeOverviewResult> {
   const apiUrl = process.env.DJANGO_API_URL;
 
   if (!apiUrl) {
     console.warn("[pm/api] DJANGO_API_URL not set — using mock data");
-    return MOCK_PROGRAMME_OVERVIEW;
+    return { data: MOCK_PROGRAMME_OVERVIEW, isLive: false };
   }
 
   try {
@@ -27,13 +32,13 @@ export async function getProgrammeOverview(): Promise<ProgrammeOverviewResponse>
 
     if (!res.ok) {
       console.error(`[pm/api] Programme overview returned ${res.status} — using mock data`);
-      return MOCK_PROGRAMME_OVERVIEW;
+      return { data: MOCK_PROGRAMME_OVERVIEW, isLive: false };
     }
 
-    return await res.json();
+    return { data: await res.json(), isLive: true };
   } catch (error) {
     console.error("[pm/api] Failed to fetch programme overview:", error);
-    return MOCK_PROGRAMME_OVERVIEW;
+    return { data: MOCK_PROGRAMME_OVERVIEW, isLive: false };
   }
 }
 
@@ -73,12 +78,17 @@ function transformToSchoolRows(schools: School2026Data[]): SchoolPerformanceRow[
   });
 }
 
-export async function getSchoolPerformanceRows(): Promise<SchoolPerformanceRow[]> {
+export interface SchoolRowsResult {
+  data: SchoolPerformanceRow[];
+  isLive: boolean;
+}
+
+export async function getSchoolPerformanceRows(): Promise<SchoolRowsResult> {
   const apiUrl = process.env.DJANGO_API_URL;
 
   if (!apiUrl) {
     console.warn("[pm/api] DJANGO_API_URL not set — using mock school rows");
-    return MOCK_SCHOOL_ROWS;
+    return { data: MOCK_SCHOOL_ROWS, isLive: false };
   }
 
   try {
@@ -88,14 +98,14 @@ export async function getSchoolPerformanceRows(): Promise<SchoolPerformanceRow[]
 
     if (!res.ok) {
       console.error(`[pm/api] Schools API returned ${res.status} — using mock data`);
-      return MOCK_SCHOOL_ROWS;
+      return { data: MOCK_SCHOOL_ROWS, isLive: false };
     }
 
     const data: Schools2026ApiResponse = await res.json();
-    return transformToSchoolRows(data.schools);
+    return { data: transformToSchoolRows(data.schools), isLive: true };
   } catch (error) {
     console.error("[pm/api] Failed to fetch school rows:", error);
-    return MOCK_SCHOOL_ROWS;
+    return { data: MOCK_SCHOOL_ROWS, isLive: false };
   }
 }
 
