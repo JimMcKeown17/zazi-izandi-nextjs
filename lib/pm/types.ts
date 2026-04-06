@@ -48,6 +48,9 @@ export interface ProgrammeKPIs {
     in_progress: number;
     resolved_this_week: number;
   };
+  avg_sessions_per_day_worked: number;
+  pct_eas_on_track: number;
+  avg_sessions_per_programme_day: number;
 }
 
 export interface HealthSignal {

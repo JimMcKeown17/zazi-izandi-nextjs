@@ -79,6 +79,9 @@ export const MOCK_PROGRAMME_OVERVIEW: ProgrammeOverviewResponse = {
       in_progress: 5,
       resolved_this_week: 8,
     },
+    avg_sessions_per_day_worked: 3.1,
+    pct_eas_on_track: 68.0,
+    avg_sessions_per_programme_day: 1.8,
   },
   health: {
     score: 0.83,
