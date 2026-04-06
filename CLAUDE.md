@@ -42,7 +42,10 @@ components/
 │   ├── layout/             # pm-sidebar.tsx, programme-context-bar.tsx, cohort-selector.tsx
 │   ├── shared/             # kpi-card.tsx, health-badge.tsx, dosage-badge.tsx
 │   ├── overview/           # overview-kpis.tsx, sessions-chart.tsx, dosage-distribution.tsx, school-table.tsx
-│   └── schools/            # school-filters.tsx, school-detail-header.tsx
+│   ├── schools/            # school-filters.tsx, school-detail-header.tsx
+│   ├── sessions/           # sessions-trend-chart.tsx, ea-heatmap.tsx, session-distribution.tsx, sessions-school-table.tsx
+│   ├── letter-progress/    # progress-overview.tsx, grade-progress-chart.tsx, group-detail-table.tsx
+│   └── quality-flags/      # flag-summary-cards.tsx, flagged-items-table.tsx
 ├── home/ about/ impact/ methodology/ media/   # Page-specific sections
 ├── schools/                # School map (Mapbox), EA cards
 ├─�� schools-2026/           # 2026 school cards (live Django data)
@@ -80,6 +83,11 @@ The `/pm/*` pages form a self-contained dashboard app with a distinct layout:
 - **Charts**: Recharts (client components) for line charts, bar charts. Wrapped in server component pages.
 - **Dosage calculation**: per-group `first_session_date` (not global programme start). Teaching start date = 2026-03-08. School holidays excluded from programme-day denominators (see `SCHOOL_HOLIDAYS_2026` in Django `api/views.py`).
 - **KPI layout**: 3 rows — aggregate (schools/EAs/children), group performance (dosage/on-track/flags), EA performance (sessions per day worked/on-track EAs/sessions per programme day).
+- **Phase 2 pages**: `/pm/sessions` (trend + EA heatmap + distribution), `/pm/letter-progress` (progress bars + grade chart + group table), `/pm/quality-flags` (flag summary cards + flagged items table). All consume live Django data.
+- **Sessions page**: Consumes `/api/sessions-activity/` — daily trend, EA heatmap (last 10 weekdays), session distribution histogram, school summary table.
+- **Letter Progress page**: Consumes `/api/groups-2026/` — progress bars along 26-letter sequence, average progress by grade, sortable group detail table.
+- **Quality Flags page**: Consumes `/api/groups-2026/` — 5 flag types from nightly compute (same_letter_group, moving_too_fast, ghost_group, stagnation, curriculum_gaps). No lifecycle yet (FlagEvent model deferred to Phase 4).
+- **Group cohort filtering**: `filterGroupsByCohort` in `lib/pm/cohorts.ts` filters by `program_name` (groups use this instead of `school_name`).
 - **Spec**: `docs/superpowers/specs/2026-04-05-pm-dashboard-design.md`
 - **Plan**: `docs/superpowers/plans/2026-04-05-pm-dashboard-phase1.md`
 
@@ -103,8 +111,11 @@ Unauthenticated users redirect to `/login?redirect_url=...`.
 A separate Django app at `DJANGO_API_URL` (hosted on Render) serves live school data. The Next.js frontend consumes:
 
 - **`/schools-2026`** — Fetches `/api/schools-2026/` with ISR (300s)
-- **`/pm`** — Fetches `/api/programme-overview/` with ISR (300s). Falls back to mock data.
+- **`/pm`** — Fetches `/api/programme-overview/` with ISR (300s). Includes sessions_time_series (daily counts by school type).
 - **`/pm/schools`** — Fetches `/api/schools-2026/` (same endpoint, filtered by cohort in frontend)
+- **`/pm/sessions`** — Fetches `/api/sessions-activity/` with ISR (300s). Returns daily trend, EA heatmap, distribution, school summary.
+- **`/pm/letter-progress`** — Fetches `/api/groups-2026/` with ISR (300s). Returns per-group letter progress, phase, flags.
+- **`/pm/quality-flags`** — Fetches `/api/groups-2026/` (same endpoint, uses flag fields).
 
 Django source repo: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025`
 

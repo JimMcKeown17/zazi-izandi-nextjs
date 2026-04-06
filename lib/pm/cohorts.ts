@@ -105,6 +105,31 @@ export function filterSchoolsByCohort<T extends { school_name: string; school_ty
   }
 }
 
+// ─── Group-level cohort filtering ───────────────────────────────
+// Groups use `program_name` as school name (not `school_name`)
+
+export function filterGroupsByCohort<T extends { program_name: string }>(
+  groups: T[],
+  cohort: Cohort
+): T[] {
+  switch (cohort) {
+    case "treatment":
+      return groups.filter((g) => TREATMENT_SCHOOLS.has(g.program_name.toUpperCase()));
+    case "sef":
+      return groups.filter((g) => SEF_SCHOOLS.has(g.program_name.toUpperCase()));
+    case "ecd":
+      // ECD groups don't have school_type — check against programme-level knowledge
+      // For now, groups whose school is NOT in treatment or SEF are ECD
+      return groups.filter(
+        (g) =>
+          !TREATMENT_SCHOOLS.has(g.program_name.toUpperCase()) &&
+          !SEF_SCHOOLS.has(g.program_name.toUpperCase())
+      );
+    case "all":
+      return groups;
+  }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────
 
 export function getCohortLabel(cohort: Cohort): string {

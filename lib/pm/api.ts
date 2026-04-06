@@ -2,6 +2,8 @@ import type {
   ProgrammeOverviewResponse,
   SchoolPerformanceRow,
   SchoolDetailResponse,
+  SessionsActivityResponse,
+  Groups2026Response,
 } from "./types";
 import {
   MOCK_PROGRAMME_OVERVIEW,
@@ -115,3 +117,92 @@ export async function getSchoolPerformanceRows(): Promise<SchoolRowsResult> {
 export async function getSchoolDetail(schoolSlug: string): Promise<SchoolDetailResponse> {
   return getMockSchoolDetail(schoolSlug);
 }
+
+// ─── Sessions Activity ──────────────────────────────────────────
+
+export interface SessionsActivityResult {
+  data: SessionsActivityResponse;
+  isLive: boolean;
+}
+
+export async function getSessionsActivity(
+  days = 30,
+  cohort = "all"
+): Promise<SessionsActivityResult> {
+  const apiUrl = process.env.DJANGO_API_URL;
+
+  if (!apiUrl) {
+    console.warn("[pm/api] DJANGO_API_URL not set — sessions activity unavailable");
+    return { data: EMPTY_SESSIONS_ACTIVITY, isLive: false };
+  }
+
+  try {
+    const res = await fetch(
+      `${apiUrl}/api/sessions-activity/?days=${days}&cohort=${cohort}`,
+      { next: { revalidate: 300 } }
+    );
+
+    if (!res.ok) {
+      console.error(`[pm/api] Sessions activity returned ${res.status}`);
+      return { data: EMPTY_SESSIONS_ACTIVITY, isLive: false };
+    }
+
+    return { data: await res.json(), isLive: true };
+  } catch (error) {
+    console.error("[pm/api] Failed to fetch sessions activity:", error);
+    return { data: EMPTY_SESSIONS_ACTIVITY, isLive: false };
+  }
+}
+
+const EMPTY_SESSIONS_ACTIVITY: SessionsActivityResponse = {
+  generated_at: "",
+  days: 30,
+  daily_trend: [],
+  ea_heatmap: { dates: [], eas: [] },
+  distribution: [],
+  school_summary: [],
+};
+
+// ─── Groups 2026 ────────────────────────────────────────────────
+
+export interface Groups2026Result {
+  data: Groups2026Response;
+  isLive: boolean;
+}
+
+export async function getGroups2026(): Promise<Groups2026Result> {
+  const apiUrl = process.env.DJANGO_API_URL;
+
+  if (!apiUrl) {
+    console.warn("[pm/api] DJANGO_API_URL not set — groups data unavailable");
+    return { data: EMPTY_GROUPS_2026, isLive: false };
+  }
+
+  try {
+    const res = await fetch(`${apiUrl}/api/groups-2026/`, {
+      next: { revalidate: 300 },
+    });
+
+    if (!res.ok) {
+      console.error(`[pm/api] Groups API returned ${res.status}`);
+      return { data: EMPTY_GROUPS_2026, isLive: false };
+    }
+
+    return { data: await res.json(), isLive: true };
+  } catch (error) {
+    console.error("[pm/api] Failed to fetch groups:", error);
+    return { data: EMPTY_GROUPS_2026, isLive: false };
+  }
+}
+
+const EMPTY_GROUPS_2026: Groups2026Response = {
+  generated_at: "",
+  summary: {
+    total_groups: 0,
+    letters_groups: 0,
+    blending_groups: 0,
+    total_children: 0,
+    total_sessions_this_week: 0,
+  },
+  groups: [],
+};

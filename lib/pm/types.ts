@@ -136,3 +136,78 @@ export interface PMNavItem {
   icon: string;
   badge?: number;
 }
+
+// ─── Sessions Activity API Response ───────────────────────────
+
+export interface SessionsActivityResponse {
+  generated_at: string;
+  days: number;
+  daily_trend: SessionTimeSeriesPoint[];
+  ea_heatmap: {
+    dates: string[];
+    eas: EAHeatmapRow[];
+  };
+  distribution: SessionDistributionBucket[];
+  school_summary: SessionSchoolSummary[];
+}
+
+export interface EAHeatmapRow {
+  ea_name: string;
+  school: string;
+  cells: number[];
+}
+
+export interface SessionDistributionBucket {
+  range: string;
+  ea_count: number;
+}
+
+export interface SessionSchoolSummary {
+  school_name: string;
+  school_type: string;
+  total_sessions: number;
+  sessions_this_week: number;
+  active_eas: number;
+  active_days: number;
+  avg_sessions_per_day: number;
+}
+
+// ─── Groups 2026 API Response ─────────────────────────────────
+
+export interface Groups2026Response {
+  generated_at: string;
+  summary: {
+    total_groups: number;
+    letters_groups: number;
+    blending_groups: number;
+    total_children: number;
+    total_sessions_this_week: number;
+  };
+  groups: GroupSummary[];
+}
+
+export interface GroupSummary {
+  program_name: string;
+  class_name: string;
+  ea_name: string;
+  grade: string;
+  phase: "letters" | "blending";
+  blending_start_date: string | null;
+  children_count: number;
+  children_names: string[];
+  current_letter: string;
+  progress_index: number;
+  progress_pct: number;
+  sessions_this_week: number;
+  sessions_this_month: number;
+  total_sessions: number;
+  avg_sessions_per_week: number;
+  last_session_date: string | null;
+  flags: {
+    same_letter_group: boolean;
+    moving_too_fast: boolean;
+    ghost_group: boolean;
+    stagnation: boolean;
+    curriculum_gaps: boolean;
+  };
+}
