@@ -256,19 +256,15 @@ export async function getGroups2026(): Promise<Groups2026Result> {
   }
 }
 
-// ─── Flag Evidence (client-side fetch, no ISR) ─────────────────
+// ─── Flag Evidence (client-side fetch via same-origin proxy) ────
 
 export async function getFlagEvidence(
   school: string,
   group: string
 ): Promise<FlagEvidenceResponse | null> {
-  const apiUrl = process.env.NEXT_PUBLIC_DJANGO_API_URL;
-
-  if (!apiUrl) return null;
-
   try {
     const res = await fetch(
-      `${apiUrl}/api/flag-evidence/?school=${encodeURIComponent(school)}&group=${encodeURIComponent(group)}`
+      `/api/flag-evidence/?school=${encodeURIComponent(school)}&group=${encodeURIComponent(group)}`
     );
 
     if (!res.ok) return null;

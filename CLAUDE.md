@@ -17,7 +17,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Clerk au
 
 ## Architecture
 
-Frontend-only Next.js site for **Zazi iZandi**, a South African early literacy intervention program. No custom API routes — all backend logic lives in a separate [Django app on Render](documentation/data-and-backend.md).
+Frontend-only Next.js site for **Zazi iZandi**, a South African early literacy intervention program. One proxy route (`app/api/flag-evidence/route.ts`) forwards client-side evidence requests to Django to avoid CORS. All backend logic lives in a separate [Django app on Render](documentation/data-and-backend.md).
 
 ### Directory Structure
 
