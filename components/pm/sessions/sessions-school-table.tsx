@@ -7,7 +7,7 @@ interface Props {
   schools: SessionSchoolSummary[];
 }
 
-type SortKey = "school_name" | "total_sessions" | "sessions_this_week" | "active_eas" | "avg_sessions_per_day";
+type SortKey = "school_name" | "total_sessions" | "sessions_this_week" | "active_eas" | "avg_sessions_per_day_per_ea";
 
 export function SessionsSchoolTable({ schools }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("total_sessions");
@@ -89,9 +89,9 @@ export function SessionsSchoolTable({ schools }: Props) {
               </th>
               <th
                 className="text-right py-2 cursor-pointer select-none"
-                onClick={() => toggleSort("avg_sessions_per_day")}
+                onClick={() => toggleSort("avg_sessions_per_day_per_ea")}
               >
-                Avg/Day <SortIcon col="avg_sessions_per_day" />
+                Avg/Day/EA <SortIcon col="avg_sessions_per_day_per_ea" />
               </th>
             </tr>
           </thead>
@@ -118,14 +118,14 @@ export function SessionsSchoolTable({ schools }: Props) {
                 <td className="py-1.5 text-right">
                   <span
                     className={`font-medium ${
-                      s.avg_sessions_per_day >= 2.5
+                      s.avg_sessions_per_day_per_ea >= 2.5
                         ? "text-green-600"
-                        : s.avg_sessions_per_day >= 1.5
+                        : s.avg_sessions_per_day_per_ea >= 1.5
                         ? "text-amber-600"
                         : "text-red-600"
                     }`}
                   >
-                    {s.avg_sessions_per_day}
+                    {s.avg_sessions_per_day_per_ea}
                   </span>
                 </td>
               </tr>

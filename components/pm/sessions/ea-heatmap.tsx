@@ -30,13 +30,23 @@ function formatDate(dateStr: string): string {
 export function EAHeatmap({ dates, eas }: Props) {
   const [search, setSearch] = useState("");
 
-  const filtered = search
+  // Reverse dates so most recent is on the left
+  const reversedDates = [...dates].reverse();
+
+  const searchFiltered = search
     ? eas.filter(
         (ea) =>
           ea.ea_name.toLowerCase().includes(search.toLowerCase()) ||
           ea.school.toLowerCase().includes(search.toLowerCase())
       )
     : eas;
+
+  // Sort by total sessions descending
+  const filtered = [...searchFiltered].sort((a, b) => {
+    const totalA = a.cells.reduce((s, c) => s + c, 0);
+    const totalB = b.cells.reduce((s, c) => s + c, 0);
+    return totalB - totalA;
+  });
 
   return (
     <div className="bg-white rounded-lg shadow-sm p-4">
@@ -65,7 +75,7 @@ export function EAHeatmap({ dates, eas }: Props) {
               <tr className="text-slate-500">
                 <th className="text-left py-1 pr-2 font-medium min-w-[140px]">EA</th>
                 <th className="text-left py-1 pr-2 font-medium min-w-[120px]">School</th>
-                {dates.map((d) => (
+                {reversedDates.map((d) => (
                   <th key={d} className="text-center py-1 px-1 font-medium min-w-[40px]">
                     {formatDate(d)}
                   </th>
@@ -76,6 +86,7 @@ export function EAHeatmap({ dates, eas }: Props) {
             <tbody>
               {filtered.map((ea) => {
                 const total = ea.cells.reduce((a, b) => a + b, 0);
+                const reversedCells = [...ea.cells].reverse();
                 return (
                   <tr key={ea.ea_name} className="border-t border-slate-50">
                     <td className="py-1 pr-2 font-medium text-slate-800 truncate max-w-[140px]">
@@ -84,7 +95,7 @@ export function EAHeatmap({ dates, eas }: Props) {
                     <td className="py-1 pr-2 text-slate-500 truncate max-w-[120px]">
                       {ea.school}
                     </td>
-                    {ea.cells.map((count, i) => (
+                    {reversedCells.map((count, i) => (
                       <td key={i} className="py-1 px-1 text-center">
                         <span
                           className={`inline-block w-7 h-6 rounded text-[10px] leading-6 font-medium ${cellColor(count)} ${cellTextColor(count)}`}

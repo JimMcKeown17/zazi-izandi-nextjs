@@ -169,7 +169,7 @@ export interface SessionSchoolSummary {
   sessions_this_week: number;
   active_eas: number;
   active_days: number;
-  avg_sessions_per_day: number;
+  avg_sessions_per_day_per_ea: number;
 }
 
 // ─── Groups 2026 API Response ─────────────────────────────────
