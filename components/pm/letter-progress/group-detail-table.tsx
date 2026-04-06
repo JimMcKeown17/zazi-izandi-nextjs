@@ -20,10 +20,7 @@ export function GroupDetailTable({ groups }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("progress_pct");
   const [sortAsc, setSortAsc] = useState(false);
   const [search, setSearch] = useState("");
-  const [filterPhase, setFilterPhase] = useState<"all" | "letters" | "blending">("all");
-
   const filtered = groups.filter((g) => {
-    if (filterPhase !== "all" && g.phase !== filterPhase) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -70,15 +67,6 @@ export function GroupDetailTable({ groups }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={filterPhase}
-            onChange={(e) => setFilterPhase(e.target.value as "all" | "letters" | "blending")}
-            className="text-xs border border-slate-200 rounded px-2 py-1"
-          >
-            <option value="all">All Phases</option>
-            <option value="letters">Letters Only</option>
-            <option value="blending">Blending Only</option>
-          </select>
           <input
             type="text"
             placeholder="Search..."
@@ -105,7 +93,6 @@ export function GroupDetailTable({ groups }: Props) {
               <th className="text-left py-2 cursor-pointer select-none" onClick={() => toggleSort("grade")}>
                 Grade <SortIcon col="grade" />
               </th>
-              <th className="text-center py-2">Phase</th>
               <th className="text-center py-2">Letter</th>
               <th className="text-right py-2 cursor-pointer select-none" onClick={() => toggleSort("progress_pct")}>
                 Progress <SortIcon col="progress_pct" />
@@ -131,36 +118,21 @@ export function GroupDetailTable({ groups }: Props) {
                   <td className="py-1.5 text-slate-600 max-w-[100px] truncate">{g.ea_name}</td>
                   <td className="py-1.5 text-slate-600 max-w-[100px] truncate">{g.class_name}</td>
                   <td className="py-1.5 text-slate-600">{g.grade || "—"}</td>
-                  <td className="py-1.5 text-center">
-                    <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                        g.phase === "blending"
-                          ? "bg-orange-50 text-orange-600"
-                          : "bg-blue-50 text-blue-600"
-                      }`}
-                    >
-                      {g.phase}
-                    </span>
-                  </td>
                   <td className="py-1.5 text-center font-mono font-medium">
                     {g.current_letter ? g.current_letter.toUpperCase() : "—"}
                   </td>
                   <td className="py-1.5 text-right">
-                    {g.phase === "letters" ? (
-                      <div className="flex items-center justify-end gap-1">
-                        <div className="w-16 bg-slate-100 rounded-full h-2">
-                          <div
-                            className="h-full rounded-full bg-blue-500"
-                            style={{ width: `${g.progress_pct}%` }}
-                          />
-                        </div>
-                        <span className="text-slate-600 w-8 text-right">
-                          {Math.round(g.progress_pct)}%
-                        </span>
+                    <div className="flex items-center justify-end gap-1">
+                      <div className="w-16 bg-slate-100 rounded-full h-2">
+                        <div
+                          className="h-full rounded-full bg-blue-500"
+                          style={{ width: `${g.progress_pct}%` }}
+                        />
                       </div>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
+                      <span className="text-slate-600 w-8 text-right">
+                        {Math.round(g.progress_pct)}%
+                      </span>
+                    </div>
                   </td>
                   <td className="py-1.5 text-right font-medium">
                     <span

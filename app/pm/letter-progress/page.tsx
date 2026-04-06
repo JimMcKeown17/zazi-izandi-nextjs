@@ -16,10 +16,9 @@ export default async function LetterProgressPage({ searchParams }: Props) {
 
   const { data, isLive } = await getGroups2026();
 
-  const filteredGroups = filterGroupsByCohort(data.groups, cohort);
-
-  const letterCount = filteredGroups.filter((g) => g.phase === "letters").length;
-  const blendingCount = filteredGroups.filter((g) => g.phase === "blending").length;
+  const cohortGroups = filterGroupsByCohort(data.groups, cohort);
+  // Only show letter-phase groups — blending groups will get a dedicated page later
+  const letterGroups = cohortGroups.filter((g) => g.phase === "letters");
 
   return (
     <div className="max-w-7xl mx-auto space-y-4">
@@ -37,22 +36,22 @@ export default async function LetterProgressPage({ searchParams }: Props) {
       <div>
         <h1 className="text-xl font-bold text-slate-900">Letter Progress</h1>
         <p className="text-sm text-slate-500">
-          {cohortLabel} — {filteredGroups.length} groups ({letterCount} letters, {blendingCount} blending)
+          {cohortLabel} — {letterGroups.length} letter-phase groups
         </p>
       </div>
 
       {/* Row 1: Progress overview + Grade chart */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <div className="lg:col-span-3">
-          <ProgressOverview groups={filteredGroups} />
+          <ProgressOverview groups={letterGroups} />
         </div>
         <div className="lg:col-span-2">
-          <GradeProgressChart groups={filteredGroups} />
+          <GradeProgressChart groups={letterGroups} />
         </div>
       </div>
 
       {/* Row 2: Group detail table */}
-      <GroupDetailTable groups={filteredGroups} />
+      <GroupDetailTable groups={letterGroups} />
     </div>
   );
 }
