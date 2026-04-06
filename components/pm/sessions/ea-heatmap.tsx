@@ -23,8 +23,10 @@ function cellTextColor(count: number): string {
 }
 
 function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("en-ZA", { weekday: "short", day: "numeric" });
+  // Parse as local date to avoid UTC timezone shift (YYYY-MM-DD → wrong day in non-UTC zones)
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString("en-ZA", { weekday: "short", day: "numeric" });
 }
 
 export function EAHeatmap({ dates, eas }: Props) {

@@ -90,30 +90,45 @@ export function OverviewKPIs({ data }: OverviewKPIsProps) {
         />
 
         {/* 6. Active Flags */}
-        <KPICard
-          label="Active Flags"
-          value={kpis.active_flags}
-          subtitle={`${Math.round(kpis.flag_resolution_rate_14d)}% resolution rate (14d)`}
-          borderColor="border-l-red-500"
-          trend={{
-            value: kpis.flags_delta_week,
-            label: "from last week",
-          }}
-          badges={[
-            {
-              label: `${kpis.flag_lifecycle.new} new`,
-              className: "bg-red-50 text-red-700 border border-red-200",
-            },
-            {
-              label: `${kpis.flag_lifecycle.in_progress} in progress`,
-              className: "bg-amber-50 text-amber-700 border border-amber-200",
-            },
-            {
-              label: `${kpis.flag_lifecycle.resolved_this_week} resolved`,
-              className: "bg-green-50 text-green-700 border border-green-200",
-            },
-          ]}
-        />
+        {(() => {
+          const lc = kpis.flag_lifecycle;
+          const hasLifecycle = lc.new > 0 || lc.in_progress > 0 || lc.resolved_this_week > 0;
+          return (
+            <KPICard
+              label="Active Flags"
+              value={kpis.active_flags}
+              subtitle={
+                kpis.flag_resolution_rate_14d > 0
+                  ? `${Math.round(kpis.flag_resolution_rate_14d)}% resolution rate (14d)`
+                  : undefined
+              }
+              borderColor="border-l-red-500"
+              trend={
+                hasLifecycle
+                  ? { value: kpis.flags_delta_week, label: "from last week" }
+                  : undefined
+              }
+              badges={
+                hasLifecycle
+                  ? [
+                      {
+                        label: `${lc.new} new`,
+                        className: "bg-red-50 text-red-700 border border-red-200",
+                      },
+                      {
+                        label: `${lc.in_progress} in progress`,
+                        className: "bg-amber-50 text-amber-700 border border-amber-200",
+                      },
+                      {
+                        label: `${lc.resolved_this_week} resolved`,
+                        className: "bg-green-50 text-green-700 border border-green-200",
+                      },
+                    ]
+                  : undefined
+              }
+            />
+          );
+        })()}
       </div>
 
       {/* ── Row 3: EA performance (new) ── */}

@@ -20,7 +20,66 @@ export interface ProgrammeOverviewResult {
   isLive: boolean;
 }
 
-export async function getProgrammeOverview(): Promise<ProgrammeOverviewResult> {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * Maps the Django /api/programme-overview/ response to the frontend
+ * ProgrammeOverviewResponse type. Handles field name differences and
+ * defaults for fields not yet computed by the backend (flag lifecycle).
+ */
+function transformOverviewResponse(raw: any): ProgrammeOverviewResponse {
+  const k = raw.kpis ?? {};
+  const h = raw.health?.components ?? {};
+
+  return {
+    generated_at: raw.generated_at,
+    programme: raw.programme,
+    targets: raw.targets,
+    kpis: {
+      total_schools: k.total_schools ?? 0,
+      total_schools_primary: k.total_schools_primary ?? 0,
+      total_schools_ecd: k.total_schools_ecd ?? 0,
+      total_eas: k.total_eas ?? 0,
+      total_children: k.total_children ?? 0,
+      weighted_dosage: k.weighted_dosage ?? 0,
+      on_track_group_rate: k.on_track_rate ?? 0,
+      total_sessions_this_week: k.sessions_this_week ?? 0,
+      total_sessions_this_month: k.sessions_this_month ?? 0,
+      total_sessions_all_time: k.total_sessions ?? 0,
+      active_flags: k.flagged_eas ?? 0,
+      flags_delta_week: k.flags_delta_week ?? 0,
+      flag_resolution_rate_14d: k.flag_resolution_rate_14d ?? 0,
+      flag_lifecycle: k.flag_lifecycle ?? {
+        new: 0,
+        acknowledged: 0,
+        in_progress: 0,
+        resolved_this_week: 0,
+      },
+      avg_sessions_per_day_worked: k.avg_sessions_per_day_worked ?? 0,
+      pct_eas_on_track: k.pct_eas_on_track ?? 0,
+      avg_sessions_per_programme_day: k.avg_sessions_per_programme_day ?? 0,
+    },
+    health: {
+      score: raw.health?.score ?? 0,
+      status: raw.health?.status ?? "needs_attention",
+      components: {
+        dosage: h.dosage_score ?? h.dosage ?? 0,
+        on_track: h.on_track_score ?? h.on_track ?? 0,
+        flags: h.flags_score ?? h.flags ?? 0,
+        resolution: h.resolution_score ?? h.resolution ?? 0,
+      },
+    },
+    data_health: raw.data_health,
+    sessions_time_series: raw.sessions_time_series ?? [],
+    dosage_distribution: (raw.dosage_distribution ?? []).map(
+      (b: any) => ({ range: b.range, count: b.count ?? b.schools ?? 0 })
+    ),
+  };
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+export async function getProgrammeOverview(
+  cohort = "all"
+): Promise<ProgrammeOverviewResult> {
   const apiUrl = process.env.DJANGO_API_URL;
 
   if (!apiUrl) {
@@ -29,16 +88,17 @@ export async function getProgrammeOverview(): Promise<ProgrammeOverviewResult> {
   }
 
   try {
-    const res = await fetch(`${apiUrl}/api/programme-overview/`, {
-      next: { revalidate: 300 },
-    });
+    const res = await fetch(
+      `${apiUrl}/api/programme-overview/?cohort=${encodeURIComponent(cohort)}`,
+      { next: { revalidate: 300 } }
+    );
 
     if (!res.ok) {
       console.error(`[pm/api] Programme overview returned ${res.status} — using mock data`);
       return { data: MOCK_PROGRAMME_OVERVIEW, isLive: false };
     }
 
-    return { data: await res.json(), isLive: true };
+    return { data: transformOverviewResponse(await res.json()), isLive: true };
   } catch (error) {
     console.error("[pm/api] Failed to fetch programme overview:", error);
     return { data: MOCK_PROGRAMME_OVERVIEW, isLive: false };

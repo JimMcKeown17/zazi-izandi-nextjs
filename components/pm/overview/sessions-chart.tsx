@@ -18,8 +18,9 @@ interface SessionsChartProps {
 }
 
 function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("en-ZA", { day: "numeric", month: "short" });
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString("en-ZA", { day: "numeric", month: "short" });
 }
 
 export function SessionsChart({ data }: SessionsChartProps) {

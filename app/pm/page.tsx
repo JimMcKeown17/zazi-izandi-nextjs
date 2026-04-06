@@ -60,7 +60,7 @@ export default async function PMOverviewPage({ searchParams }: Props) {
   const cohort = parseCohort(params.cohort as string | undefined);
 
   const [overviewResult, schoolsResult] = await Promise.all([
-    getProgrammeOverview(),
+    getProgrammeOverview(cohort),
     getSchoolPerformanceRows(),
   ]);
 
