@@ -5,6 +5,7 @@ import type {
   SessionsActivityResponse,
   Groups2026Response,
   FlagEvidenceResponse,
+  LetterAlignmentResponse,
 } from "./types";
 import {
   MOCK_PROGRAMME_OVERVIEW,
@@ -265,6 +266,32 @@ export async function getFlagEvidence(
   try {
     const res = await fetch(
       `/api/flag-evidence/?school=${encodeURIComponent(school)}&group=${encodeURIComponent(group)}`
+    );
+
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// ─── Letter Alignment ──────────────────────────────────────────
+
+export async function getLetterAlignment(
+  school?: string,
+  group?: string
+): Promise<LetterAlignmentResponse[] | null> {
+  const apiUrl = process.env.DJANGO_API_URL;
+  if (!apiUrl) return null;
+
+  try {
+    const params = new URLSearchParams();
+    if (school) params.set("school", school);
+    if (group) params.set("group", group);
+
+    const res = await fetch(
+      `${apiUrl}/api/letter-alignment/?${params.toString()}`,
+      { next: { revalidate: 300 } }
     );
 
     if (!res.ok) return null;

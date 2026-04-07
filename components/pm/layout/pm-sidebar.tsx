@@ -13,6 +13,7 @@ import {
   Eye,
   GitCompare,
   ArrowLeft,
+  Grid3X3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: "Sessions", href: "/pm/sessions", icon: Calendar },
   { name: "Letter Progress", href: "/pm/letter-progress", icon: BookOpen },
   { name: "Quality Flags", href: "/pm/quality-flags", icon: AlertTriangle },
+  { name: "Letter Alignment", href: "/pm/letter-alignment", icon: Grid3X3 },
   { name: "Assessments", href: "/pm/assessments", icon: ClipboardCheck },
   { name: "Mentor Visits", href: "/pm/mentor-visits", icon: Eye },
 ];

@@ -193,6 +193,7 @@ export interface GroupSummary {
   program_name: string;
   class_name: string;
   ea_name: string;
+  language: string;
   grade: string;
   phase: "letters" | "blending";
   blending_start_date: string | null;
@@ -212,7 +213,14 @@ export interface GroupSummary {
     ghost_group: boolean;
     stagnation: boolean;
     curriculum_gaps: boolean;
+    teaching_known?: boolean;
+    skipping_needed?: boolean;
   };
+  // Alignment aggregates (from ChildLetterAlignment2026)
+  alignment_avg_score?: number | null;
+  children_with_skips?: number;
+  children_assessed?: number;
+  children_total?: number;
 }
 
 // ─── Flag Evidence API Response ───────────────────────────────
@@ -220,6 +228,7 @@ export interface GroupSummary {
 export interface FlagEvidenceResponse {
   program_name: string;
   class_name: string;
+  language: string;
   sessions: FlagEvidenceSession[];
   all_letters_taught: string[];
   letter_sequence: string[];
@@ -250,4 +259,38 @@ export interface FlagEvidenceTransition {
   from_letters: string[];
   to_letters: string[];
   overlap: boolean;
+}
+
+// ─── Letter Alignment API Response ──────────────────────────
+
+export interface ChildLetterAlignment {
+  participant_id: number;
+  assessment_date: string | null;
+  letters_mastered: string[];
+  letters_needed: string[];
+  letters_taught: string[];
+  letters_skipped: string[];
+  teaching_known_letters: string[];
+  alignment_score: number;
+  flag_skipping_needed: boolean;
+  flag_teaching_known: boolean;
+}
+
+export interface LetterAlignmentGroupSummary {
+  program_name: string;
+  class_name: string;
+  language: string;
+  letter_sequence: string[];
+  letters_taught: string[];
+  current_teaching_index: number;
+  children_assessed: number;
+  children_total: number;
+  alignment_avg_score: number;
+  flag_teaching_known: boolean;
+  flag_skipping_needed: boolean;
+}
+
+export interface LetterAlignmentResponse {
+  group_summary: LetterAlignmentGroupSummary;
+  children: ChildLetterAlignment[];
 }

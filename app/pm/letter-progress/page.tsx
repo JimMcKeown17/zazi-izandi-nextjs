@@ -46,9 +46,9 @@ export default async function LetterProgressPage({ searchParams }: Props) {
         <div className="text-blue-800">
           <span className="font-semibold">How progress is calculated:</span>{" "}
           Progress is based on the most recent letter practiced in a group&apos;s latest session and that letter&apos;s
-          position on the prescribed 26-letter sequence (a, e, i, o, u, b, l, m, k, p, s, h, ..., j).
+          position on the prescribed teaching sequence for the group&apos;s language (isiXhosa: 26 letters, English: 26, Afrikaans: 22).
           If an EA is teaching letters out of the prescribed order, the progress bar will be misleading —
-          it may show higher progress than actual curriculum coverage. Check the &quot;Curriculum Gaps&quot; flag
+          it may show higher progress than actual curriculum coverage. Check the &quot;Not Following Letter Order&quot; flag
           on the Quality Flags page to identify groups where letters have been skipped.
         </div>
       </div>

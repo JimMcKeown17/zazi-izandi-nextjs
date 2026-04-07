@@ -18,7 +18,9 @@ const FLAG_LABELS: Record<FlagKey, string> = {
   moving_too_fast: "Moving Too Fast",
   ghost_group: "Ghost Groups",
   stagnation: "Stagnation",
-  curriculum_gaps: "Curriculum Gaps",
+  curriculum_gaps: "Not Following Letter Order",
+  teaching_known: "Teaching Known Letters",
+  skipping_needed: "Skipping Needed Letters",
 };
 
 const FLAG_COLORS: Record<FlagKey, string> = {
@@ -27,6 +29,8 @@ const FLAG_COLORS: Record<FlagKey, string> = {
   ghost_group: "bg-purple-100 text-purple-700",
   stagnation: "bg-amber-100 text-amber-700",
   curriculum_gaps: "bg-blue-100 text-blue-700",
+  teaching_known: "bg-yellow-100 text-yellow-700",
+  skipping_needed: "bg-red-100 text-red-700",
 };
 
 // Flags that need the API endpoint for evidence

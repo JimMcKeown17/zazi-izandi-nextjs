@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { GroupSummary } from "@/lib/pm/types";
-import { LETTER_SEQUENCE } from "@/lib/pm/constants";
+import { LETTER_SEQUENCES, DEFAULT_LANGUAGE } from "@/lib/pm/constants";
 
 interface Props {
   groups: GroupSummary[];
@@ -146,20 +146,30 @@ export function ProgressOverview({ groups }: Props) {
         </div>
       )}
 
-      {/* Letter sequence reference */}
-      <div className="mt-3 pt-3 border-t border-slate-100">
-        <p className="text-[10px] text-slate-400 mb-1">Letter sequence:</p>
-        <div className="flex flex-wrap gap-0.5">
-          {LETTER_SEQUENCE.map((letter, i) => (
-            <span
-              key={letter}
-              className="text-[9px] w-4 h-4 flex items-center justify-center rounded bg-slate-50 text-slate-500 font-mono"
-              title={`Position ${i + 1}`}
-            >
-              {letter}
-            </span>
-          ))}
-        </div>
+      {/* Letter sequence reference — show languages present in current data */}
+      <div className="mt-3 pt-3 border-t border-slate-100 space-y-1">
+        {(() => {
+          const langs = Array.from(new Set(filtered.map((g) => g.language || DEFAULT_LANGUAGE)));
+          return langs.map((lang) => {
+            const seq = LETTER_SEQUENCES[lang] || LETTER_SEQUENCES[DEFAULT_LANGUAGE];
+            return (
+              <div key={lang}>
+                <p className="text-[10px] text-slate-400 mb-0.5">{lang} ({seq.length} letters):</p>
+                <div className="flex flex-wrap gap-0.5">
+                  {seq.map((letter, i) => (
+                    <span
+                      key={`${lang}-${i}`}
+                      className="text-[9px] w-4 h-4 flex items-center justify-center rounded bg-slate-50 text-slate-500 font-mono"
+                      title={`${lang} position ${i + 1}`}
+                    >
+                      {letter}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          });
+        })()}
       </div>
     </div>
   );
