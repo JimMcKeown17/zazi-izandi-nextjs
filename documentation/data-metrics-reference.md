@@ -256,7 +256,7 @@ Next.js Frontend (ISR, revalidate: 300s)
 | `longitude` | float | School GPS lon |
 | `computed_at` | datetime | When this summary was generated |
 
-**Consumed by:** `/api/schools-2026/` endpoint → Next.js `/schools-2026` page
+**Consumed by:** `/api/schools-2026/` endpoint → Next.js `/schools-2026` page (enriched with groups-2026 + sessions-activity for per-EA breakdown) and `/pm/schools`
 
 ---
 
@@ -296,7 +296,7 @@ Next.js Frontend (ISR, revalidate: 300s)
 
 **Exclusions:** Groups where `class_name` contains "check-in" or "check in" (case-insensitive) are excluded. These are daily work sign-ins, not teaching sessions.
 
-**Consumed by:** PM Dashboard (`/pm/letter-progress`, `/pm/quality-flags`), EA "My Kids" page (`/my-kids`), and the `/api/ea/me/` endpoint.
+**Consumed by:** PM Dashboard (`/pm/letter-progress`, `/pm/quality-flags`), `/schools-2026` page (enriched cards with per-EA flags and progress), and future EA "My Kids" page (`/my-kids`).
 
 **Relationship to SchoolSummary2026:** GroupSummary2026 is one level more granular. SchoolSummary2026 can be derived from GroupSummary2026 by aggregating groups per school, though both are computed independently for now.
 
@@ -355,7 +355,22 @@ How to join data across tables:
 | **Days active** | Count distinct dates with at least 1 session | EA | EA engagement metric |
 | **Sessions per EA per day** | `daily_sessions / active_eas_that_day` | School | Workload balance |
 
-**Dosage thresholds (for color-coding):**
+### EA Performance Metrics
+
+These three metrics are the primary indicators of EA work output, shown on the PM Dashboard overview and the `/schools-2026` school cards (both school-level and per-EA in the expandable section).
+
+| Metric | Formula | Level | Source |
+|--------|---------|-------|--------|
+| **Avg Sessions / Day Worked** | `total_sessions / distinct_days_with_sessions` per EA, then averaged across EAs | EA, School, Programme | Django: computed live in `/api/sessions-activity/` from `ea_data`. Per-EA values in `ea_heatmap[].avg_per_day_worked`. Programme average in `/api/programme-overview/` → `kpis.avg_sessions_per_day_worked` |
+| **Avg Sessions / Programme Day** | `total_sessions / count_work_days(first_session_date, today)` per EA, then averaged across EAs | EA, School, Programme | Django: computed live in `/api/sessions-activity/`. Programme average in `/api/programme-overview/` → `kpis.avg_sessions_per_programme_day`. Per-EA computed in frontend from group `total_sessions / programme_work_days` |
+| **Weighted Dosage** | `sum(avg_sessions_per_week × groups_count) / total_groups` | School, Programme | Django: pre-computed nightly in `SchoolSummary2026.avg_sessions_per_group_per_week`. Programme-level recomputed in frontend when cohort filter is applied (`app/pm/page.tsx:recomputeKPIs`) |
+
+**EA performance thresholds (for color-coding Avg / Day Worked):**
+- **Green (On Track):** >= 2.5 sessions/day
+- **Yellow (Needs Attention):** 1.5–2.5 sessions/day
+- **Red (Low):** < 1.5 sessions/day
+
+**Dosage thresholds (for color-coding Weighted Dosage / Avg Sessions per Group per Week):**
 - **Green (On Track):** avg >= 3 sessions/group/week
 - **Yellow (Needs Attention):** avg 2-3 sessions/group/week
 - **Red (Low Dosage):** avg < 2 sessions/group/week
@@ -447,11 +462,7 @@ These are the key impact metrics that researchers and funders prioritize:
 - **Recommended action:** EA needs coaching on including review letters; mentor should discuss session planning
 - **DB field:** `SchoolSummary2026.moving_too_fast_flagged_eas`
 
----
-
-### New Flags (To Implement)
-
-#### 3. Ghost Groups
+#### 3. Ghost Groups ✅
 - **What it detects:** Groups that haven't had a session in 5+ weekdays
 - **Why it matters:** Every group needs consistent, frequent sessions. A dormant group means children aren't receiving intervention
 - **Calculation:** For each group (EA + class_name), get `max(session_started_at)` → if `today - max_date > 5 weekdays`, flag
@@ -459,8 +470,10 @@ These are the key impact metrics that researchers and funders prioritize:
 - **Aggregation:** Group-level, rolled up to EA and school
 - **Recommended action:** Investigate why — EA absence? Teacher blocking access? Group dissolved?
 - **Severity:** High (direct impact on children's learning)
+- **DB field:** `GroupSummary2026.flag_ghost_group`
+- **Note:** This is an activity/attendance flag, not a quality flag. Excluded from EA quality ranking on `/pm/quality-flags`; surfaced on the Sessions tab instead.
 
-#### 4. Curriculum Gaps
+#### 4. Curriculum Gaps ✅
 - **What it detects:** Letters skipped in the prescribed sequence
 - **Why it matters:** The letter sequence is carefully ordered. Skipping letters (e.g., jumping from "a, e, i" to "b" without "o, u") means the EA isn't following the curriculum
 - **Calculation:** For each group, collect all letters taught across all sessions → map to sequence indices → identify gaps where expected intermediate letters were never taught
@@ -468,8 +481,9 @@ These are the key impact metrics that researchers and funders prioritize:
 - **Nuance:** Small gaps early may be acceptable if the group's baseline showed those letters already mastered. Cross-reference with baseline EGRA cell data
 - **Recommended action:** Mentor should review whether skipped letters are already mastered (from baseline) or truly missed
 - **Severity:** Medium (may indicate curriculum misunderstanding)
+- **DB field:** `GroupSummary2026.flag_curriculum_gaps`
 
-#### 5. Stagnation
+#### 5. Stagnation ✅
 - **What it detects:** Group hasn't progressed to new letters in 2+ weeks despite having sessions
 - **Why it matters:** While review is essential, prolonged stagnation may indicate the EA doesn't know when to move on, or the group isn't achieving mastery
 - **Calculation:** For each group, look at `max(progress_index)` over the last 10 weekdays vs. the prior 10 weekdays → if identical and session count > 4 in recent period, flag
@@ -477,6 +491,11 @@ These are the key impact metrics that researchers and funders prioritize:
 - **Nuance:** Some stagnation is expected and healthy (consolidation). This flag is for prolonged periods with no forward movement at all
 - **Recommended action:** Mentor should check if children are struggling (need regrouping?) or if EA needs guidance on mastery criteria and when to introduce new letters
 - **Severity:** Medium
+- **DB field:** `GroupSummary2026.flag_stagnation`
+
+---
+
+### Future Flags (Not Yet Implemented)
 
 #### 6. Unbalanced Groups
 - **What it detects:** An EA's groups have very different session counts
@@ -553,8 +572,8 @@ Child (participant_id)
 |-------|-------------|
 | **Child** | EGRA score, attendance rate, sessions attended, group membership |
 | **Group** | Letter progress index/%, sessions this week, current letter, flags |
-| **EA** | Sessions/day, groups managed, children count, flags, mentor feedback |
-| **School** | EA count, total children, avg sessions/group/week, dosage status, flagged EAs |
+| **EA** | Avg sessions/day worked, avg sessions/programme day, weighted dosage, groups managed, children count, flags, mentor feedback |
+| **School** | EA count, total children, weighted dosage, avg sessions/day worked (avg across EAs), sessions this week, flagged EAs, all 5 flag types |
 | **Region** | School count, avg dosage, assessment averages |
 | **Programme** | Total schools, EAs, children, sessions, overall dosage, assessment impact |
 
@@ -564,26 +583,30 @@ Child (participant_id)
 
 ### Existing Endpoints (Django)
 
-| Endpoint | Method | Returns | Used By |
-|----------|--------|---------|---------|
-| `/api/schools-2026/` | GET | `SchoolSummary2026` array with summary stats | Next.js `/schools-2026` page |
-| `/api/letter-progress/` | GET | Nested JSON: schools → EAs → groups with progress data | Streamlit (not yet Next.js) |
-| `/api/sessions/` | GET | All `TeampactSession` records | Streamlit |
-| `/api/explore-data/` | GET | HTML tables of EGRA data | Internal use |
+| Endpoint | Method | Params | Returns | Used By |
+|----------|--------|--------|---------|---------|
+| `/api/schools-2026/` | GET | — | `SchoolSummary2026` array with summary stats, 2 flag types per school | `/schools-2026` page, `/pm/schools` |
+| `/api/programme-overview/` | GET | `?cohort=` | Aggregate KPIs (dosage, flags, health score, EA performance), `sessions_time_series`, `dosage_distribution` | `/pm` overview page |
+| `/api/sessions-activity/` | GET | `?days=&cohort=` | `daily_trend`, `ea_heatmap` (per-EA daily cells + all-time `avg_per_day_worked`, `total_sessions`, `days_worked`), `distribution`, `school_summary` (per-school `avg_sessions_per_day_per_ea`) | `/pm/sessions`, `/schools-2026` (heatmap data for per-EA metrics) |
+| `/api/groups-2026/` | GET | — | `GroupSummary2026` array: per-group progress, dosage, all 5 flags | `/pm/letter-progress`, `/pm/quality-flags`, `/schools-2026` (enriched cards) |
+| `/api/flag-evidence/` | GET | `?school=&group=` | Session history, letter transitions, stagnation analysis for a single group | `/pm/quality-flags` evidence panels (via Next.js proxy at `app/api/flag-evidence/route.ts`) |
+| `/api/letter-progress/` | GET | — | Nested JSON: schools → EAs → groups with progress data | Streamlit (legacy) |
+| `/api/sessions/` | GET | — | All `TeampactSession` records | Streamlit (legacy) |
+| `/api/explore-data/` | GET | — | HTML tables of EGRA data | Internal use |
 
-### New Endpoints Needed
+**ISR caching:** All Next.js pages use `revalidate: 300` (5-minute ISR windows).
 
-| Endpoint | Method | Returns | Purpose | Consumer |
-|----------|--------|---------|---------|----------|
-| `/api/programme-overview/` | GET | Aggregate KPIs: total schools, EAs, children, sessions, dosage, assessment summary, flag counts | PM Dashboard overview page | Next.js |
-| `/api/sessions-activity/` | GET | Session time-series data with filters (school, EA, date range) | PM Dashboard sessions page | Next.js |
-| `/api/letter-progress-2026/` | GET | Letter progress per group with filters (school, EA, grade, mentor) | PM Dashboard letter progress page | Next.js |
-| `/api/quality-flags/` | GET | All flags (existing + new) with EA/school/group detail | PM Dashboard flags page | Next.js |
-| `/api/assessments-summary/` | GET | Baseline/endline comparison data with cohort analysis | PM Dashboard assessments page | Next.js |
-| `/api/mentor-visits-summary/` | GET | Aggregated mentor visit data with quality ratings | PM Dashboard mentor visits page | Next.js |
-| `/api/ea/me/` | GET | EA's own data: groups, children, sessions, progress, flags, AI insights | EA "My Kids" page | Next.js |
-| `/api/ea/me/groups/<group_id>/` | GET | Detailed group data: children, session history, letter progression | EA group detail page | Next.js |
-| `/api/ea/me/insights/` | GET | Pre-computed AI-generated daily insights and recommendations | EA "My Kids" page | Next.js |
+**EA heatmap row fields** (added April 2026): Each `ea_heatmap` row now includes `total_sessions` (int), `days_worked` (int), and `avg_per_day_worked` (float|null) — all-time metrics computed live from `ea_data` in the sessions-activity view.
+
+### Future Endpoints
+
+| Endpoint | Purpose | Consumer |
+|----------|---------|----------|
+| `/api/assessments-summary/` | Baseline/endline comparison data with cohort analysis | PM Dashboard `/pm/assessments` |
+| `/api/mentor-visits-summary/` | Aggregated mentor visit data with quality ratings | PM Dashboard `/pm/mentor-visits` |
+| `/api/ea/me/` | EA's own data: groups, children, sessions, progress, flags | EA "My Kids" page `/my-kids` |
+| `/api/ea/me/groups/<group_id>/` | Detailed group data: children, session history, letter progression | EA group detail page |
+| `/api/ea/me/insights/` | Pre-computed AI-generated daily insights and recommendations | EA "My Kids" page |
 
 ---
 
@@ -640,6 +663,18 @@ is_blending = "blending" in class_name.lower()
 | Exposures for mastery | 5-10 sessions per letter | Programme Guide |
 | EGRA time limit | 1 minute | Assessment protocol |
 | EGRA stop rule | 5 consecutive incorrect → stop | Assessment protocol |
+| Teaching start date | 2026-03-08 | Programme calendar |
+| Programme start date | 2026-02-23 | Programme calendar (Django `PROGRAMME_START_DATE`) |
+
+### School Holidays 2026
+
+Holiday periods are excluded from programme-day denominators (e.g., Avg Sessions / Programme Day). Defined in Django `api/views.py` as `SCHOOL_HOLIDAYS_2026` and replicated in the frontend at `lib/schools-2026/constants.ts`.
+
+| Period | Start | End |
+|--------|-------|-----|
+| Easter / school break | 2026-03-26 | 2026-04-06 |
+
+**Work day calculation:** `count_work_days(start, end)` counts weekdays (Mon–Fri) between two dates (inclusive), excluding any day that falls within a holiday period. Used by both Django and the Next.js frontend.
 
 ---
 
@@ -705,14 +740,14 @@ Currently captured on paper but not digitally — critical gaps for future mobil
 
 For tracking which Streamlit pages have been migrated to Next.js:
 
-| Streamlit Page | Status | Next.js Equivalent | Priority |
-|----------------|--------|--------------------|----------|
-| Sessions 2026 | To migrate | `/pm/sessions` | Phase 2 |
+| Streamlit Page | Status | Next.js Equivalent | Notes |
+|----------------|--------|--------------------|-------|
+| Sessions 2026 | ✅ Migrated | `/pm/sessions` | Trend chart, EA heatmap, distribution, school table |
+| Letter Progress 2026 | ✅ Migrated | `/pm/letter-progress` | Progress bars, grade chart, group detail table |
+| Letter Progress Detailed 2026 | ✅ Migrated | `/pm/letter-progress` | Included in group detail table |
+| Flag: Same Letter Groups | ✅ Migrated | `/pm/quality-flags` | All 5 flag types with evidence panels |
+| Flag: Moving Too Fast | ✅ Migrated | `/pm/quality-flags` | Included in quality flags page |
+| Session Quality Review | ✅ Migrated | `/pm/quality-flags` | EA ranking, flag summary cards |
 | Baseline 2026 | To migrate | `/pm/assessments` | Phase 3 |
 | ECD Baseline 2026 | To migrate | `/pm/assessments` (combined) | Phase 3 |
-| Letter Progress 2026 | To migrate | `/pm/letter-progress` | Phase 2 |
-| Letter Progress Detailed 2026 | To migrate | `/pm/letter-progress` (drill-down) | Phase 2 |
-| Flag: Same Letter Groups | To migrate | `/pm/quality-flags` | Phase 2 |
-| Flag: Moving Too Fast | To migrate | `/pm/quality-flags` | Phase 2 |
 | Mentor Visits 2026 | To migrate | `/pm/mentor-visits` | Phase 3 |
-| Session Quality Review | To migrate | `/pm/quality-flags` (enhanced) | Phase 2 |
