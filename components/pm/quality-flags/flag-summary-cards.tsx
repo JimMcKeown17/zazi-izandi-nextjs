@@ -70,9 +70,9 @@ const FLAG_TYPES: FlagType[] = [
   },
   {
     key: "curriculum_gaps",
-    label: "Curriculum Gaps",
+    label: "Not Following Letter Order",
     description: "Letters skipped in prescribed sequence",
-    tooltip: "Triggered when 2+ letters in the prescribed sequence (a, e, i, o, u, b, l, m, ...) were never taught before the EA moved past them. Skipping letters means children miss foundational building blocks. Action: EA needs retraining on following the letter sequence.",
+    tooltip: "Triggered when 2+ letters in the language-specific teaching sequence were never taught before the EA moved past them. Skipping letters means children miss foundational building blocks. Action: EA needs retraining on following the letter sequence.",
     icon: <SkipForward className="h-4 w-4" />,
     entityLabel: "groups",
     color: "border-l-blue-500",

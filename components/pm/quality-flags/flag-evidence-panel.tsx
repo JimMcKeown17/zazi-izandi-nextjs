@@ -2,7 +2,7 @@
 
 import { X, Loader2 } from "lucide-react";
 import type { FlagEvidenceResponse, GroupSummary } from "@/lib/pm/types";
-import { LETTER_SEQUENCE } from "@/lib/pm/constants";
+import { LETTER_SEQUENCES, DEFAULT_LANGUAGE } from "@/lib/pm/constants";
 
 type FlagKey = keyof GroupSummary["flags"];
 
@@ -74,7 +74,9 @@ const FLAG_LABELS: Record<FlagKey, string> = {
   moving_too_fast: "Moving Too Fast",
   ghost_group: "Ghost Group",
   stagnation: "Stagnation",
-  curriculum_gaps: "Curriculum Gaps",
+  curriculum_gaps: "Not Following Letter Order",
+  teaching_known: "Teaching Known Letters",
+  skipping_needed: "Skipping Needed Letters",
 };
 
 function EvidenceContent({
@@ -179,8 +181,8 @@ function CurriculumGapsEvidence({ evidence }: { evidence: FlagEvidenceResponse |
   const taughtSet = new Set(all_letters_taught);
   const gapSet = new Set(gaps);
 
-  // Find the furthest letter taught
-  const seq = LETTER_SEQUENCE as readonly string[];
+  // Use language-specific sequence from API response
+  const seq = evidence.letter_sequence || LETTER_SEQUENCES[DEFAULT_LANGUAGE];
   const taughtIndices = all_letters_taught
     .map((l) => seq.indexOf(l))
     .filter((i) => i >= 0);
@@ -202,7 +204,7 @@ function CurriculumGapsEvidence({ evidence }: { evidence: FlagEvidenceResponse |
       <div>
         <p className="text-xs font-semibold text-slate-700 mb-2">Letter Sequence</p>
         <div className="flex flex-wrap gap-1">
-          {LETTER_SEQUENCE.map((letter, i) => {
+          {seq.map((letter, i) => {
             const isTaught = taughtSet.has(letter);
             const isGap = gapSet.has(letter);
             const isNotReached = i > maxTaught;
@@ -270,7 +272,7 @@ function StagnationEvidence({ evidence }: { evidence: FlagEvidenceResponse | nul
             {prior_weeks.max_letter ? prior_weeks.max_letter.toUpperCase() : "—"}
           </p>
           <p className="text-xs text-slate-500">
-            Position {prior_weeks.max_progress_index + 1} of 26
+            Position {prior_weeks.max_progress_index + 1} of {evidence.letter_sequence?.length ?? 26}
           </p>
           <p className="text-xs text-slate-400 mt-1">
             {prior_weeks.sessions} session{prior_weeks.sessions !== 1 ? "s" : ""}
@@ -282,7 +284,7 @@ function StagnationEvidence({ evidence }: { evidence: FlagEvidenceResponse | nul
             {recent_weeks.max_letter ? recent_weeks.max_letter.toUpperCase() : "—"}
           </p>
           <p className="text-xs text-slate-500">
-            Position {recent_weeks.max_progress_index + 1} of 26
+            Position {recent_weeks.max_progress_index + 1} of {evidence.letter_sequence?.length ?? 26}
           </p>
           <p className="text-xs text-slate-400 mt-1">
             {recent_weeks.sessions} session{recent_weeks.sessions !== 1 ? "s" : ""}

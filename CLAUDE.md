@@ -45,14 +45,15 @@ components/
 │   ├── schools/            # school-filters.tsx, school-detail-header.tsx
 │   ├── sessions/           # sessions-trend-chart.tsx, ea-heatmap.tsx, session-distribution.tsx, sessions-school-table.tsx
 │   ├── letter-progress/    # progress-overview.tsx, grade-progress-chart.tsx, group-detail-table.tsx
-│   └── quality-flags/      # flag-summary-cards.tsx, flagged-items-table.tsx
+│   ├── quality-flags/      # flag-summary-cards.tsx, flagged-items-table.tsx
+│   └── letter-alignment/   # alignment-kpis.tsx, alignment-group-table.tsx, alignment-heatmap.tsx
 ├── home/ about/ impact/ methodology/ media/   # Page-specific sections
 ├── schools/                # School map (Mapbox), EA cards
 ├─�� schools-2026/           # 2026 school cards (live Django data)
 └── ui/                     # Radix/shadcn primitives
 lib/pm/                     # PM Dashboard data layer
 ├── types.ts                # All TypeScript interfaces for PM API responses
-├── constants.ts            # Dosage thresholds, health status config, chart colors
+├── constants.ts            # Dosage thresholds, health status config, chart colors, LETTER_SEQUENCES (language-keyed)
 ├── cohorts.ts              # School cohort lists (Treatment/SEF/ECD) and filter logic
 ├── api.ts                  # Data fetching (Django API + mock fallback)
 └── mock-data.ts            # Mock data matching API contracts
@@ -85,8 +86,10 @@ The `/pm/*` pages form a self-contained dashboard app with a distinct layout:
 - **KPI layout**: 3 rows — aggregate (schools/EAs/children), group performance (dosage/on-track/flags), EA performance (sessions per day worked/on-track EAs/sessions per programme day).
 - **Phase 2 pages**: `/pm/sessions` (trend + EA heatmap + distribution), `/pm/letter-progress` (progress bars + grade chart + group table), `/pm/quality-flags` (flag summary cards + flagged items table). All consume live Django data.
 - **Sessions page**: Consumes `/api/sessions-activity/` — daily trend, EA heatmap (last 10 weekdays), session distribution histogram, school summary table.
-- **Letter Progress page**: Consumes `/api/groups-2026/` — progress bars along 26-letter sequence, average progress by grade, sortable group detail table.
-- **Quality Flags page**: Consumes `/api/groups-2026/` — 5 flag types from nightly compute (same_letter_group, moving_too_fast, ghost_group, stagnation, curriculum_gaps). No lifecycle yet (FlagEvent model deferred to Phase 4).
+- **Letter Progress page**: Consumes `/api/groups-2026/` — progress bars along language-specific letter sequence, average progress by grade, sortable group detail table.
+- **Quality Flags page**: Consumes `/api/groups-2026/` — 7 flag types from nightly compute (same_letter_group, moving_too_fast, ghost_group, stagnation, curriculum_gaps, teaching_known, skipping_needed). `curriculum_gaps` displayed as "Not Following Letter Order". No lifecycle yet (FlagEvent model deferred to Phase 4).
+- **Letter Alignment page**: Consumes `/api/groups-2026/` for overview + `/api/letter-alignment/` for child drill-down. Per-child heatmap shows 5 states: mastered (orange), taught/needed (green), not reached (gray), skipped (red), teaching known (amber). Spec: `docs/superpowers/specs/2026-04-07-letter-alignment-design.md`.
+- **Language-aware letter sequences**: Three languages (isiXhosa: 26, English: 26, Afrikaans: 22 letters) with different pedagogical orders. Defined in Django `api/letter_constants.py` and Next.js `lib/pm/constants.ts` (`LETTER_SEQUENCES`). Group language determined bottom-up via participant_id → assessment linking.
 - **Group cohort filtering**: `filterGroupsByCohort` in `lib/pm/cohorts.ts` filters by `program_name` (groups use this instead of `school_name`).
 - **Spec**: `docs/superpowers/specs/2026-04-05-pm-dashboard-design.md`
 - **Plan**: `docs/superpowers/plans/2026-04-05-pm-dashboard-phase1.md`
@@ -116,6 +119,7 @@ A separate Django app at `DJANGO_API_URL` (hosted on Render) serves live school 
 - **`/pm/sessions`** — Fetches `/api/sessions-activity/` with ISR (300s). Returns daily trend, EA heatmap, distribution, school summary.
 - **`/pm/letter-progress`** — Fetches `/api/groups-2026/` with ISR (300s). Returns per-group letter progress, phase, flags.
 - **`/pm/quality-flags`** — Fetches `/api/groups-2026/` (same endpoint, uses flag fields).
+- **`/pm/letter-alignment`** — Fetches `/api/groups-2026/` for overview table + `/api/letter-alignment/` for per-child heatmap drill-down. Proxied via `/api/letter-alignment/route.ts`.
 
 Django source repo: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025`
 

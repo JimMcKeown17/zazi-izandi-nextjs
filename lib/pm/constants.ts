@@ -51,11 +51,16 @@ export const HEALTH_STATUS_CONFIG = {
   },
 } as const;
 
-export const LETTER_SEQUENCE = [
-  "a","e","i","o","u","b","l","m","k","p",
-  "s","h","z","n","d","y","f","w","v","x",
-  "g","t","q","r","c","j",
-] as const;
+export const LETTER_SEQUENCES: Record<string, readonly string[]> = {
+  isiXhosa: ["a","e","i","o","u","b","l","m","k","p","s","h","z","n","d","y","f","w","v","x","g","t","q","r","c","j"],
+  English: ["a","m","s","t","n","i","p","c","f","d","h","o","r","b","l","k","e","g","w","v","u","j","y","z","q","x"],
+  Afrikaans: ["o","i","a","u","e","s","n","m","d","l","t","k","f","b","p","y","r","v","w","h","g","j"],
+} as const;
+
+export const DEFAULT_LANGUAGE = "isiXhosa";
+
+/** @deprecated Use LETTER_SEQUENCES[language] instead */
+export const LETTER_SEQUENCE = LETTER_SEQUENCES[DEFAULT_LANGUAGE];
 
 export const CHART_COLORS = {
   primary: "#2c5aa0",
