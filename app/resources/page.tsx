@@ -24,6 +24,13 @@ const guides = [
     language: "isiXhosa",
   },
   {
+    title: "Teaching Assistant Guide w/ Blending — isiXhosa",
+    description:
+      "Extended teaching assistant guide in isiXhosa that includes blending instruction for combining letter sounds into syllables and words.",
+    href: "/open-source/guides/Zazi Zandi Teaching Assistant Guide w Blending (2).pdf",
+    language: "isiXhosa",
+  },
+  {
     title: "Teaching Assistant Guide — Afrikaans",
     description:
       "The full teaching assistant guide translated into Afrikaans for delivery in Afrikaans-medium classrooms.",
