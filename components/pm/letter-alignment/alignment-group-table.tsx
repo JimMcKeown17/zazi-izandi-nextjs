@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import type { GroupSummary, LetterAlignmentResponse } from "@/lib/pm/types";
+import type { GroupSummary, LetterAlignmentResponse, FlagEvidenceResponse } from "@/lib/pm/types";
 import { LETTER_SEQUENCES, DEFAULT_LANGUAGE } from "@/lib/pm/constants";
 import { AlignmentHeatmap } from "./alignment-heatmap";
-import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { RecentSessionsPanel } from "./recent-sessions-panel";
+import { ChevronDown, ChevronRight, Loader2, Info } from "lucide-react";
 
 interface Props {
   groups: GroupSummary[];
@@ -26,6 +27,7 @@ function alignmentColor(score: number | null | undefined): string {
 export function AlignmentGroupTable({ groups }: Props) {
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [alignmentData, setAlignmentData] = useState<LetterAlignmentResponse | null>(null);
+  const [sessionsData, setSessionsData] = useState<FlagEvidenceResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"school" | "alignment" | "flags">("school");
@@ -59,20 +61,32 @@ export function AlignmentGroupTable({ groups }: Props) {
     if (expandedGroup === key) {
       setExpandedGroup(null);
       setAlignmentData(null);
+      setSessionsData(null);
       return;
     }
 
     setExpandedGroup(key);
     setLoading(true);
     setAlignmentData(null);
+    setSessionsData(null);
 
     try {
-      const alignRes = await fetch(
-        `/api/letter-alignment/?school=${encodeURIComponent(g.program_name)}&group=${encodeURIComponent(g.class_name)}`
-      );
+      // Fetch both alignment and session data in parallel
+      const [alignRes, sessionsRes] = await Promise.all([
+        fetch(
+          `/api/letter-alignment/?school=${encodeURIComponent(g.program_name)}&group=${encodeURIComponent(g.class_name)}`
+        ),
+        fetch(
+          `/api/flag-evidence/?school=${encodeURIComponent(g.program_name)}&group=${encodeURIComponent(g.class_name)}`
+        ),
+      ]);
+
+      if (sessionsRes.ok) {
+        setSessionsData(await sessionsRes.json());
+      }
+
       if (alignRes.ok) {
         const data = await alignRes.json();
-        // API returns an array; take the first matching group
         if (Array.isArray(data) && data.length > 0) {
           setAlignmentData(data[0]);
         }
@@ -123,7 +137,7 @@ export function AlignmentGroupTable({ groups }: Props) {
               <th className="px-2 py-2">Lang</th>
               <th className="px-2 py-2 text-right">Children</th>
               <th className="px-2 py-2 text-right">Assessed</th>
-              <th className="px-2 py-2 text-right">Alignment</th>
+              <th className="px-2 py-2 text-right" title="% of taught letters that each child actually needs. 100% = perfect fit, 0% = all taught letters already known.">Alignment</th>
               <th className="px-2 py-2">Flags</th>
             </tr>
           </thead>
@@ -170,7 +184,7 @@ export function AlignmentGroupTable({ groups }: Props) {
                       <div className="flex gap-1">
                         {g.flags.skipping_needed && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] bg-red-100 text-red-700">
-                            Skipping Needed
+                            Letters Skipped
                           </span>
                         )}
                         {g.flags.teaching_known && (
@@ -198,7 +212,14 @@ export function AlignmentGroupTable({ groups }: Props) {
                             Loading alignment data...
                           </div>
                         ) : alignmentData ? (
-                          <AlignmentHeatmap data={alignmentData} />
+                          <div className="flex gap-4">
+                            <div className="flex-1 min-w-0">
+                              <AlignmentHeatmap data={alignmentData} />
+                            </div>
+                            <div className="w-48 shrink-0">
+                              <RecentSessionsPanel sessions={sessionsData?.sessions ?? []} />
+                            </div>
+                          </div>
                         ) : (
                           <div className="text-center py-6 text-sm text-slate-400">
                             No alignment data available for this group.

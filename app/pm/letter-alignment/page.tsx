@@ -50,7 +50,11 @@ export default async function LetterAlignmentPage({ searchParams }: Props) {
           <span className="font-medium text-red-700">Red (skipped)</span> = letters the child needs but
           the EA moved past.{" "}
           <span className="font-medium text-amber-700">Amber (teaching known)</span> = letters the child
-          already mastered but are still being taught. Click a group row to see the per-child heatmap.
+          already mastered but are still being taught.{" "}
+          <span className="font-semibold">Alignment score</span> = the percentage of letters being taught
+          that the child actually still needs to learn. A child who already knows most letters will naturally
+          score lower, even if the EA is teaching correctly for the group overall.
+          Click a group row to see the per-child heatmap and recent session detail.
         </div>
       </div>
 

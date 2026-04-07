@@ -20,7 +20,7 @@ const FLAG_LABELS: Record<FlagKey, string> = {
   stagnation: "Stagnation",
   curriculum_gaps: "Not Following Letter Order",
   teaching_known: "Teaching Known Letters",
-  skipping_needed: "Skipping Needed Letters",
+  skipping_needed: "Letters Skipped",
 };
 
 const FLAG_COLORS: Record<FlagKey, string> = {
