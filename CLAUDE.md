@@ -17,51 +17,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Clerk au
 
 ## Architecture
 
-Frontend-only Next.js site for **Zazi iZandi**, a South African early literacy intervention program. One proxy route (`app/api/flag-evidence/route.ts`) forwards client-side evidence requests to Django to avoid CORS. All backend logic lives in a separate [Django app on Render](documentation/data-and-backend.md).
-
-### Directory Structure
-
-```
-app/                        # App Router pages (each route is a page.tsx)
-├── globals.css             # Theme: colors, animations, custom classes
-├─�� layout.tsx              # Root layout (fonts only — no Header/Footer)
-├── page.tsx                # Home (/)
-├── about/ impact/ methodology/ media/ resources/
-├── pm/                     # PM Dashboard (protected, min role: funder)
-│   ├── layout.tsx          # Dashboard shell — sidebar + content (no Header/Footer)
-│   ├── page.tsx            # /pm → Overview command center
-│   └── schools/            # /pm/schools, /pm/schools/[school-name]
-├── schools/                # Protected (Clerk RBAC, min role: funder)
-├── schools-2025/           # Placeholder "coming soon"
-├── schools-2026/           # Live data from Django API (ISR, 300s)
-├── data-portal/            # Embedded iframe to external BI tool
-└── login/[[...sign-in]]/   # Clerk sign-in
-components/
-├── layout/                 # header.tsx (client), footer.tsx
-├── pm/                     # PM Dashboard components
-│   ├── layout/             # pm-sidebar.tsx, programme-context-bar.tsx, cohort-selector.tsx
-│   ├── shared/             # kpi-card.tsx, health-badge.tsx, dosage-badge.tsx
-│   ├── overview/           # overview-kpis.tsx, sessions-chart.tsx, dosage-distribution.tsx, school-table.tsx
-│   ├── schools/            # school-filters.tsx, school-detail-header.tsx
-│   ├── sessions/           # sessions-trend-chart.tsx, ea-heatmap.tsx, session-distribution.tsx, sessions-school-table.tsx
-│   ├── letter-progress/    # progress-overview.tsx, grade-progress-chart.tsx, group-detail-table.tsx
-│   ├── quality-flags/      # flag-summary-cards.tsx, flagged-items-table.tsx
-│   └── letter-alignment/   # alignment-kpis.tsx, alignment-group-table.tsx, alignment-heatmap.tsx
-├── home/ about/ impact/ methodology/ media/   # Page-specific sections
-├── schools/                # School map (Mapbox), EA cards
-├─�� schools-2026/           # 2026 school cards (live Django data)
-└── ui/                     # Radix/shadcn primitives
-lib/pm/                     # PM Dashboard data layer
-├── types.ts                # All TypeScript interfaces for PM API responses
-├── constants.ts            # Dosage thresholds, health status config, chart colors, LETTER_SEQUENCES (language-keyed)
-├── cohorts.ts              # School cohort lists (Treatment/SEF/ECD) and filter logic
-├── api.ts                  # Data fetching (Django API + mock fallback)
-└── mock-data.ts            # Mock data matching API contracts
-data/                       # Static JSON/CSV consumed at build time
-middleware.ts               # Clerk RBAC — protects /schools* and /pm* routes
-```
-
-See: [Routes](documentation/routes.md) · [Components](documentation/components.md)
+Frontend-only Next.js site for **Zazi iZandi**, a South African early literacy intervention program. Proxy routes (`app/api/*/route.ts`) forward client-side requests to Django to avoid CORS. All backend logic lives in a separate [Django app on Render](documentation/data-and-backend.md).
 
 ### Key Patterns
 
@@ -73,79 +29,21 @@ See: [Routes](documentation/routes.md) · [Components](documentation/components.
 - **Client components** used for browser APIs: Mapbox map, scroll animations, header nav, Recharts charts, interactive filters.
 - **shadcn config:** `components.json` — style "new-york", RSC enabled, Lucide icons, aliases at `@/components`, `@/lib`, `@/components/ui`.
 
-### PM Dashboard Architecture
-
-The `/pm/*` pages form a self-contained dashboard app with a distinct layout:
-- **Dashboard shell** (`app/pm/layout.tsx`): left sidebar + content area, no Header/Footer
-- **Sidebar** (`pm-sidebar.tsx`): dark theme, responsive (full → icon-only → mobile bottom tabs)
-- **Programme context bar**: dark header with programme week, cohort selector, health badge, data freshness
-- **Cohort filter**: global `?cohort=treatment|sef|ecd|all` URL param, defaults to `treatment`. Cohort lists in `lib/pm/cohorts.ts`.
-- **Data fetching**: server components fetch from Django API with ISR (5-min revalidation). API layer returns `{ data, isLive }` — pages show amber banner when using mock data fallback.
-- **Charts**: Recharts (client components) for line charts, bar charts. Wrapped in server component pages.
-- **Dosage calculation**: per-group `first_session_date` (not global programme start). Teaching start date = 2026-03-08. School holidays excluded from programme-day denominators (see `SCHOOL_HOLIDAYS_2026` in Django `api/views.py`).
-- **KPI layout**: 3 rows — aggregate (schools/EAs/children), group performance (dosage/on-track/flags), EA performance (sessions per day worked/on-track EAs/sessions per programme day).
-- **Phase 2 pages**: `/pm/sessions` (trend + EA heatmap + distribution), `/pm/letter-progress` (progress bars + grade chart + group table), `/pm/quality-flags` (flag summary cards + flagged items table). All consume live Django data.
-- **Sessions page**: Consumes `/api/sessions-activity/` — daily trend, EA heatmap (last 10 weekdays), session distribution histogram, school summary table.
-- **Letter Progress page**: Consumes `/api/groups-2026/` — progress bars along language-specific letter sequence, average progress by grade, sortable group detail table.
-- **Quality Flags page**: Consumes `/api/groups-2026/` — 7 flag types from nightly compute (same_letter_group, moving_too_fast, ghost_group, stagnation, curriculum_gaps, teaching_known, skipping_needed). `curriculum_gaps` displayed as "Not Following Letter Order". No lifecycle yet (FlagEvent model deferred to Phase 4).
-- **Letter Alignment page**: Consumes `/api/groups-2026/` for overview + `/api/letter-alignment/` for child drill-down. Per-child heatmap shows 5 states: mastered (orange), taught/needed (green), not reached (gray), skipped (red), teaching known (amber). Spec: `docs/superpowers/specs/2026-04-07-letter-alignment-design.md`.
-- **Language-aware letter sequences**: Three languages (isiXhosa: 26, English: 26, Afrikaans: 22 letters) with different pedagogical orders. Defined in Django `api/letter_constants.py` and Next.js `lib/pm/constants.ts` (`LETTER_SEQUENCES`). Group language determined bottom-up via participant_id → assessment linking.
-- **Group cohort filtering**: `filterGroupsByCohort` in `lib/pm/cohorts.ts` filters by `program_name` (groups use this instead of `school_name`).
-- **Spec**: `docs/superpowers/specs/2026-04-05-pm-dashboard-design.md`
-- **Plan**: `docs/superpowers/plans/2026-04-05-pm-dashboard-phase1.md`
-
 ## Authentication (Clerk RBAC)
 
-Middleware at `middleware.ts` protects `/schools*` and `/pm*` routes with role-based access:
-
-| Role | Level | Notes |
-|------|-------|-------|
-| `funder` | 1 | Minimum for `/schools*` and `/pm*` |
-| `junior_staff` | 2 | |
-| `senior_staff` | 3 | |
-| `admin` | 4 | Full access |
-
-Roles set in **Clerk Dashboard** → User → publicMetadata: `{ "role": "funder" }`.
-Session token must include custom claim: `{ "metadata": "{{user.public_metadata}}" }`.
-Unauthenticated users redirect to `/login?redirect_url=...`.
+Middleware at `middleware.ts` protects `/schools*` and `/pm*` routes. Roles: `funder` (min) → `junior_staff` → `senior_staff` → `admin`. Set in Clerk Dashboard → publicMetadata: `{ "role": "funder" }`. Session token needs custom claim: `{ "metadata": "{{user.public_metadata}}" }`.
 
 ## Django Backend
 
-A separate Django app at `DJANGO_API_URL` (hosted on Render) serves live school data. The Next.js frontend consumes:
+Django source: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025`. Hosted on Render at `DJANGO_API_URL`. Nightly cron syncs from TeamPact API + computes group summaries and letter alignment.
 
-- **`/schools-2026`** — Fetches `/api/schools-2026/` with ISR (300s)
-- **`/pm`** — Fetches `/api/programme-overview/` with ISR (300s). Includes sessions_time_series (daily counts by school type).
-- **`/pm/schools`** — Fetches `/api/schools-2026/` (same endpoint, filtered by cohort in frontend)
-- **`/pm/sessions`** — Fetches `/api/sessions-activity/` with ISR (300s). Returns daily trend, EA heatmap, distribution, school summary.
-- **`/pm/letter-progress`** — Fetches `/api/groups-2026/` with ISR (300s). Returns per-group letter progress, phase, flags.
-- **`/pm/quality-flags`** — Fetches `/api/groups-2026/` (same endpoint, uses flag fields).
-- **`/pm/letter-alignment`** — Fetches `/api/groups-2026/` for overview table + `/api/letter-alignment/` for per-child heatmap drill-down. Proxied via `/api/letter-alignment/route.ts`.
+## Brand Colors
 
-Django source repo: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025`
-
-See: [Data & Backend](documentation/data-and-backend.md)
-
-## Brand & Colors
-
-| Token | Hex | Usage |
-|-------|-----|-------|
-| `primary` | `#2c5aa0` | Primary blue — headings, buttons, borders |
-| `accent-yellow` | `#ffd641` | Brand yellow — accents, CTAs, icons. Use liberally. |
-| `accent-red` | `#e74c3c` | Alert/emphasis |
-| `primary-50`–`primary-900` | — | Full blue palette in `globals.css` |
-
-See: [Styling & Theme](documentation/styling.md)
+`primary` (#2c5aa0) · `accent-yellow` (#ffd641) · `accent-red` (#e74c3c). Full palette in `globals.css`.
 
 ## Environment Variables
 
-See `.env.example` for all variables. **Required for development:**
-
-| Variable | Purpose |
-|----------|---------|
-| `NEXT_PUBLIC_MAPBOX_TOKEN` | Mapbox GL map on `/schools` |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk auth (public) |
-| `CLERK_SECRET_KEY` | Clerk auth (server) |
-| `DJANGO_API_URL` | Django backend for `/schools-2026` |
+See `.env.example`. Required: `NEXT_PUBLIC_MAPBOX_TOKEN`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `DJANGO_API_URL`.
 
 ## Further Documentation
 
@@ -156,3 +54,4 @@ See `.env.example` for all variables. **Required for development:**
 | [documentation/styling.md](documentation/styling.md) | CSS custom properties, animations, utility classes |
 | [documentation/data-and-backend.md](documentation/data-and-backend.md) | Data files, Django API, ISR |
 | [documentation/assets.md](documentation/assets.md) | Static assets in `public/` |
+| [documentation/pm-dashboard-architecture.md](documentation/pm-dashboard-architecture.md) | PM Dashboard pages, data flow, flags, language-aware letters, Django endpoints |
