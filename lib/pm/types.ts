@@ -155,6 +155,9 @@ export interface EAHeatmapRow {
   ea_name: string;
   school: string;
   cells: number[];
+  total_sessions?: number;
+  days_worked?: number;
+  avg_per_day_worked?: number | null;
 }
 
 export interface SessionDistributionBucket {

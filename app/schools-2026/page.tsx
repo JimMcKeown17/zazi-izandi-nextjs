@@ -2,8 +2,10 @@ import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
 import StatsSummary2026 from "@/components/schools-2026/stats-summary-2026";
 import SchoolCardsGrid2026 from "@/components/schools-2026/school-cards-grid-2026";
-import { type School2026Data } from "@/components/schools-2026/school-card-2026";
-import { CalendarDays, MapPin } from "lucide-react";
+import type { School2026Data } from "@/lib/schools-2026/school2026-data";
+import { getGroups2026, getSessionsActivity } from "@/lib/pm/api";
+import { enrichSchoolsWithGroups } from "@/lib/schools-2026/enrich";
+import { CalendarDays, MapPin, AlertTriangle } from "lucide-react";
 
 interface Schools2026ApiResponse {
   generated_at: string;
@@ -42,7 +44,23 @@ async function getSchools2026Data(): Promise<Schools2026ApiResponse | null> {
 }
 
 export default async function Schools2026Page() {
-  const data = await getSchools2026Data();
+  // Fetch all three endpoints in parallel
+  const [schoolsData, groupsResult, sessionsResult] = await Promise.all([
+    getSchools2026Data(),
+    getGroups2026(),
+    getSessionsActivity(30, "all"),
+  ]);
+
+  // Enrich schools with group-level EA data + heatmap data
+  const enrichedSchools = schoolsData
+    ? enrichSchoolsWithGroups(
+        schoolsData.schools,
+        groupsResult.isLive ? groupsResult.data.groups : [],
+        sessionsResult.isLive ? sessionsResult.data.ea_heatmap.eas : []
+      )
+    : null;
+
+  const groupsAvailable = groupsResult.isLive;
 
   return (
     <>
@@ -56,23 +74,35 @@ export default async function Schools2026Page() {
               2026 Schools
             </h1>
             <p className="text-lg md:text-xl max-w-2xl mx-auto text-white/90">
-              Live session data and dosage tracking across all Zazi iZandi
-              schools
+              Live session data, dosage tracking, and quality monitoring across
+              all Zazi iZandi schools
             </p>
           </div>
         </section>
 
-        {data ? (
+        {schoolsData && enrichedSchools ? (
           <>
+            {/* Degradation banner */}
+            {!groupsAvailable && (
+              <div className="bg-amber-50 border-b border-amber-200 px-4 py-3">
+                <div className="container flex items-center gap-2 text-amber-800 text-sm">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>
+                    Detailed EA data unavailable — showing summary view
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Stats Summary */}
             <section className="py-12 bg-white">
               <div className="container">
                 <StatsSummary2026
-                  totalSchools={data.summary.total_schools}
-                  totalEAs={data.summary.total_eas}
-                  totalChildren={data.summary.total_children}
+                  totalSchools={schoolsData.summary.total_schools}
+                  totalEAs={schoolsData.summary.total_eas}
+                  totalChildren={schoolsData.summary.total_children}
                   totalSessionsThisMonth={
-                    data.summary.total_sessions_this_month
+                    schoolsData.summary.total_sessions_this_month
                   }
                 />
               </div>
@@ -87,13 +117,17 @@ export default async function Schools2026Page() {
                       School Dosage Overview
                     </h2>
                     <p className="text-gray-600">
-                      Session frequency and flag tracking per school — colour
-                      coded by average sessions per group per week
+                      Session frequency, quality flags, and EA performance per
+                      school — colour coded by average sessions per group per
+                      week
                     </p>
                   </div>
                 </div>
 
-                <SchoolCardsGrid2026 schools={data.schools} />
+                <SchoolCardsGrid2026
+                  schools={enrichedSchools}
+                  groupsAvailable={groupsAvailable}
+                />
               </div>
             </section>
           </>

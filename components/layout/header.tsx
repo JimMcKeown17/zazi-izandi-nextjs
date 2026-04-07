@@ -127,9 +127,9 @@ const NAV_GROUPS: NavGroup[] = [
         icon: MapPin,
       },
       {
-        name: "2026 Schools (Legacy)",
+        name: "2026 Schools",
         href: "/schools-2026",
-        description: "Original 2026 school cards view",
+        description: "Live school dosage and quality monitoring",
         icon: CalendarDays,
       },
     ],

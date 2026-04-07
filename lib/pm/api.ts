@@ -11,7 +11,7 @@ import {
   MOCK_SCHOOL_ROWS,
   getMockSchoolDetail,
 } from "./mock-data";
-import type { School2026Data } from "@/components/schools-2026/school-card-2026";
+import type { School2026Data } from "@/lib/schools-2026/school2026-data";
 
 // ─── Programme Overview ──────────────────────────────────────────
 
