@@ -1,212 +1,158 @@
 "use client";
 
 import { useState } from "react";
-import {
-  ChevronDown,
-  ChevronUp,
-  Check,
-  AlertTriangle,
-  Users,
-} from "lucide-react";
+import { ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type {
-  EnrichedSchool2026,
-  EADetail,
-} from "@/lib/schools-2026/types";
+import { getDosageLevel, DOSAGE_LABELS } from "@/lib/schools-2026/dosage";
+import type { EnrichedSchool2026, EADetail } from "@/lib/schools-2026/types";
 
 interface SchoolCard2026Props {
   data: EnrichedSchool2026;
   groupsAvailable: boolean;
 }
 
-// ─── Dosage color logic (shared across school + EA levels) ───────
+// ─── Styling maps ──────────────────────────────────────────────
 
-type DosageLevel = "green" | "yellow" | "red";
+const CHIP_STYLES = {
+  green: "bg-green-100 text-green-800",
+  yellow: "bg-amber-100 text-amber-800",
+  red: "bg-red-100 text-red-800",
+} as const;
 
-function getDosageLevel(avg: number): DosageLevel {
-  if (avg >= 3) return "green";
-  if (avg >= 2) return "yellow";
-  return "red";
-}
+const BORDER_COLORS = {
+  green: "border-l-green-500",
+  yellow: "border-l-amber-500",
+  red: "border-l-red-500",
+} as const;
+
+const DOSAGE_TEXT = {
+  green: "text-green-700",
+  yellow: "text-amber-700",
+  red: "text-red-700",
+} as const;
+
+const DOT_COLORS = {
+  green: "bg-green-500",
+  yellow: "bg-amber-500",
+  red: "bg-red-500",
+} as const;
 
 function getAvgDayColor(val: number | null): string {
   if (val === null) return "text-gray-400";
   if (val >= 2.5) return "text-green-700";
-  if (val >= 1.5) return "text-yellow-700";
+  if (val >= 1.5) return "text-amber-700";
   return "text-red-700";
 }
 
-function getAvgDayBorder(val: number | null): string {
-  if (val === null) return "";
-  if (val >= 2.5) return "border-l-green-500 border-l-2";
-  if (val >= 1.5) return "border-l-yellow-500 border-l-2";
-  return "border-l-red-500 border-l-2";
-}
+// ─── Allowed flags (EA dropdown only) ──────────────────────────
 
-const DOSAGE_STYLES = {
-  green: {
-    bg: "bg-gradient-to-br from-green-50 to-emerald-50",
-    border: "border-green-500",
-    badgeBg: "bg-green-500",
-    badgePill: "bg-green-100 text-green-800",
-    text: "text-green-700",
-    label: "On Track",
-  },
-  yellow: {
-    bg: "bg-gradient-to-br from-yellow-50 to-amber-50",
-    border: "border-yellow-500",
-    badgeBg: "bg-yellow-500",
-    badgePill: "bg-yellow-100 text-yellow-800",
-    text: "text-yellow-700",
-    label: "Needs Attention",
-  },
-  red: {
-    bg: "bg-gradient-to-br from-red-50 to-rose-50",
-    border: "border-red-500",
-    badgeBg: "bg-red-500",
-    badgePill: "bg-red-100 text-red-800",
-    text: "text-red-700",
-    label: "Low Dosage",
-  },
-} as const;
-
-const EA_PILL_STYLES = {
-  green: "bg-green-100 text-green-800",
-  yellow: "bg-yellow-100 text-yellow-800",
-  red: "bg-red-100 text-red-800",
-} as const;
-
-const EA_BORDER_STYLES = {
-  green: "border-l-green-500",
-  yellow: "border-l-yellow-500",
-  red: "border-l-red-500",
-} as const;
-
-// ─── Flag badge config ──────────────────────────────────────────
+const ALLOWED_FLAGS = ["same_letter_group", "ghost_group", "moving_too_fast"] as const;
 
 const FLAG_LABELS: Record<string, { label: string; className: string }> = {
-  stagnation: { label: "Stagnation", className: "bg-red-50 border-red-400 text-red-700" },
   same_letter_group: {
     label: "Same Letter",
-    className: "bg-orange-50 border-orange-400 text-orange-700",
+    className: "bg-orange-50 border-orange-300 text-orange-700",
+  },
+  ghost_group: {
+    label: "Ghost Group",
+    className: "bg-gray-50 border-gray-300 text-gray-600",
   },
   moving_too_fast: {
     label: "Moving Fast",
-    className: "bg-amber-50 border-amber-400 text-amber-700",
-  },
-  ghost_group: { label: "Ghost Group", className: "bg-gray-100 border-gray-400 text-gray-700" },
-  curriculum_gaps: {
-    label: "Curriculum Gaps",
-    className: "bg-purple-50 border-purple-400 text-purple-700",
+    className: "bg-amber-50 border-amber-300 text-amber-700",
   },
 };
 
-// ─── Main Component ─────────────────────────────────────────────
+// ─── Main Component ────────────────────────────────────────────
 
 export default function SchoolCard2026({
   data,
   groupsAvailable,
 }: SchoolCard2026Props) {
   const [expanded, setExpanded] = useState(false);
-  const level = getDosageLevel(data.avg_sessions_per_group_per_week);
-  const style = DOSAGE_STYLES[level];
+  const level = getDosageLevel(data.avg_sessions_per_group_per_week, data.school_type);
 
   return (
     <Card
-      className={`${style.bg} ${style.border} border-l-4 hover:shadow-xl transition-all duration-300 overflow-hidden h-full flex flex-col`}
+      className={`bg-white border border-gray-200 ${BORDER_COLORS[level]} border-l-[3px] hover:shadow-md transition-shadow duration-200 overflow-hidden h-full flex flex-col`}
     >
-      <CardHeader className="pb-3">
-        {/* Header: name + dosage badge */}
-        <div className="flex items-start justify-between mb-2">
-          <div className="flex-1">
-            <h3 className="text-xl font-bold text-gray-900 mb-1">
-              {data.school_name}
-            </h3>
-            <Badge variant="outline" className="text-xs font-medium">
-              {data.school_type}
-            </Badge>
-          </div>
-          <div
-            className={`${style.badgeBg} text-white text-xs font-bold px-3 py-1 rounded-full shadow-sm shrink-0 ml-2`}
+      <CardHeader className="pb-2 pt-5 px-6">
+        {/* Header: name + status chip */}
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <h3 className="text-xl font-semibold text-gray-900 leading-tight">
+            {data.school_name}
+          </h3>
+          <span
+            className={`${CHIP_STYLES[level]} text-xs font-semibold px-2.5 py-0.5 rounded-full shrink-0 whitespace-nowrap`}
           >
-            {style.label}
-          </div>
+            {DOSAGE_LABELS[level]}
+          </span>
         </div>
 
-        {/* EA name pills */}
-        <div className="flex items-center gap-2 text-sm text-gray-600 mt-2">
-          <Users className="h-4 w-4 shrink-0" />
-          <div className="flex flex-wrap gap-1.5">
-            {data.eas.map((ea) => {
-              const eaLevel = getDosageLevel(ea.avg_sessions_per_group_per_week);
-              return (
-                <span
-                  key={ea.name}
-                  className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${EA_PILL_STYLES[eaLevel]}`}
-                >
-                  {ea.name}
-                  {ea.has_flags && (
-                    <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
-                  )}
-                </span>
-              );
-            })}
-            {data.eas.length === 0 && data.ea_count > 0 && (
-              <span className="text-sm text-gray-400 italic">
-                {data.ea_count} EAs
-              </span>
-            )}
-          </div>
-        </div>
+        {/* Metadata line */}
+        <p className="text-[13px] text-gray-500">
+          {data.school_type} · {data.ea_count} EA{data.ea_count !== 1 ? "s" : ""} · {data.children_count} children
+        </p>
       </CardHeader>
 
-      <CardContent className="space-y-3 flex-1 flex flex-col">
-        {/* Counts row — compact horizontal */}
-        <div className="flex gap-4 text-sm">
-          <div className="bg-white/70 rounded-lg px-4 py-2 flex items-center gap-2">
-            <span className="text-gray-500">EAs</span>
-            <span className="font-bold text-gray-900">{data.ea_count}</span>
+      <CardContent className="px-6 pb-5 flex-1 flex flex-col">
+        {/* Hero metric: Dosage */}
+        <div className="text-center py-4">
+          <div className={`text-4xl font-bold ${DOSAGE_TEXT[level]}`}>
+            {data.weighted_dosage.toFixed(1)}
           </div>
-          <div className="bg-white/70 rounded-lg px-4 py-2 flex items-center gap-2">
-            <span className="text-gray-500">Children</span>
-            <span className="font-bold text-gray-900">{data.children_count}</span>
+          <div className="text-[13px] text-gray-400 mt-0.5">
+            sessions / group / week
           </div>
         </div>
 
-        {/* Key performance metrics — 3 prominent boxes */}
-        <div className="grid grid-cols-3 gap-3">
-          <div
-            className={`bg-white/70 rounded-lg p-3 text-center ${getAvgDayBorder(data.avg_per_day_worked)}`}
-          >
-            <div className="text-xs text-gray-500 mb-0.5">Avg / Day Worked</div>
-            <div className={`text-xl font-bold ${getAvgDayColor(data.avg_per_day_worked)}`}>
+        {/* Secondary stats — plain row */}
+        <div className="flex justify-between text-sm mb-4">
+          <div>
+            <span className="text-gray-500">Avg/day worked </span>
+            <span className={`font-medium ${getAvgDayColor(data.avg_per_day_worked)}`}>
               {data.avg_per_day_worked?.toFixed(1) ?? "—"}
-            </div>
+            </span>
           </div>
-          <div
-            className={`bg-white/70 rounded-lg p-3 text-center ${style.border} border-l-2`}
-          >
-            <div className="text-xs text-gray-500 mb-1">Dosage</div>
-            <div className={`text-xl font-bold ${style.text}`}>
-              {data.weighted_dosage.toFixed(1)}
-            </div>
-          </div>
-          <div className="bg-white/70 rounded-lg p-3 text-center">
-            <div className="text-xs text-gray-500 mb-1">Sessions This Wk</div>
-            <div className="text-xl font-bold text-gray-900">
+          <div>
+            <span className="text-gray-500">Sessions this week </span>
+            <span className="font-medium text-gray-900">
               {data.sessions_this_week}
-            </div>
+            </span>
           </div>
         </div>
 
-        {/* Flag bar */}
-        <FlagBar
-          totalFlags={data.total_flags}
-          breakdown={data.flag_breakdown}
-        />
+        {/* EA name dots */}
+        <div className="flex flex-wrap gap-x-3 gap-y-1.5 mb-3">
+          {data.eas.map((ea) => {
+            const eaLevel = getDosageLevel(
+              ea.avg_sessions_per_group_per_week,
+              data.school_type
+            );
+            return (
+              <span
+                key={ea.name}
+                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-gray-700"
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${DOT_COLORS[eaLevel]} shrink-0`}
+                />
+                {ea.name}
+                {ea.has_flags && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                )}
+              </span>
+            );
+          })}
+          {data.eas.length === 0 && data.ea_count > 0 && (
+            <span className="text-[13px] text-gray-400 italic">
+              {data.ea_count} EA{data.ea_count !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
 
-        {/* Spacer to push expand toggle to bottom */}
+        {/* Spacer */}
         <div className="flex-1" />
 
         {/* Expand toggle */}
@@ -214,7 +160,7 @@ export default function SchoolCard2026({
           <button
             onClick={() => setExpanded((v) => !v)}
             aria-expanded={expanded}
-            className="w-full flex items-center justify-center gap-1.5 py-2.5 text-sm text-gray-400 hover:text-gray-600 hover:bg-white/40 transition-colors border-t border-gray-200/60 rounded-b-lg"
+            className="w-full flex items-center justify-center gap-1.5 py-2 text-sm text-gray-400 hover:text-gray-600 transition-colors border-t border-gray-100 mt-2"
           >
             {expanded ? (
               <>
@@ -231,9 +177,13 @@ export default function SchoolCard2026({
 
       {/* ── Expanded Section ──────────────────────────── */}
       {expanded && (
-        <div className="bg-gray-50/80 border-t-2 border-gray-200 px-5 py-5 space-y-4">
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-5 space-y-3">
           {data.eas.map((ea) => (
-            <EADetailRow key={ea.name} ea={ea} />
+            <EADetailRow
+              key={ea.name}
+              ea={ea}
+              schoolType={data.school_type}
+            />
           ))}
         </div>
       )}
@@ -241,112 +191,71 @@ export default function SchoolCard2026({
   );
 }
 
-// ─── Flag Bar (collapsed) ───────────────────────────────────────
+// ─── EA Detail Row (expanded) ──────────────────────────────────
 
-function FlagBar({
-  totalFlags,
-  breakdown,
+function EADetailRow({
+  ea,
+  schoolType,
 }: {
-  totalFlags: number;
-  breakdown: EnrichedSchool2026["flag_breakdown"];
+  ea: EADetail;
+  schoolType: string;
 }) {
-  if (totalFlags === 0) {
-    return (
-      <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-green-50 border border-green-200 text-sm text-green-700">
-        <Check className="h-4 w-4" />
-        <span>No active flags</span>
-      </div>
-    );
-  }
+  const level = getDosageLevel(ea.avg_sessions_per_group_per_week, schoolType);
 
-  const flagTypes = Object.entries(breakdown)
-    .filter(([, count]) => count > 0)
-    .map(([key, count]) => {
-      const config = FLAG_LABELS[key];
-      return { key, text: `${config?.label ?? key}: ${count}`, config };
-    });
-
-  return (
-    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-200">
-      <span className="flex items-center gap-1.5 text-sm text-amber-800 font-semibold">
-        <AlertTriangle className="h-4 w-4" />
-        {totalFlags} flag{totalFlags !== 1 ? "s" : ""}
-      </span>
-      {flagTypes.map(({ key, text, config }) => (
-        <Badge
-          key={key}
-          variant="outline"
-          className={`text-xs gap-1 ${config?.className ?? ""}`}
-        >
-          <AlertTriangle className="h-3 w-3" />
-          {text}
-        </Badge>
-      ))}
-    </div>
-  );
-}
-
-// ─── EA Detail Row (expanded) ───────────────────────────────────
-
-function EADetailRow({ ea }: { ea: EADetail }) {
-  const level = getDosageLevel(ea.avg_sessions_per_group_per_week);
-
-  // Collect active flag types across all groups
-  const activeFlags = new Set<string>();
-  for (const g of ea.groups) {
-    for (const [key, val] of Object.entries(g.flags)) {
-      if (val) activeFlags.add(key);
+  // Collect only the 3 allowed flag types
+  const activeFlags: { key: string; count: number }[] = [];
+  for (const flagKey of ALLOWED_FLAGS) {
+    const count = ea.groups.filter(
+      (g) => g.flags[flagKey as keyof typeof g.flags]
+    ).length;
+    if (count > 0) {
+      activeFlags.push({ key: flagKey, count });
     }
   }
 
   return (
     <div
-      className={`bg-white rounded-lg border border-gray-200 border-l-4 ${EA_BORDER_STYLES[level]} p-4`}
+      className={`bg-white rounded-lg border border-gray-200 border-l-2 ${BORDER_COLORS[level]} p-4`}
     >
       {/* EA header */}
       <div className="flex items-center justify-between mb-3">
-        <span className="font-bold text-base text-gray-900">{ea.name}</span>
+        <span className="font-semibold text-base text-gray-900">{ea.name}</span>
         <span className="text-sm text-gray-500">
-          {ea.groups_count} groups · {ea.children_count} children ·{" "}
-          {ea.sessions_this_week} this wk
+          {ea.groups_count} group{ea.groups_count !== 1 ? "s" : ""} · {ea.children_count} children · {ea.sessions_this_week} this wk
         </span>
       </div>
 
-      {/* Per-EA metric boxes */}
-      <div className="grid grid-cols-3 gap-3 mb-3">
-        <div className={`bg-gray-50 rounded-lg p-3 text-center ${getAvgDayBorder(ea.avg_per_day_worked)}`}>
-          <div className="text-xs text-gray-500 mb-0.5">Avg / Day Worked</div>
-          <div className={`text-lg font-bold ${getAvgDayColor(ea.avg_per_day_worked)}`}>
+      {/* Per-EA metrics — plain text, no boxes */}
+      <div className="flex gap-6 text-sm mb-3">
+        <div>
+          <span className="text-gray-500">Avg/day </span>
+          <span className={`font-medium ${getAvgDayColor(ea.avg_per_day_worked)}`}>
             {ea.avg_per_day_worked?.toFixed(1) ?? "—"}
-          </div>
-          <div className="text-[0.6rem] text-gray-400">last 10 days</div>
+          </span>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3 text-center">
-          <div className="text-xs text-gray-500 mb-1">Avg / Prog Day</div>
-          <div className={`text-lg font-bold ${getAvgDayColor(ea.avg_per_programme_day)}`}>
+        <div>
+          <span className="text-gray-500">Avg/prog day </span>
+          <span className={`font-medium ${getAvgDayColor(ea.avg_per_programme_day)}`}>
             {ea.avg_per_programme_day?.toFixed(1) ?? "—"}
-          </div>
+          </span>
         </div>
-        <div className={`bg-gray-50 rounded-lg p-3 text-center ${DOSAGE_STYLES[level].border} border-l-2`}>
-          <div className="text-xs text-gray-500 mb-1">Dosage</div>
-          <div className={`text-lg font-bold ${DOSAGE_STYLES[level].text}`}>
+        <div>
+          <span className="text-gray-500">Dosage </span>
+          <span className={`font-medium ${DOSAGE_TEXT[level]}`}>
             {ea.weighted_dosage.toFixed(1)}
-          </div>
+          </span>
         </div>
       </div>
 
-      {/* Flag badges */}
-      {activeFlags.size > 0 ? (
+      {/* Flag badges — only allowed 3 types */}
+      {activeFlags.length > 0 ? (
         <div className="flex flex-wrap gap-2">
-          {Array.from(activeFlags).map((flag) => {
-            const config = FLAG_LABELS[flag];
+          {activeFlags.map(({ key, count }) => {
+            const config = FLAG_LABELS[key];
             if (!config) return null;
-            const count = ea.groups.filter(
-              (g) => g.flags[flag as keyof typeof g.flags]
-            ).length;
             return (
               <Badge
-                key={flag}
+                key={key}
                 variant="outline"
                 className={`text-xs gap-1 ${config.className}`}
               >
@@ -357,7 +266,7 @@ function EADetailRow({ ea }: { ea: EADetail }) {
           })}
         </div>
       ) : (
-        <div className="text-sm text-gray-400 italic">No flags</div>
+        <div className="text-xs text-gray-400">No flags</div>
       )}
     </div>
   );
