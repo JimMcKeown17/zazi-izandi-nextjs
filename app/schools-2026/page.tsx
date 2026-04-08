@@ -67,12 +67,12 @@ export default async function Schools2026Page() {
       <Header />
       <main className="pt-20">
         {/* Minimal Hero */}
-        <section className="bg-white border-b border-gray-100 py-8">
+        <section className="bg-white pt-8 pb-4">
           <div className="container">
             <h1 className="text-3xl font-bold text-gray-900 mb-1">
               2026 Schools
             </h1>
-            <p className="text-base text-gray-500 mb-6">
+            <p className="text-base text-gray-500 mb-4">
               Live session data, dosage tracking, and quality monitoring
             </p>
 
@@ -126,9 +126,9 @@ export default async function Schools2026Page() {
             )}
 
             {/* Interactive Map */}
-            <section className="pt-4 pb-8 bg-white">
+            <section className="pb-8 bg-white">
               <div className="container">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                <h2 className="text-lg font-semibold text-gray-900 mb-3 mt-4">
                   School Locations
                 </h2>
                 <SchoolMap2026 schools={enrichedSchools} />
