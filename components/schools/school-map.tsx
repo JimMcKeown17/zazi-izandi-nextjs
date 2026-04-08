@@ -20,9 +20,11 @@ interface SchoolData {
 
 interface SchoolMapProps {
   schools: SchoolData[];
+  /** Optional custom popup HTML renderer. Receives the GeoJSON feature properties. */
+  renderPopupHtml?: (props: Record<string, unknown>) => string;
 }
 
-export default function SchoolMap({ schools }: SchoolMapProps) {
+export default function SchoolMap({ schools, renderPopupHtml }: SchoolMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -231,38 +233,43 @@ export default function SchoolMap({ schools }: SchoolMapProps) {
         const coordinates = (e.features[0].geometry as GeoJSON.Point).coordinates.slice();
         const props = e.features[0].properties;
 
-        // Get performance label and color
-        const performanceLabels: Record<string, { label: string; color: string }> = {
-          high: { label: "High Impact", color: "#10b981" },
-          good: { label: "Good Progress", color: "#f59e0b" },
-          low: { label: "Needs Support", color: "#ef4444" },
-        };
-        
-        const perfInfo = performanceLabels[props?.performance] || { label: "Unknown", color: "#2c5aa0" };
+        // Create popup content — use custom renderer if provided
+        let popupContent: string;
 
-        // Create popup content
-        const popupContent = `
-          <div style="padding: 12px; min-width: 220px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #2c5aa0;">
-                ${props?.name || "Unknown School"}
-              </h3>
-              <span style="background: ${perfInfo.color}; color: white; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 12px;">
-                ${perfInfo.label}
-              </span>
+        if (renderPopupHtml) {
+          popupContent = renderPopupHtml(props as Record<string, unknown>);
+        } else {
+          // Default 2025-style popup
+          const performanceLabels: Record<string, { label: string; color: string }> = {
+            high: { label: "High Impact", color: "#10b981" },
+            good: { label: "Good Progress", color: "#f59e0b" },
+            low: { label: "Needs Support", color: "#ef4444" },
+          };
+          const perfInfo = performanceLabels[props?.performance] || { label: "Unknown", color: "#2c5aa0" };
+
+          popupContent = `
+            <div style="padding: 12px; min-width: 220px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #2c5aa0;">
+                  ${props?.name || "Unknown School"}
+                </h3>
+                <span style="background: ${perfInfo.color}; color: white; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 12px;">
+                  ${perfInfo.label}
+                </span>
+              </div>
+              <div style="font-size: 13px; color: #4b5563; line-height: 1.6;">
+                <p style="margin: 4px 0;"><strong>NatEmis:</strong> ${props?.natEmis}</p>
+                <p style="margin: 4px 0;"><strong>Area:</strong> ${props?.area}</p>
+                <p style="margin: 4px 0;"><strong>CMC:</strong> ${props?.cmc}</p>
+                <p style="margin: 4px 0;"><strong>Circuit:</strong> ${props?.circuit}</p>
+                <p style="margin: 4px 0;"><strong>Phase:</strong> ${props?.phase}</p>
+                <p style="margin: 4px 0;"><strong>Grade R:</strong> ${props?.grR} students</p>
+                <p style="margin: 4px 0;"><strong>Grade 1:</strong> ${props?.gr1} students</p>
+                <p style="margin: 4px 0;"><strong>Years:</strong> ${props?.years}</p>
+              </div>
             </div>
-            <div style="font-size: 13px; color: #4b5563; line-height: 1.6;">
-              <p style="margin: 4px 0;"><strong>NatEmis:</strong> ${props?.natEmis}</p>
-              <p style="margin: 4px 0;"><strong>Area:</strong> ${props?.area}</p>
-              <p style="margin: 4px 0;"><strong>CMC:</strong> ${props?.cmc}</p>
-              <p style="margin: 4px 0;"><strong>Circuit:</strong> ${props?.circuit}</p>
-              <p style="margin: 4px 0;"><strong>Phase:</strong> ${props?.phase}</p>
-              <p style="margin: 4px 0;"><strong>Grade R:</strong> ${props?.grR} students</p>
-              <p style="margin: 4px 0;"><strong>Grade 1:</strong> ${props?.gr1} students</p>
-              <p style="margin: 4px 0;"><strong>Years:</strong> ${props?.years}</p>
-            </div>
-          </div>
-        `;
+          `;
+        }
 
         new mapboxgl.Popup()
           .setLngLat([coordinates[0], coordinates[1]])
