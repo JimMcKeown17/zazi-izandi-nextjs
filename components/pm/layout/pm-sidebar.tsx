@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import {
   LayoutDashboard,
@@ -45,6 +45,15 @@ interface PMSidebarProps {
 
 export function PMSidebar({ flagCount }: PMSidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  function buildHref(basePath: string): string {
+    const cohort = searchParams.get("cohort");
+    if (cohort && cohort !== "treatment") {
+      return `${basePath}?cohort=${encodeURIComponent(cohort)}`;
+    }
+    return basePath;
+  }
 
   function isActive(href: string, exact?: boolean): boolean {
     if (exact) return pathname === href;
@@ -57,7 +66,7 @@ export function PMSidebar({ flagCount }: PMSidebarProps) {
 
     return (
       <Link
-        href={item.href}
+        href={buildHref(item.href)}
         className={cn(
           "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors relative",
           active
@@ -129,7 +138,7 @@ export function PMSidebar({ flagCount }: PMSidebarProps) {
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={buildHref(item.href)}
               className={cn("p-2 rounded-md", active ? "text-accent-yellow" : "text-slate-400")}
             >
               <Icon className="h-5 w-5" />

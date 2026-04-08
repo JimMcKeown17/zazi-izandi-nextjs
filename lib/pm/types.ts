@@ -95,41 +95,6 @@ export interface SchoolPerformanceRow {
   flags_count: number;
 }
 
-export interface SchoolDetailResponse {
-  school_name: string;
-  school_type: string;
-  ea_count: number;
-  children_count: number;
-  groups_count: number;
-  total_sessions: number;
-  avg_sessions_per_group_per_week: number;
-  eas: EASummary[];
-  flags: SchoolFlag[];
-  recent_sessions: RecentSessionDay[];
-}
-
-export interface EASummary {
-  name: string;
-  groups_count: number;
-  children_count: number;
-  total_sessions: number;
-  sessions_this_week: number;
-  avg_sessions_per_group_per_week: number;
-  flags_count: number;
-}
-
-export interface SchoolFlag {
-  flag_type: string;
-  entity: string;
-  detail: string;
-  status: string;
-}
-
-export interface RecentSessionDay {
-  date: string;
-  session_count: number;
-}
-
 export interface PMNavItem {
   name: string;
   href: string;

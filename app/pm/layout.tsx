@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { getProgrammeOverview } from "@/lib/pm/api";
 import { PMSidebar } from "@/components/pm/layout/pm-sidebar";
 
@@ -16,7 +17,9 @@ export default async function PMLayout({
 
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <PMSidebar flagCount={flagCount} />
+      <Suspense fallback={null}>
+        <PMSidebar flagCount={flagCount} />
+      </Suspense>
       <main className="flex-1 min-w-0 p-4 md:p-6 overflow-x-hidden pb-16 md:pb-0">
         {children}
       </main>

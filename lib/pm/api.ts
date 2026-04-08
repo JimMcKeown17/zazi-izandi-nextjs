@@ -1,18 +1,14 @@
 import type {
   ProgrammeOverviewResponse,
   SchoolPerformanceRow,
-  SchoolDetailResponse,
   SessionsActivityResponse,
   Groups2026Response,
   FlagEvidenceResponse,
   LetterAlignmentResponse,
 } from "./types";
-import {
-  MOCK_PROGRAMME_OVERVIEW,
-  MOCK_SCHOOL_ROWS,
-  getMockSchoolDetail,
-} from "./mock-data";
 import type { School2026Data } from "@/lib/schools-2026/school2026-data";
+import type { EnrichedSchool2026 } from "@/lib/schools-2026/types";
+import { enrichSchoolsWithGroups } from "@/lib/schools-2026/enrich";
 
 // ─── Programme Overview ──────────────────────────────────────────
 
@@ -84,8 +80,8 @@ export async function getProgrammeOverview(
   const apiUrl = process.env.DJANGO_API_URL;
 
   if (!apiUrl) {
-    console.warn("[pm/api] DJANGO_API_URL not set — using mock data");
-    return { data: MOCK_PROGRAMME_OVERVIEW, isLive: false };
+    console.warn("[pm/api] DJANGO_API_URL not set — data unavailable");
+    return { data: EMPTY_PROGRAMME_OVERVIEW, isLive: false };
   }
 
   try {
@@ -95,14 +91,14 @@ export async function getProgrammeOverview(
     );
 
     if (!res.ok) {
-      console.error(`[pm/api] Programme overview returned ${res.status} — using mock data`);
-      return { data: MOCK_PROGRAMME_OVERVIEW, isLive: false };
+      console.error(`[pm/api] Programme overview returned ${res.status} — data unavailable`);
+      return { data: EMPTY_PROGRAMME_OVERVIEW, isLive: false };
     }
 
     return { data: transformOverviewResponse(await res.json()), isLive: true };
   } catch (error) {
     console.error("[pm/api] Failed to fetch programme overview:", error);
-    return { data: MOCK_PROGRAMME_OVERVIEW, isLive: false };
+    return { data: EMPTY_PROGRAMME_OVERVIEW, isLive: false };
   }
 }
 
@@ -151,8 +147,8 @@ export async function getSchoolPerformanceRows(): Promise<SchoolRowsResult> {
   const apiUrl = process.env.DJANGO_API_URL;
 
   if (!apiUrl) {
-    console.warn("[pm/api] DJANGO_API_URL not set — using mock school rows");
-    return { data: MOCK_SCHOOL_ROWS, isLive: false };
+    console.warn("[pm/api] DJANGO_API_URL not set — school data unavailable");
+    return { data: [], isLive: false };
   }
 
   try {
@@ -161,23 +157,70 @@ export async function getSchoolPerformanceRows(): Promise<SchoolRowsResult> {
     });
 
     if (!res.ok) {
-      console.error(`[pm/api] Schools API returned ${res.status} — using mock data`);
-      return { data: MOCK_SCHOOL_ROWS, isLive: false };
+      console.error(`[pm/api] Schools API returned ${res.status} — data unavailable`);
+      return { data: [], isLive: false };
     }
 
     const data: Schools2026ApiResponse = await res.json();
     return { data: transformToSchoolRows(data.schools), isLive: true };
   } catch (error) {
     console.error("[pm/api] Failed to fetch school rows:", error);
-    return { data: MOCK_SCHOOL_ROWS, isLive: false };
+    return { data: [], isLive: false };
   }
 }
 
 // ─── School Detail ───────────────────────────────────────────────
-// Uses mock data until a dedicated endpoint exists in Django.
+// Enriches data from schools-2026, groups-2026, and sessions-activity
+// endpoints to build a full school detail view.
 
-export async function getSchoolDetail(schoolSlug: string): Promise<SchoolDetailResponse> {
-  return getMockSchoolDetail(schoolSlug);
+export interface SchoolDetailResult {
+  data: EnrichedSchool2026 | null;
+  isLive: boolean;
+}
+
+export async function getSchoolDetail(
+  schoolSlug: string
+): Promise<SchoolDetailResult> {
+  const apiUrl = process.env.DJANGO_API_URL;
+
+  if (!apiUrl) {
+    return { data: null, isLive: false };
+  }
+
+  try {
+    const [schoolsRes, groupsRes, sessionsRes] = await Promise.all([
+      fetch(`${apiUrl}/api/schools-2026/`, { next: { revalidate: 300 } }),
+      fetch(`${apiUrl}/api/groups-2026/`, { next: { revalidate: 300 } }),
+      fetch(`${apiUrl}/api/sessions-activity/?days=30`, { next: { revalidate: 300 } }),
+    ]);
+
+    if (!schoolsRes.ok) {
+      console.error(`[pm/api] Schools API returned ${schoolsRes.status} for school detail`);
+      return { data: null, isLive: false };
+    }
+
+    const schoolsData: Schools2026ApiResponse = await schoolsRes.json();
+    const groupsData = groupsRes.ok ? await groupsRes.json() : { groups: [] };
+    const sessionsData = sessionsRes.ok
+      ? await sessionsRes.json()
+      : { ea_heatmap: { eas: [] } };
+
+    const enriched = enrichSchoolsWithGroups(
+      schoolsData.schools,
+      groupsData.groups ?? [],
+      sessionsData.ea_heatmap?.eas ?? []
+    );
+
+    // Match slug to school: slug is lowercase-hyphenated school name
+    const match = enriched.find(
+      (s) => s.school_name.toLowerCase().replace(/\s+/g, "-") === schoolSlug
+    );
+
+    return { data: match ?? null, isLive: true };
+  } catch (error) {
+    console.error("[pm/api] Failed to fetch school detail:", error);
+    return { data: null, isLive: false };
+  }
 }
 
 // ─── Sessions Activity ──────────────────────────────────────────
@@ -311,4 +354,56 @@ const EMPTY_GROUPS_2026: Groups2026Response = {
     total_sessions_this_week: 0,
   },
   groups: [],
+};
+
+const EMPTY_PROGRAMME_OVERVIEW: ProgrammeOverviewResponse = {
+  generated_at: "",
+  programme: {
+    year: 2026,
+    start_date: "",
+    end_date: "",
+    current_week: 0,
+    total_weeks: 0,
+    teaching_start_date: "",
+    teaching_week: 0,
+    teaching_total_weeks: 0,
+  },
+  targets: {
+    dosage: 3,
+    on_track_pct: 80,
+    flag_resolution_pct: 70,
+    assessment_coverage_pct: 90,
+    mentor_coverage_days: 3,
+  },
+  kpis: {
+    total_schools: 0,
+    total_schools_primary: 0,
+    total_schools_ecd: 0,
+    total_eas: 0,
+    total_children: 0,
+    weighted_dosage: 0,
+    on_track_group_rate: 0,
+    total_sessions_this_week: 0,
+    total_sessions_this_month: 0,
+    total_sessions_all_time: 0,
+    active_flags: 0,
+    flags_delta_week: 0,
+    flag_resolution_rate_14d: 0,
+    flag_lifecycle: { new: 0, acknowledged: 0, in_progress: 0, resolved_this_week: 0 },
+    avg_sessions_per_day_worked: 0,
+    pct_eas_on_track: 0,
+    avg_sessions_per_programme_day: 0,
+  },
+  health: {
+    score: 0,
+    status: "needs_attention",
+    components: { dosage: 0, on_track: 0, flags: 0, resolution: 0 },
+  },
+  data_health: {
+    freshness_hours: 0,
+    last_sync: "",
+    join_match_rate: 0,
+  },
+  sessions_time_series: [],
+  dosage_distribution: [],
 };

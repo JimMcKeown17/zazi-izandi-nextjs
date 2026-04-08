@@ -95,13 +95,7 @@ export function filterSchoolsByCohort<T extends { school_name: string; school_ty
     case "ecd":
       return schools.filter((s) => s.school_type === "ECD" || s.school_type === "ecd");
     case "all":
-      return schools.filter(
-        (s) =>
-          TREATMENT_SCHOOLS.has(s.school_name.toUpperCase()) ||
-          SEF_SCHOOLS.has(s.school_name.toUpperCase()) ||
-          s.school_type === "ECD" ||
-          s.school_type === "ecd"
-      );
+      return schools;
   }
 }
 

@@ -59,8 +59,9 @@ export function ProgrammeContextBar({ data, cohort }: ProgrammeContextBarProps) 
       {/* Right: data freshness + health badge */}
       <div className="flex items-center gap-3 shrink-0">
         <span className="text-slate-400 text-xs whitespace-nowrap">
-          Data as of {formatDate(data_health.last_sync)} &middot;{" "}
-          {formatRelativeTime(data_health.freshness_hours)}
+          {data_health.last_sync
+            ? <>Data as of {formatDate(data_health.last_sync)} &middot; {formatRelativeTime(data_health.freshness_hours)}</>
+            : "No data available"}
         </span>
 
         <HealthBadge health={health} />

@@ -76,13 +76,15 @@ export default async function PMOverviewPage({ searchParams }: Props) {
   const hasMockData = !overviewIsLive || !schoolsIsLive;
 
   const { data_health } = overview;
-  const lastSyncDate = new Date(data_health.last_sync).toLocaleDateString("en-ZA", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const lastSyncDate = data_health.last_sync
+    ? new Date(data_health.last_sync).toLocaleDateString("en-ZA", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "—";
 
   return (
     <div className="max-w-7xl mx-auto space-y-4">
@@ -91,12 +93,12 @@ export default async function PMOverviewPage({ searchParams }: Props) {
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-3 text-sm">
           <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
           <div className="text-amber-800">
-            <span className="font-semibold">Some data is simulated.</span>{" "}
+            <span className="font-semibold">Some data is unavailable.</span>{" "}
             {!overviewIsLive && !schoolsIsLive
-              ? "The API is unavailable — all data shown is sample data."
+              ? "The API is unavailable — data shown below may be empty or incomplete."
               : !overviewIsLive
-                ? "Programme overview API unavailable — KPI targets, health signal, and charts use sample data. School counts and table are live."
-                : "School data API unavailable — school table uses sample data."}
+                ? "Programme overview API unavailable — KPI targets, health signal, and charts may be empty. School table data is live."
+                : "School data API unavailable — school table may be empty."}
           </div>
         </div>
       )}
