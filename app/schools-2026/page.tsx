@@ -2,6 +2,7 @@ import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
 import SchoolCardsGrid2026 from "@/components/schools-2026/school-cards-grid-2026";
 import SchoolMap2026 from "@/components/schools-2026/school-map-2026";
+import DosageMosaic from "@/components/schools-2026/dosage-mosaic";
 import type { School2026Data } from "@/lib/schools-2026/school2026-data";
 import { getGroups2026, getSessionsActivity } from "@/lib/pm/api";
 import { enrichSchoolsWithGroups } from "@/lib/schools-2026/enrich";
@@ -131,20 +132,10 @@ export default async function Schools2026Page() {
                   School Locations
                 </h2>
                 <SchoolMap2026 schools={enrichedSchools} />
-                {/* Map legend */}
-                <div className="flex items-center gap-5 mt-3 text-xs text-gray-500">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-green-500 border border-white shadow-sm" />
-                    On Track
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 border border-white shadow-sm" />
-                    Needs Attention
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 border border-white shadow-sm" />
-                    Low Dosage
-                  </span>
+
+                {/* Dosage mosaic — visual summary of all schools */}
+                <div className="mt-5">
+                  <DosageMosaic schools={enrichedSchools} />
                 </div>
               </div>
             </section>

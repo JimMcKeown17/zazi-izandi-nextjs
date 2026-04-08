@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertTriangle, Users } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getDosageLevel, DOSAGE_LABELS } from "@/lib/schools-2026/dosage";
@@ -30,12 +30,6 @@ const DOSAGE_TEXT = {
   green: "text-green-700",
   yellow: "text-amber-700",
   red: "text-red-700",
-} as const;
-
-const DOT_COLORS = {
-  green: "bg-green-500",
-  yellow: "bg-amber-500",
-  red: "bg-red-500",
 } as const;
 
 function getAvgDayColor(val: number | null): string {
@@ -73,14 +67,22 @@ export default function SchoolCard2026({
   const [expanded, setExpanded] = useState(false);
   const level = getDosageLevel(data.avg_sessions_per_group_per_week, data.school_type);
 
+  const eaNames = data.eas.map((ea) => ea.name);
+  const eaLine =
+    eaNames.length > 0
+      ? eaNames.join(", ")
+      : data.ea_count > 0
+        ? `${data.ea_count} EA${data.ea_count !== 1 ? "s" : ""}`
+        : null;
+
   return (
     <Card
       className={`bg-white border border-gray-200 ${BORDER_COLORS[level]} border-l-[3px] hover:shadow-md transition-shadow duration-200 overflow-hidden h-full flex flex-col`}
     >
-      <CardHeader className="pb-2 pt-5 px-6">
+      <CardHeader className="pb-1 pt-4 px-5">
         {/* Header: name + status chip */}
-        <div className="flex items-start justify-between gap-2 mb-1">
-          <h3 className="text-xl font-semibold text-gray-900 leading-tight">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-lg font-semibold text-gray-900 leading-tight">
             {data.school_name}
           </h3>
           <span
@@ -91,84 +93,63 @@ export default function SchoolCard2026({
         </div>
 
         {/* Metadata line */}
-        <p className="text-[13px] text-gray-500">
+        <p className="text-[13px] text-gray-500 mt-0.5">
           {data.school_type} · {data.ea_count} EA{data.ea_count !== 1 ? "s" : ""} · {data.children_count} children
         </p>
       </CardHeader>
 
-      <CardContent className="px-6 pb-5 flex-1 flex flex-col">
+      <CardContent className="px-5 pb-0 flex-1 flex flex-col">
         {/* Hero metric: Dosage */}
-        <div className="text-center py-4">
-          <div className={`text-4xl font-bold ${DOSAGE_TEXT[level]}`}>
+        <div className="text-center py-2.5">
+          <div className={`text-3xl font-bold ${DOSAGE_TEXT[level]}`}>
             {data.weighted_dosage.toFixed(1)}
           </div>
-          <div className="text-[13px] text-gray-400 mt-0.5">
+          <div className="text-[12px] text-gray-400 mt-0.5">
             sessions / group / week
           </div>
         </div>
 
-        {/* Secondary stats — plain row */}
-        <div className="flex justify-between text-sm mb-4">
+        {/* Secondary stats — structured 2-column row */}
+        <div className="grid grid-cols-2 gap-4 text-sm mb-2.5">
           <div>
-            <span className="text-gray-500">Avg/day worked </span>
-            <span className={`font-medium ${getAvgDayColor(data.avg_per_day_worked)}`}>
+            <div className="text-[12px] text-gray-400">Avg / day worked</div>
+            <div className={`text-base font-semibold ${getAvgDayColor(data.avg_per_day_worked)}`}>
               {data.avg_per_day_worked?.toFixed(1) ?? "—"}
-            </span>
+            </div>
           </div>
-          <div>
-            <span className="text-gray-500">Sessions this week </span>
-            <span className="font-medium text-gray-900">
+          <div className="text-right">
+            <div className="text-[12px] text-gray-400">Sessions this week</div>
+            <div className="text-base font-semibold text-gray-900">
               {data.sessions_this_week}
-            </span>
+            </div>
           </div>
         </div>
 
-        {/* EA name dots */}
-        <div className="flex flex-wrap gap-x-3 gap-y-1.5 mb-3">
-          {data.eas.map((ea) => {
-            const eaLevel = getDosageLevel(
-              ea.avg_sessions_per_group_per_week,
-              data.school_type
-            );
-            return (
-              <span
-                key={ea.name}
-                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-gray-700"
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${DOT_COLORS[eaLevel]} shrink-0`}
-                />
-                {ea.name}
-                {ea.has_flags && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
-                )}
-              </span>
-            );
-          })}
-          {data.eas.length === 0 && data.ea_count > 0 && (
-            <span className="text-[13px] text-gray-400 italic">
-              {data.ea_count} EA{data.ea_count !== 1 ? "s" : ""}
-            </span>
-          )}
-        </div>
+        {/* EA names — clean line with icon */}
+        {eaLine && (
+          <div className="flex items-start gap-1.5 text-[13px] text-gray-500 mb-1">
+            <Users className="h-3.5 w-3.5 mt-0.5 shrink-0 text-gray-400" />
+            <span>{eaLine}</span>
+          </div>
+        )}
 
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Expand toggle */}
+        {/* Expand toggle — subtle ghost text */}
         {groupsAvailable && data.eas.length > 0 && (
           <button
             onClick={() => setExpanded((v) => !v)}
             aria-expanded={expanded}
-            className="w-full flex items-center justify-center gap-1.5 py-2 text-sm text-gray-400 hover:text-gray-600 transition-colors border-t border-gray-100 mt-2"
+            className="w-full flex items-center justify-center gap-1 py-2 text-[13px] text-gray-400 hover:text-gray-600 transition-colors mt-1"
           >
             {expanded ? (
               <>
-                <ChevronUp className="h-4 w-4" /> Collapse
+                Collapse <ChevronUp className="h-3.5 w-3.5" />
               </>
             ) : (
               <>
-                <ChevronDown className="h-4 w-4" /> Expand EA detail
+                View EA detail <ChevronDown className="h-3.5 w-3.5" />
               </>
             )}
           </button>
