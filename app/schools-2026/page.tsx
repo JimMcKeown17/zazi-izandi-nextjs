@@ -67,7 +67,7 @@ export default async function Schools2026Page() {
       <Header />
       <main className="pt-20">
         {/* Minimal Hero */}
-        <section className="bg-white border-b border-gray-100 py-10">
+        <section className="bg-white border-b border-gray-100 py-8">
           <div className="container">
             <h1 className="text-3xl font-bold text-gray-900 mb-1">
               2026 Schools
@@ -126,7 +126,7 @@ export default async function Schools2026Page() {
             )}
 
             {/* Interactive Map */}
-            <section className="py-8 bg-white">
+            <section className="pt-4 pb-8 bg-white">
               <div className="container">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">
                   School Locations
