@@ -105,7 +105,7 @@ export default function SchoolCard2026({
             {data.weighted_dosage.toFixed(1)}
           </div>
           <div className="text-[12px] text-gray-400 mt-0.5">
-            sessions / group / week
+            dosage (sessions / group / week)
           </div>
         </div>
 

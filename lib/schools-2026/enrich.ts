@@ -78,6 +78,17 @@ export function enrichSchoolsWithGroups(
           ) / 10
         : null;
 
+    // When groups data is available, derive school-level dosage from
+    // per-EA dosages so the card hero and EA detail always agree.
+    // Fall back to Django's value when groups are unavailable.
+    const groupsDosage =
+      eas.length > 0
+        ? Math.round(
+            (eas.reduce((sum, e) => sum + e.weighted_dosage, 0) / eas.length) *
+              10
+          ) / 10
+        : null;
+
     return {
       school_name: school.school_name,
       school_type: school.school_type,
@@ -93,7 +104,7 @@ export function enrichSchoolsWithGroups(
       eas,
       total_flags: totalFlags,
       flag_breakdown: flagBreakdown,
-      weighted_dosage: school.avg_sessions_per_group_per_week,
+      weighted_dosage: groupsDosage ?? school.avg_sessions_per_group_per_week,
       avg_per_day_worked: schoolAvgPerDay,
     };
   });
