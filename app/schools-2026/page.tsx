@@ -1,11 +1,11 @@
 import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
-import StatsSummary2026 from "@/components/schools-2026/stats-summary-2026";
 import SchoolCardsGrid2026 from "@/components/schools-2026/school-cards-grid-2026";
+import SchoolMap2026 from "@/components/schools-2026/school-map-2026";
 import type { School2026Data } from "@/lib/schools-2026/school2026-data";
 import { getGroups2026, getSessionsActivity } from "@/lib/pm/api";
 import { enrichSchoolsWithGroups } from "@/lib/schools-2026/enrich";
-import { CalendarDays, MapPin, AlertTriangle } from "lucide-react";
+import { AlertTriangle, MapPin } from "lucide-react";
 
 interface Schools2026ApiResponse {
   generated_at: string;
@@ -44,14 +44,12 @@ async function getSchools2026Data(): Promise<Schools2026ApiResponse | null> {
 }
 
 export default async function Schools2026Page() {
-  // Fetch all three endpoints in parallel
   const [schoolsData, groupsResult, sessionsResult] = await Promise.all([
     getSchools2026Data(),
     getGroups2026(),
     getSessionsActivity(30, "all"),
   ]);
 
-  // Enrich schools with group-level EA data + heatmap data
   const enrichedSchools = schoolsData
     ? enrichSchoolsWithGroups(
         schoolsData.schools,
@@ -61,22 +59,54 @@ export default async function Schools2026Page() {
     : null;
 
   const groupsAvailable = groupsResult.isLive;
+  const summary = schoolsData?.summary;
 
   return (
     <>
       <Header />
       <main className="pt-20">
-        {/* Hero Section */}
-        <section className="bg-gradient-to-br from-green-600 to-emerald-800 text-white py-16">
-          <div className="container text-center">
-            <CalendarDays className="h-16 w-16 mx-auto mb-4" />
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">
+        {/* Minimal Hero */}
+        <section className="bg-white border-b border-gray-100 py-10">
+          <div className="container">
+            <h1 className="text-3xl font-bold text-gray-900 mb-1">
               2026 Schools
             </h1>
-            <p className="text-lg md:text-xl max-w-2xl mx-auto text-white/90">
-              Live session data, dosage tracking, and quality monitoring across
-              all Zazi iZandi schools
+            <p className="text-base text-gray-500 mb-6">
+              Live session data, dosage tracking, and quality monitoring
             </p>
+
+            {/* Inline stats */}
+            {summary && (
+              <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2 text-sm">
+                <span>
+                  <span className="text-2xl font-bold text-gray-900">
+                    {summary.total_schools}
+                  </span>{" "}
+                  <span className="text-gray-500">Schools</span>
+                </span>
+                <span className="text-gray-300 hidden sm:inline">·</span>
+                <span>
+                  <span className="text-2xl font-bold text-gray-900">
+                    {summary.total_eas}
+                  </span>{" "}
+                  <span className="text-gray-500">EAs</span>
+                </span>
+                <span className="text-gray-300 hidden sm:inline">·</span>
+                <span>
+                  <span className="text-2xl font-bold text-gray-900">
+                    {summary.total_children.toLocaleString()}
+                  </span>{" "}
+                  <span className="text-gray-500">Children</span>
+                </span>
+                <span className="text-gray-300 hidden sm:inline">·</span>
+                <span>
+                  <span className="text-2xl font-bold text-gray-900">
+                    {summary.total_sessions_this_month.toLocaleString()}
+                  </span>{" "}
+                  <span className="text-gray-500">Sessions this month</span>
+                </span>
+              </div>
+            )}
           </div>
         </section>
 
@@ -94,34 +124,42 @@ export default async function Schools2026Page() {
               </div>
             )}
 
-            {/* Stats Summary */}
-            <section className="py-12 bg-white">
+            {/* Interactive Map */}
+            <section className="py-8 bg-white">
               <div className="container">
-                <StatsSummary2026
-                  totalSchools={schoolsData.summary.total_schools}
-                  totalEAs={schoolsData.summary.total_eas}
-                  totalChildren={schoolsData.summary.total_children}
-                  totalSessionsThisMonth={
-                    schoolsData.summary.total_sessions_this_month
-                  }
-                />
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                  School Locations
+                </h2>
+                <SchoolMap2026 schools={enrichedSchools} />
+                {/* Map legend */}
+                <div className="flex items-center gap-5 mt-3 text-xs text-gray-500">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-500 border border-white shadow-sm" />
+                    On Track
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 border border-white shadow-sm" />
+                    Needs Attention
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 border border-white shadow-sm" />
+                    Low Dosage
+                  </span>
+                </div>
               </div>
             </section>
 
             {/* School Cards Section */}
-            <section className="py-12 bg-gray-50">
+            <section className="py-10 bg-gray-50">
               <div className="container">
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
-                  <div>
-                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                      School Dosage Overview
-                    </h2>
-                    <p className="text-gray-600">
-                      Session frequency, quality flags, and EA performance per
-                      school — colour coded by average sessions per group per
-                      week
-                    </p>
-                  </div>
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900 mb-1">
+                    School Dosage Overview
+                  </h2>
+                  <p className="text-sm text-gray-500">
+                    Session frequency, quality flags, and EA performance —
+                    colour coded by dosage level
+                  </p>
                 </div>
 
                 <SchoolCardsGrid2026
@@ -132,15 +170,13 @@ export default async function Schools2026Page() {
             </section>
           </>
         ) : (
-          /* Error / Loading State */
           <section className="py-20 bg-white">
             <div className="container text-center">
               <div className="max-w-md mx-auto">
-                <CalendarDays className="h-16 w-16 mx-auto mb-4 text-gray-300" />
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">
                   Data Unavailable
                 </h2>
-                <p className="text-gray-600">
+                <p className="text-gray-500">
                   Unable to load 2026 school data. The data service may be
                   starting up — please try again in a few minutes.
                 </p>
@@ -150,12 +186,12 @@ export default async function Schools2026Page() {
         )}
 
         {/* CTA Section */}
-        <section className="py-12 bg-gradient-to-br from-primary-50 to-blue-50">
+        <section className="py-10 bg-white border-t border-gray-100">
           <div className="container text-center">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+            <h2 className="text-2xl font-bold text-gray-900 mb-3">
               Explore Detailed Analytics
             </h2>
-            <p className="text-lg text-gray-600 mb-6 max-w-2xl mx-auto">
+            <p className="text-gray-500 mb-5 max-w-xl mx-auto">
               Visit our Data Portal for deeper analysis, flag details, and
               historical trends
             </p>
@@ -163,10 +199,10 @@ export default async function Schools2026Page() {
               href="https://dataportal.zaziizandi.org"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-800 text-white font-semibold px-8 py-3 rounded-lg transition-colors shadow-lg hover:shadow-xl"
+              className="inline-flex items-center gap-2 bg-primary hover:bg-primary-800 text-white font-semibold px-7 py-2.5 rounded-lg transition-colors shadow-sm hover:shadow-md"
             >
               Open Data Portal
-              <MapPin className="h-5 w-5" />
+              <MapPin className="h-4 w-4" />
             </a>
           </div>
         </section>
