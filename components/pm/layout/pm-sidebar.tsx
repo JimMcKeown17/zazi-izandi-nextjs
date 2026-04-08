@@ -11,7 +11,6 @@ import {
   AlertTriangle,
   ClipboardCheck,
   Eye,
-  GitCompare,
   ArrowLeft,
   Grid3X3,
 } from "lucide-react";
@@ -35,9 +34,6 @@ const NAV_ITEMS: NavItem[] = [
   { name: "Mentor Visits", href: "/pm/mentor-visits", icon: Eye },
 ];
 
-const SECONDARY_NAV_ITEMS: NavItem[] = [
-  { name: "Compare", href: "/pm/compare", icon: GitCompare },
-];
 
 interface PMSidebarProps {
   flagCount?: number;
@@ -104,12 +100,6 @@ export function PMSidebar({ flagCount }: PMSidebarProps) {
             <NavLink key={item.href} item={item} />
           ))}
 
-          {/* Separator */}
-          <div className="my-2 border-t border-slate-700/50" />
-
-          {SECONDARY_NAV_ITEMS.map((item) => (
-            <NavLink key={item.href} item={item} />
-          ))}
         </nav>
 
         {/* Bottom section */}
