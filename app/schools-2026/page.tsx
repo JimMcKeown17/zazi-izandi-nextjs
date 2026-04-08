@@ -67,7 +67,7 @@ export default async function Schools2026Page() {
       <Header />
       <main className="pt-20">
         {/* Minimal Hero */}
-        <section className="bg-white" style={{ paddingTop: "2rem", paddingBottom: "0.5rem" }}>
+        <section className="bg-white" style={{ paddingTop: "2rem", paddingBottom: "3rem" }}>
           <div className="container">
             <h1 className="text-3xl font-bold text-gray-900 mb-1">
               2026 Schools

@@ -140,18 +140,6 @@ May be definitional/window differences between endpoints, but currently not expl
   - `/pm/compare`
 - No mock-data warning banners appeared on implemented PM pages during this run.
 
----
-
-## Specific Outlier Check: Busisiwe Kampeni
-
-Outlier confirmed in sessions heatmap:
-
-- School: `Soweto-On-Sea Primary School`
-- Date: `2026-03-18`
-- Count: `11` sessions (Treatment view), `13` sessions (All Programme view)
-- This is the highest max-day value in the current 10-weekday heatmap window.
-
----
 
 ## Artifacts Generated
 
