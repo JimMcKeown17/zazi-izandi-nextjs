@@ -5,6 +5,8 @@ import type {
   Groups2026Response,
   FlagEvidenceResponse,
   LetterAlignmentResponse,
+  AssessmentsSummaryResponse,
+  MentorVisitsSummaryResponse,
 } from "./types";
 import type { School2026Data } from "@/lib/schools-2026/school2026-data";
 import type { EnrichedSchool2026 } from "@/lib/schools-2026/types";
@@ -354,6 +356,111 @@ const EMPTY_GROUPS_2026: Groups2026Response = {
     total_sessions_this_week: 0,
   },
   groups: [],
+};
+
+// ─── Assessments Summary ──────────────────────────────────────
+
+export interface AssessmentsSummaryResult {
+  data: AssessmentsSummaryResponse;
+  isLive: boolean;
+}
+
+export async function getAssessmentsSummary(): Promise<AssessmentsSummaryResult> {
+  const apiUrl = process.env.DJANGO_API_URL;
+
+  if (!apiUrl) {
+    console.warn("[pm/api] DJANGO_API_URL not set — assessments data unavailable");
+    return { data: EMPTY_ASSESSMENTS_SUMMARY, isLive: false };
+  }
+
+  try {
+    const res = await fetch(`${apiUrl}/api/assessments-summary/`, {
+      next: { revalidate: 300 },
+    });
+
+    if (!res.ok) {
+      console.error(`[pm/api] Assessments summary returned ${res.status}`);
+      return { data: EMPTY_ASSESSMENTS_SUMMARY, isLive: false };
+    }
+
+    return { data: await res.json(), isLive: true };
+  } catch (error) {
+    console.error("[pm/api] Failed to fetch assessments summary:", error);
+    return { data: EMPTY_ASSESSMENTS_SUMMARY, isLive: false };
+  }
+}
+
+const EMPTY_ASSESSMENTS_SUMMARY: AssessmentsSummaryResponse = {
+  generated_at: "",
+  overview: {
+    total_assessed: 0,
+    avg_lcpm: 0,
+    avg_wcpm: 0,
+    avg_nonwords: 0,
+    pct_zero_letters: 0,
+    pct_at_benchmark_gr1: 0,
+    pct_at_benchmark_grR: 0,
+    stop_rule_rate: 0,
+    completion_rate: 0,
+  },
+  by_cohort: [],
+  by_language: [],
+  by_grade: [],
+  score_distribution: [],
+  by_school: [],
+};
+
+// ─── Mentor Visits Summary ────────────────────────────────────
+
+export interface MentorVisitsSummaryResult {
+  data: MentorVisitsSummaryResponse;
+  isLive: boolean;
+}
+
+export async function getMentorVisitsSummary(): Promise<MentorVisitsSummaryResult> {
+  const apiUrl = process.env.DJANGO_API_URL;
+
+  if (!apiUrl) {
+    console.warn("[pm/api] DJANGO_API_URL not set — mentor visits data unavailable");
+    return { data: EMPTY_MENTOR_VISITS_SUMMARY, isLive: false };
+  }
+
+  try {
+    const res = await fetch(`${apiUrl}/api/mentor-visits-summary/`, {
+      next: { revalidate: 300 },
+    });
+
+    if (!res.ok) {
+      console.error(`[pm/api] Mentor visits summary returned ${res.status}`);
+      return { data: EMPTY_MENTOR_VISITS_SUMMARY, isLive: false };
+    }
+
+    return { data: await res.json(), isLive: true };
+  } catch (error) {
+    console.error("[pm/api] Failed to fetch mentor visits summary:", error);
+    return { data: EMPTY_MENTOR_VISITS_SUMMARY, isLive: false };
+  }
+}
+
+const EMPTY_MENTOR_VISITS_SUMMARY: MentorVisitsSummaryResponse = {
+  generated_at: "",
+  overview: {
+    total_visits: 0,
+    unique_mentors: 0,
+    schools_visited: 0,
+    eas_observed: 0,
+  },
+  compliance: {},
+  quality_ratings: {},
+  visits_over_time: [],
+  by_mentor: [],
+  flagged_eas: [],
+  coverage: {
+    schools_visited_14d: 0,
+    total_schools: 0,
+    coverage_rate: 0,
+    gaps: [],
+  },
 };
 
 const EMPTY_PROGRAMME_OVERVIEW: ProgrammeOverviewResponse = {

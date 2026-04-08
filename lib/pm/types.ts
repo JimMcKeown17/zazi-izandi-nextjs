@@ -259,3 +259,112 @@ export interface LetterAlignmentResponse {
   group_summary: LetterAlignmentGroupSummary;
   children: ChildLetterAlignment[];
 }
+
+// ─── Assessments Summary API Response ──────────────────────────
+
+export interface AssessmentsSummaryResponse {
+  generated_at: string;
+  overview: {
+    total_assessed: number;
+    avg_lcpm: number;
+    avg_wcpm: number;
+    avg_nonwords: number;
+    pct_zero_letters: number;
+    pct_at_benchmark_gr1: number;
+    pct_at_benchmark_grR: number;
+    stop_rule_rate: number;
+    completion_rate: number;
+  };
+  by_cohort: AssessmentCohortRow[];
+  by_language: AssessmentLanguageRow[];
+  by_grade: AssessmentGradeRow[];
+  score_distribution: ScoreDistributionBucket[];
+  by_school: AssessmentSchoolRow[];
+}
+
+export interface AssessmentCohortRow {
+  cohort: string;
+  count: number;
+  avg_lcpm: number;
+  pct_zero: number;
+  pct_at_benchmark: number;
+}
+
+export interface AssessmentLanguageRow {
+  language: string;
+  count: number;
+  avg_lcpm: number;
+}
+
+export interface AssessmentGradeRow {
+  grade: string;
+  count: number;
+  avg_lcpm: number;
+  pct_zero: number;
+  pct_at_benchmark: number;
+}
+
+export interface ScoreDistributionBucket {
+  bucket: number;
+  count: number;
+}
+
+export interface AssessmentSchoolRow {
+  school: string;
+  cohort: string;
+  count: number;
+  avg_lcpm: number;
+  pct_zero: number;
+  pct_at_benchmark: number;
+}
+
+// ─── Mentor Visits Summary API Response ────────────────────────
+
+export interface MentorVisitsSummaryResponse {
+  generated_at: string;
+  overview: {
+    total_visits: number;
+    unique_mentors: number;
+    schools_visited: number;
+    eas_observed: number;
+  };
+  compliance: Record<string, { yes: number; no: number; not_observed: number }>;
+  quality_ratings: Record<string, Record<string, number>>;
+  visits_over_time: VisitsTimeSeriesPoint[];
+  by_mentor: MentorRow[];
+  flagged_eas: FlaggedEARow[];
+  coverage: CoverageData;
+}
+
+export interface VisitsTimeSeriesPoint {
+  week_start: string;
+  visits: number;
+}
+
+export interface MentorRow {
+  mentor: string;
+  visits: number;
+  schools_visited: number;
+  avg_quality_score: number | null;
+}
+
+export interface FlaggedEARow {
+  ea_name: string;
+  school: string;
+  mentor: string;
+  issue: string;
+  visit_date: string | null;
+}
+
+export interface CoverageData {
+  schools_visited_14d: number;
+  total_schools: number;
+  coverage_rate: number;
+  gaps: CoverageGap[];
+}
+
+export interface CoverageGap {
+  school: string;
+  last_visit: string | null;
+  days_since: number | null;
+}
