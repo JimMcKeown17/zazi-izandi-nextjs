@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import { Search, Filter } from "lucide-react";
 import SchoolCard2026 from "./school-card-2026";
+import { getDosageLevel } from "@/lib/schools-2026/dosage";
 import type { EnrichedSchool2026 } from "@/lib/schools-2026/types";
-import { Badge } from "@/components/ui/badge";
 
 interface SchoolCardsGrid2026Props {
   schools: EnrichedSchool2026[];
@@ -21,7 +21,6 @@ export default function SchoolCardsGrid2026({
   const [flagFilter, setFlagFilter] = useState<string>("all");
 
   const filtered = useMemo(() => {
-    // Sort alphabetically first
     const sorted = [...schools].sort((a, b) =>
       a.school_name.localeCompare(b.school_name)
     );
@@ -41,12 +40,13 @@ export default function SchoolCardsGrid2026({
       if (typeFilter !== "all" && school.school_type !== typeFilter)
         return false;
 
-      // Dosage filter
+      // Dosage filter — uses type-aware thresholds
       if (dosageFilter !== "all") {
-        const avg = school.avg_sessions_per_group_per_week;
-        if (dosageFilter === "green" && avg < 3) return false;
-        if (dosageFilter === "yellow" && (avg < 2 || avg >= 3)) return false;
-        if (dosageFilter === "red" && avg >= 2) return false;
+        const level = getDosageLevel(
+          school.avg_sessions_per_group_per_week,
+          school.school_type
+        );
+        if (dosageFilter !== level) return false;
       }
 
       // Flag filter
@@ -60,20 +60,20 @@ export default function SchoolCardsGrid2026({
   return (
     <>
       {/* Filter & Search Bar */}
-      <div className="bg-gray-50 rounded-lg p-4 mb-6 flex flex-col md:flex-row gap-4">
-        <div className="flex-1 flex items-center gap-2 bg-white rounded-lg px-4 py-2 border">
-          <Search className="h-5 w-5 text-gray-400" />
+      <div className="flex flex-col md:flex-row gap-3 mb-6">
+        <div className="flex-1 flex items-center gap-2 bg-white rounded-lg px-4 py-2.5 border border-gray-200">
+          <Search className="h-4 w-4 text-gray-400" />
           <input
             type="text"
             placeholder="Search by school name or EA..."
-            className="flex-1 outline-none text-sm"
+            className="flex-1 outline-none text-sm text-gray-900 placeholder:text-gray-400"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
         <div className="flex gap-2 flex-wrap">
           <select
-            className="bg-white rounded-lg px-4 py-2 border text-sm font-medium text-gray-700 outline-none"
+            className="bg-white rounded-lg px-3 py-2.5 border border-gray-200 text-sm text-gray-700 outline-none"
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
           >
@@ -82,17 +82,17 @@ export default function SchoolCardsGrid2026({
             <option value="ECD">ECD</option>
           </select>
           <select
-            className="bg-white rounded-lg px-4 py-2 border text-sm font-medium text-gray-700 outline-none"
+            className="bg-white rounded-lg px-3 py-2.5 border border-gray-200 text-sm text-gray-700 outline-none"
             value={dosageFilter}
             onChange={(e) => setDosageFilter(e.target.value)}
           >
             <option value="all">All Dosage</option>
-            <option value="green">On Track (3+)</option>
-            <option value="yellow">Needs Attention (2-3)</option>
-            <option value="red">Low Dosage (&lt;2)</option>
+            <option value="green">On Track (Primary 2+, ECD 3+)</option>
+            <option value="yellow">Attention (Primary 1-2, ECD 2-3)</option>
+            <option value="red">Low (Primary &lt;1, ECD &lt;2)</option>
           </select>
           <select
-            className="bg-white rounded-lg px-4 py-2 border text-sm font-medium text-gray-700 outline-none"
+            className="bg-white rounded-lg px-3 py-2.5 border border-gray-200 text-sm text-gray-700 outline-none"
             value={flagFilter}
             onChange={(e) => setFlagFilter(e.target.value)}
           >
@@ -103,22 +103,21 @@ export default function SchoolCardsGrid2026({
         </div>
       </div>
 
-      {/* Results count */}
+      {/* Results count + legend */}
       <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-gray-500">
           Showing {filtered.length} of {schools.length} schools
         </p>
-        {/* Dosage Legend */}
-        <div className="hidden md:flex flex-wrap gap-3">
-          <Badge className="bg-green-500 text-white">
-            On Track: 3+ sess/grp/wk
-          </Badge>
-          <Badge className="bg-yellow-500 text-white">
-            Attention: 2-3 sess/grp/wk
-          </Badge>
-          <Badge className="bg-red-500 text-white">
-            Low: &lt;2 sess/grp/wk
-          </Badge>
+        <div className="hidden md:flex items-center gap-4 text-xs text-gray-500">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-green-500" /> On Track
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-amber-500" /> Needs Attention
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-red-500" /> Low Dosage
+          </span>
         </div>
       </div>
 
