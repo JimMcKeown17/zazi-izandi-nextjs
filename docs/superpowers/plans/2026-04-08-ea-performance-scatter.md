@@ -10,6 +10,16 @@
 
 ---
 
+## Delivery Order
+
+1. **Backend** (Task 1): Django endpoint + URL + local verification → deploy to Render
+2. **Frontend** (Tasks 2–5): Types/API → detail panel → scatter chart → page + sidebar
+3. **E2E** (Task 6): Full verification against live API
+
+> **Note — check-in sessions:** The existing `programme_overview` endpoint queries `TeampactSession2026` without explicitly filtering check-in class names. Check-ins may already be excluded at the `compute_school_summaries_2026` management command level, or may not appear in session data at all. **Investigate** whether check-in rows exist in `TeampactSession2026` and, if so, whether all PM endpoints need a shared exclusion filter. This is out of scope for this plan but should be tracked.
+
+---
+
 ## File Map
 
 | Action | File | Responsibility |
@@ -488,7 +498,7 @@ export function EADetailPanel({ ea, onClose }: EADetailPanelProps) {
         <div className="space-y-1.5">
           {ea.groups.map((group) => (
             <div
-              key={group.class_name}
+              key={`${group.class_name}-${group.phase}`}
               className={`grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-2 items-center px-3 py-2 rounded-md text-sm ${
                 group.phase === "blending"
                   ? "bg-slate-100 opacity-60"
@@ -903,6 +913,23 @@ const NAV_ITEMS: NavItem[] = [
 ];
 ```
 
+Also add an explicit mobile tab list (so adding desktop items doesn't break mobile). Replace the `NAV_ITEMS.slice(0, 4)` in the mobile bottom bar with a dedicated array:
+
+```typescript
+const MOBILE_NAV_ITEMS = [
+  NAV_ITEMS[0], // Overview
+  NAV_ITEMS[1], // Schools
+  NAV_ITEMS[3], // Education Assistants
+  NAV_ITEMS[4], // Letter Progress
+];
+```
+
+Then in the mobile `<nav>` section, replace `NAV_ITEMS.slice(0, 4)` with `MOBILE_NAV_ITEMS`:
+
+```tsx
+{MOBILE_NAV_ITEMS.map((item) => {
+```
+
 - [ ] **Step 3: Verify build**
 
 Run: `npm run build`
@@ -955,11 +982,13 @@ Verify: scatter plot updates with fewer dots, KPIs recalculate.
 
 Verify "Education Assistants" appears in sidebar between "Sessions" and "Letter Progress" with the Users icon. Active state highlights correctly.
 
-- [ ] **Step 5: Final build check**
+Also verify mobile bottom tabs: Education Assistants should appear instead of Sessions on mobile.
 
-Run: `npm run build`
+- [ ] **Step 5: Final build and lint check**
 
-Expected: Build succeeds with zero errors.
+Run: `npm run build && npm run lint`
+
+Expected: Build and lint both succeed with zero errors.
 
 - [ ] **Step 6: Commit any fixes from testing**
 
