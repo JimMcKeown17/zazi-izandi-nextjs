@@ -31,9 +31,9 @@ export default async function MentorVisitsPage() {
 
       <VisitKPIs data={data} />
       <VisitsOverTime data={data.visits_over_time} />
-      <ComplianceChecks compliance={data.compliance} flaggedEAs={data.flagged_eas} />
       <QualityRatings ratings={data.quality_ratings} />
       <MentorSummaryTable data={data.by_mentor} />
+      <ComplianceChecks compliance={data.compliance} flaggedEAs={data.flagged_eas} />
       <CoverageGaps data={data.coverage} />
     </div>
   );
