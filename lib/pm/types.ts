@@ -360,3 +360,44 @@ export interface CoverageGap {
   last_visit: string | null;
   days_since: number | null;
 }
+
+// ─── EA Performance API Response ──────────────────────────────
+
+export interface EAPerformanceResponse {
+  generated_at: string;
+  summary: {
+    total_eas: number;
+    avg_sessions_per_programme_day: number;
+    avg_alignment_score: number;
+    quadrant_counts: {
+      top_right: number;
+      top_left: number;
+      bottom_right: number;
+      bottom_left: number;
+    };
+  };
+  eas: EAPerformanceItem[];
+}
+
+export interface EAPerformanceItem {
+  ea_name: string;
+  school: string;
+  sessions_per_programme_day: number;
+  alignment_avg_score: number | null;
+  total_sessions: number;
+  groups_count: number;
+  letters_groups_count: number;
+  blending_groups_count: number;
+  children_count: number;
+  active_flags_count: number;
+  groups: EAGroupDetail[];
+}
+
+export interface EAGroupDetail {
+  class_name: string;
+  phase: "letters" | "blending";
+  children_count: number;
+  avg_sessions_per_week: number;
+  alignment_avg_score: number | null;
+  flags: string[];
+}

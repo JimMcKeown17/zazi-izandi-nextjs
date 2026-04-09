@@ -7,6 +7,7 @@ import type {
   LetterAlignmentResponse,
   AssessmentsSummaryResponse,
   MentorVisitsSummaryResponse,
+  EAPerformanceResponse,
 } from "./types";
 import type { School2026Data } from "@/lib/schools-2026/school2026-data";
 import type { EnrichedSchool2026 } from "@/lib/schools-2026/types";
@@ -516,4 +517,50 @@ const EMPTY_PROGRAMME_OVERVIEW: ProgrammeOverviewResponse = {
   },
   sessions_time_series: [],
   dosage_distribution: [],
+};
+
+// ─── EA Performance ──────────────────────────────────────────
+
+export interface EAPerformanceResult {
+  data: EAPerformanceResponse;
+  isLive: boolean;
+}
+
+export async function getEAPerformance(
+  cohort = "all"
+): Promise<EAPerformanceResult> {
+  const apiUrl = process.env.DJANGO_API_URL;
+
+  if (!apiUrl) {
+    console.warn("[pm/api] DJANGO_API_URL not set — EA performance data unavailable");
+    return { data: EMPTY_EA_PERFORMANCE, isLive: false };
+  }
+
+  try {
+    const res = await fetch(
+      `${apiUrl}/api/ea-performance/?cohort=${encodeURIComponent(cohort)}`,
+      { next: { revalidate: 300 } }
+    );
+
+    if (!res.ok) {
+      console.error(`[pm/api] EA performance returned ${res.status}`);
+      return { data: EMPTY_EA_PERFORMANCE, isLive: false };
+    }
+
+    return { data: await res.json(), isLive: true };
+  } catch (error) {
+    console.error("[pm/api] Failed to fetch EA performance:", error);
+    return { data: EMPTY_EA_PERFORMANCE, isLive: false };
+  }
+}
+
+const EMPTY_EA_PERFORMANCE: EAPerformanceResponse = {
+  generated_at: "",
+  summary: {
+    total_eas: 0,
+    avg_sessions_per_programme_day: 0,
+    avg_alignment_score: 0,
+    quadrant_counts: { top_right: 0, top_left: 0, bottom_right: 0, bottom_left: 0 },
+  },
+  eas: [],
 };
