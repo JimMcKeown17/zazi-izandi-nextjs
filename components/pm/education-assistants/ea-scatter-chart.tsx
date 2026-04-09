@@ -159,9 +159,9 @@ export function EAScatterChart({ eas }: EAScatterChartProps) {
               onClick={handleClick}
               cursor="pointer"
             >
-              {plottable.map((ea, i) => (
+              {plottable.map((ea) => (
                 <Cell
-                  key={ea.ea_name}
+                  key={`${ea.ea_name}-${ea.school}`}
                   fill={getQuadrantColor(
                     ea.sessions_per_programme_day,
                     ea.alignment_avg_score!
