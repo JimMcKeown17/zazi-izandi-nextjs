@@ -13,6 +13,7 @@ import {
   Eye,
   ArrowLeft,
   Grid3X3,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -27,11 +28,20 @@ const NAV_ITEMS: NavItem[] = [
   { name: "Overview", href: "/pm", icon: LayoutDashboard, exact: true },
   { name: "Schools", href: "/pm/schools", icon: School },
   { name: "Sessions", href: "/pm/sessions", icon: Calendar },
+  { name: "Education Assistants", href: "/pm/education-assistants", icon: Users },
   { name: "Letter Progress", href: "/pm/letter-progress", icon: BookOpen },
   { name: "Quality Flags", href: "/pm/quality-flags", icon: AlertTriangle },
   { name: "Letter Alignment", href: "/pm/letter-alignment", icon: Grid3X3 },
   { name: "Assessments", href: "/pm/assessments", icon: ClipboardCheck },
   { name: "Mentor Visits", href: "/pm/mentor-visits", icon: Eye },
+];
+
+// Explicit mobile tabs — decoupled from desktop nav order
+const MOBILE_NAV_ITEMS = [
+  NAV_ITEMS[0], // Overview
+  NAV_ITEMS[1], // Schools
+  NAV_ITEMS[3], // Education Assistants
+  NAV_ITEMS[4], // Letter Progress
 ];
 
 
@@ -122,7 +132,7 @@ export function PMSidebar({ flagCount }: PMSidebarProps) {
 
       {/* Mobile bottom tab bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 flex justify-around py-2 z-50">
-        {NAV_ITEMS.slice(0, 4).map((item) => {
+        {MOBILE_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.href, item.exact);
           return (
