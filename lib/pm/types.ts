@@ -264,20 +264,20 @@ export interface LetterAlignmentResponse {
 
 export interface AssessmentsSummaryResponse {
   generated_at: string;
+  available_grades: string[];
+  selected_grade: string;
   overview: {
     total_assessed: number;
     avg_lcpm: number;
     avg_wcpm: number;
     avg_nonwords: number;
     pct_zero_letters: number;
-    pct_at_benchmark_gr1: number;
-    pct_at_benchmark_grR: number;
+    pct_at_benchmark: number;
     stop_rule_rate: number;
     completion_rate: number;
   };
   by_cohort: AssessmentCohortRow[];
   by_language: AssessmentLanguageRow[];
-  by_grade: AssessmentGradeRow[];
   score_distribution: ScoreDistributionBucket[];
   by_school: AssessmentSchoolRow[];
 }
@@ -294,14 +294,6 @@ export interface AssessmentLanguageRow {
   language: string;
   count: number;
   avg_lcpm: number;
-}
-
-export interface AssessmentGradeRow {
-  grade: string;
-  count: number;
-  avg_lcpm: number;
-  pct_zero: number;
-  pct_at_benchmark: number;
 }
 
 export interface ScoreDistributionBucket {

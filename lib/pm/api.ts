@@ -365,7 +365,9 @@ export interface AssessmentsSummaryResult {
   isLive: boolean;
 }
 
-export async function getAssessmentsSummary(): Promise<AssessmentsSummaryResult> {
+export async function getAssessmentsSummary(
+  grade = "all"
+): Promise<AssessmentsSummaryResult> {
   const apiUrl = process.env.DJANGO_API_URL;
 
   if (!apiUrl) {
@@ -374,9 +376,10 @@ export async function getAssessmentsSummary(): Promise<AssessmentsSummaryResult>
   }
 
   try {
-    const res = await fetch(`${apiUrl}/api/assessments-summary/`, {
-      next: { revalidate: 300 },
-    });
+    const res = await fetch(
+      `${apiUrl}/api/assessments-summary/?grade=${encodeURIComponent(grade)}`,
+      { next: { revalidate: 300 } }
+    );
 
     if (!res.ok) {
       console.error(`[pm/api] Assessments summary returned ${res.status}`);
@@ -392,20 +395,20 @@ export async function getAssessmentsSummary(): Promise<AssessmentsSummaryResult>
 
 const EMPTY_ASSESSMENTS_SUMMARY: AssessmentsSummaryResponse = {
   generated_at: "",
+  available_grades: [],
+  selected_grade: "all",
   overview: {
     total_assessed: 0,
     avg_lcpm: 0,
     avg_wcpm: 0,
     avg_nonwords: 0,
     pct_zero_letters: 0,
-    pct_at_benchmark_gr1: 0,
-    pct_at_benchmark_grR: 0,
+    pct_at_benchmark: 0,
     stop_rule_rate: 0,
     completion_rate: 0,
   },
   by_cohort: [],
   by_language: [],
-  by_grade: [],
   score_distribution: [],
   by_school: [],
 };

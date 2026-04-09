@@ -5,8 +5,15 @@ interface AssessmentKPIsProps {
   data: AssessmentsSummaryResponse;
 }
 
+function getBenchmarkLabel(grade: string): string {
+  if (grade === "Grade 1" || grade === "Grade 2") return "at 40+ letters correct";
+  if (grade === "Grade R") return "at 10+ letters correct";
+  return "at grade benchmark";
+}
+
 export function AssessmentKPIs({ data }: AssessmentKPIsProps) {
-  const { overview } = data;
+  const { overview, selected_grade } = data;
+  const benchmarkLabel = getBenchmarkLabel(selected_grade);
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -29,16 +36,10 @@ export function AssessmentKPIs({ data }: AssessmentKPIsProps) {
         borderColor={overview.pct_zero_letters > 30 ? "border-l-red-500" : "border-l-amber-500"}
       />
       <KPICard
-        label="At Benchmark (Gr 1)"
-        value={`${overview.pct_at_benchmark_gr1.toFixed(1)}%`}
-        subtitle="Grade 1 children at 40+ letters correct"
-        borderColor={overview.pct_at_benchmark_gr1 >= 20 ? "border-l-green-500" : "border-l-amber-500"}
-      />
-      <KPICard
-        label="At Benchmark (Gr R)"
-        value={`${overview.pct_at_benchmark_grR.toFixed(1)}%`}
-        subtitle="Grade R children at 10+ letters correct"
-        borderColor={overview.pct_at_benchmark_grR >= 30 ? "border-l-green-500" : "border-l-amber-500"}
+        label="At Benchmark"
+        value={`${overview.pct_at_benchmark.toFixed(1)}%`}
+        subtitle={benchmarkLabel}
+        borderColor={overview.pct_at_benchmark >= 20 ? "border-l-green-500" : "border-l-amber-500"}
       />
       <KPICard
         label="Completion Rate"
