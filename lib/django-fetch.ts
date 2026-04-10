@@ -14,16 +14,14 @@ export async function djangoFetch(
   path: string,
   init?: RequestInit
 ): Promise<Response> {
-  const baseUrl = process.env.DJANGO_API_URL;
+  const baseUrl = process.env.DJANGO_API_URL?.replace(/\/$/, "");
   if (!baseUrl) {
     throw new Error("DJANGO_API_URL is not set");
   }
 
   const secret = process.env.INTERNAL_API_SECRET;
   if (!secret) {
-    throw new Error(
-      "INTERNAL_API_SECRET is not set — Django calls will be rejected"
-    );
+    throw new Error("INTERNAL_API_SECRET is not set");
   }
 
   // Ensure the path starts with "/"
