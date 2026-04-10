@@ -103,7 +103,13 @@ Top bar:
 
 ### Login Redirect
 
-Users with `role === 'ea'` redirect to `/my-kids` after Clerk login.
+**Precedence (highest to lowest):**
+
+1. **`redirect_url` query param** — if present in the login URL (set by `middleware.ts` when an unauthenticated user hits a protected route), the user is redirected there after login. This preserves deep-links: e.g., an EA opening `/my-kids/groups/67610` from a WhatsApp link lands on that specific group after signing in.
+2. **Role-based default** — if no `redirect_url`, users with `role === 'ea'` redirect to `/my-kids`. Other roles use the existing default (home page or dashboard).
+3. **Fallback** — if neither applies, land on `/`.
+
+**Implementation note:** Clerk's `SignIn` component respects the `redirect_url` query param out of the box. The role-based default is applied via a custom post-login handler (or `afterSignInUrl` computed at request time). Do not override `redirect_url` when it is explicitly set by middleware.
 
 ### Route Protection
 
@@ -119,7 +125,18 @@ const PROTECTED_ROUTES: Record<string, Role> = {
 
 ## 3. Django API Endpoints
 
-Django doesn't know about Clerk. Auth is handled by the Next.js layer: the server component reads `teampact_user_id` from Clerk session metadata and calls Django with the concrete user ID. This matches the existing PM dashboard pattern (Next.js → Django server-to-server, no forwarded auth).
+### Trust Model
+
+Django doesn't know about Clerk. Auth is handled by the **Next.js layer**: the server component reads `teampact_user_id` from Clerk session metadata (or from a URL param in PM flows) and calls Django with the concrete user ID. This matches the existing PM dashboard pattern (Next.js → Django server-to-server via `DJANGO_API_URL`, no forwarded auth).
+
+**Security requirements** — because the EA endpoints expose child-level data (names, attendance, session notes), the trust boundary must be explicit:
+
+1. **Django is never publicly accessible for these endpoints.** The Django API lives behind a service URL and is only reachable from the Next.js server (via the `DJANGO_API_URL` env var, server-side only — never exposed to the browser).
+2. **Middleware gates access at the Next.js edge.** `/my-kids/*` and `/pm/education-assistants/*` are protected in `middleware.ts`. No unauthenticated request ever reaches the fetcher that calls Django.
+3. **The Next.js server component is the sole caller.** All EA data fetching happens in server components (`lib/ea/api.ts`), never via client-side fetch or a Next.js proxy route. This means the `teampact_user_id` used for scoping is always resolved server-side from the authenticated Clerk session (EA view) or from a URL param guarded by `funder+` middleware (PM view).
+4. **Service-level auth on Django is a future hardening step.** Phase 0 ships with the existing trust model (network isolation + `DJANGO_API_URL` as the sole access vector). Adding a shared-secret header or signed service token between Next.js and Django is tracked as a separate hardening task, not a Phase 0 blocker, but **must** be added before any public/partner access to the Django API is considered.
+5. **Audit:** all Django views for these endpoints log `user_id` and `class_id` parameters so we can audit access if needed.
+
 
 ### `GET /api/ea/<user_id>/`
 
@@ -129,13 +146,14 @@ Django doesn't know about Clerk. Auth is handled by the Next.js layer: the serve
 ```json
 {
   "ea_name": "Asemahle Mancayi",
-  "school": "Canzibe Primary School",
+  "primary_school": "Canzibe Primary School",
   "teampact_user_id": 28764,
   "last_updated": "2026-04-09T02:00:00Z",
   "groups": [
     {
       "class_id": 67610,
       "group_name": "Asemahle Mancayi-Letters-Group 1",
+      "school_name": "Canzibe Primary School",
       "grade": "Grade R",
       "phase": "letters",
       "children_count": 7,
@@ -152,6 +170,7 @@ Django doesn't know about Clerk. Auth is handled by the Next.js layer: the serve
     {
       "class_id": 67620,
       "group_name": "Asemahle Mancayi-Blending-Group 1",
+      "school_name": "Canzibe Primary School",
       "grade": "Grade 1",
       "phase": "blending",
       "children_count": 7,
@@ -167,6 +186,11 @@ Django doesn't know about Clerk. Auth is handled by the Next.js layer: the serve
 }
 ```
 
+**Notes on multi-school EAs:**
+- `primary_school` at the top level is the school with the most sessions (for the top bar display)
+- Each group carries its own `school_name` (required — some EAs teach across multiple programs)
+- The overview page shows school name on each card when an EA has groups across multiple schools (suppressed when they're all at one school to reduce clutter)
+
 **Usage:**
 - EA view: Next.js reads `teampact_user_id` from Clerk metadata → calls `/api/ea/<user_id>/`
 - PM view: Next.js reads `user_id` from URL param → calls same endpoint (requires `funder+` role check in Next.js middleware)
@@ -180,9 +204,9 @@ Django doesn't know about Clerk. Auth is handled by the Next.js layer: the serve
 {
   "class_id": 67610,
   "group_name": "Asemahle Mancayi-Letters-Group 1",
+  "school_name": "Canzibe Primary School",
   "grade": "Grade R",
   "phase": "letters",
-  "school": "Canzibe Primary School",
   "language": "isiXhosa",
   "progress": {
     "current_letter": "i",
@@ -264,7 +288,7 @@ Django doesn't know about Clerk. Auth is handled by the Next.js layer: the serve
 
 ### Data Flow
 
-Server component → fetches from Django `/api/ea/me/` at request time (no ISR cache — user-specific data).
+Server component reads `teampact_user_id` from Clerk session metadata, then calls Django `/api/ea/<user_id>/` at request time (no ISR cache — user-specific data).
 
 ### Page Structure
 
@@ -331,7 +355,7 @@ When multiple flags apply, show the most important one on the overview card: `gh
 
 ### Data Flow
 
-Server component → fetches from Django `/api/ea/me/groups/<class_id>/` at request time.
+Server component reads `teampact_user_id` from Clerk session metadata, then calls Django `/api/ea/<user_id>/groups/<class_id>/` at request time.
 
 ### Page Structure — Four Sections
 
@@ -424,9 +448,10 @@ The following components are data-driven and context-agnostic — they work in b
 | **Zero groups** — linked but no groups in GroupSummary | `/my-kids` | "No groups yet — your groups will appear here once you start teaching." |
 | **Stale data** — nightly compute is old | `/my-kids` | Subtle text: "Last updated: 14 hours ago" |
 | **No assessments** — group has no alignment data | Group detail | Letter mastery path shows session-only view (grey letters, dots only). Note about assessments. |
-| **Multiple schools** — EA in groups across programs | `/my-kids` | Groups from all schools shown, school name on each card. |
+| **Multiple schools** — EA in groups across programs | `/my-kids` | Groups from all schools shown. `school_name` displayed on each group card (suppressed when all groups are at the same school to reduce clutter). Top bar shows `primary_school` (the school with most sessions). |
 | **Backend unavailable** — API error/timeout | `/my-kids` | "We're having trouble loading your data. Please try again in a few minutes." |
-| **Invalid group** — class_id not found or not this EA's | Group detail | Redirect to `/my-kids`. |
+| **Invalid group** — class_id not found or not this EA's (EA view) | `/my-kids/groups/[class_id]` | Redirect to `/my-kids`. |
+| **Invalid group** — class_id not found or not this EA's (PM view) | `/pm/education-assistants/[user-id]/groups/[class_id]` | Redirect to `/pm/education-assistants/[user-id]` (back to the PM's EA detail view, not to `/my-kids`). |
 | **Staff with no EA link** — PM visits `/my-kids` | `/my-kids` | Same as "not linked" state. |
 
 ---
@@ -457,7 +482,7 @@ The following components are data-driven and context-agnostic — they work in b
 
 ### Phase 1B: Overview Page
 
-1. Create `lib/ea/api.ts` with server-side fetcher for `/api/ea/me/`
+1. Create `lib/ea/api.ts` with server-side fetcher for `/api/ea/<user_id>/` (reads `teampact_user_id` from Clerk session)
 2. Build `GroupCard` component (letter-phase variant)
 3. Build `GroupCard` component (blending variant with session bar capped at 50)
 4. Build coaching tip translator (flag → friendly language + icon)
@@ -467,7 +492,7 @@ The following components are data-driven and context-agnostic — they work in b
 
 ### Phase 1C: Group Detail Page
 
-1. Add server-side fetcher for `/api/ea/me/groups/<class_id>/`
+1. Add server-side fetcher for `/api/ea/<user_id>/groups/<class_id>/`
 2. Build `LetterMasteryPath` component (mastery colors + session dots + no-assessment fallback)
 3. Build `ChildrenList` component (sorted by attendance, ⚠ indicators)
 4. Build `RecentSessions` component (expandable per-child attendance)
