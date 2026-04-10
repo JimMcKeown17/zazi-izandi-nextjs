@@ -131,11 +131,17 @@ Django doesn't know about Clerk. Auth is handled by the **Next.js layer**: the s
 
 **Security requirements** — because the EA endpoints expose child-level data (names, attendance, session notes), the trust boundary must be explicit:
 
-1. **Django is never publicly accessible for these endpoints.** The Django API lives behind a service URL and is only reachable from the Next.js server (via the `DJANGO_API_URL` env var, server-side only — never exposed to the browser).
-2. **Middleware gates access at the Next.js edge.** `/my-kids/*` and `/pm/education-assistants/*` are protected in `middleware.ts`. No unauthenticated request ever reaches the fetcher that calls Django.
-3. **The Next.js server component is the sole caller.** All EA data fetching happens in server components (`lib/ea/api.ts`), never via client-side fetch or a Next.js proxy route. This means the `teampact_user_id` used for scoping is always resolved server-side from the authenticated Clerk session (EA view) or from a URL param guarded by `funder+` middleware (PM view).
-4. **Service-level auth on Django is a future hardening step.** Phase 0 ships with the existing trust model (network isolation + `DJANGO_API_URL` as the sole access vector). Adding a shared-secret header or signed service token between Next.js and Django is tracked as a separate hardening task, not a Phase 0 blocker, but **must** be added before any public/partner access to the Django API is considered.
-5. **Audit:** all Django views for these endpoints log `user_id` and `class_id` parameters so we can audit access if needed.
+1. **Shared-secret service auth between Next.js and Django (required before shipping EA endpoints).**
+   - Add `INTERNAL_API_SECRET` env var on both Next.js and Django (Render → Environment).
+   - Next.js fetchers in `lib/pm/api.ts` and `lib/ea/api.ts` include the header `X-Internal-Auth: ${INTERNAL_API_SECRET}` on every call to Django.
+   - Django middleware (new) checks this header on all `/api/*` routes and rejects any request without a valid secret with `401 Unauthorized`.
+   - Secret is generated with `openssl rand -hex 32`, set in Render env vars on both services (not committed to git).
+   - Rotation: update both services' env vars simultaneously and redeploy.
+2. **`DJANGO_API_URL` is server-side only.** Never exposed to the browser. All EA data fetching happens in server components (`lib/ea/api.ts`), never via client-side fetch.
+3. **Middleware gates access at the Next.js edge.** `/my-kids/*` and `/pm/education-assistants/*` are protected in `middleware.ts`. No unauthenticated request ever reaches the fetcher that calls Django.
+4. **`teampact_user_id` is always resolved server-side** — from the authenticated Clerk session (EA view) or from a URL param guarded by `funder+` middleware (PM view). Never trusted from a client.
+5. **Audit:** all Django views for these endpoints log `user_id` and `class_id` parameters so access can be audited if needed.
+6. **Future hardening (not Phase 0):** Django accepting Clerk JWTs directly (with verification against Clerk's JWKS endpoint) is tracked as a future option, only required if third parties or mobile apps ever need to call Django directly. Until then, the Next.js-as-auth-layer + shared-secret model is sufficient.
 
 
 ### `GET /api/ea/<user_id>/`
@@ -462,14 +468,20 @@ The following components are data-driven and context-agnostic — they work in b
 
 *Prerequisite — must complete before any frontend work.*
 
-1. Add `ea_user_id` (BigIntegerField, indexed, nullable) to `GroupSummary2026`
-2. Add `class_id` (BigIntegerField, indexed, nullable) to `GroupSummary2026`
-3. Update `compute_group_summaries_2026` to populate both fields
-4. Add group-level letter mastery aggregation (aggregate `ChildLetterAlignment2026` per group per letter, combine with session letter counts)
-5. Build `GET /api/ea/<user_id>/` endpoint (EA overview — used by both EA and PM views)
-6. Build `GET /api/ea/<user_id>/groups/<class_id>/` endpoint (group detail — used by both EA and PM views)
-7. Run data validation checks (see Section 1)
-8. Run nightly compute, verify data correctness
+1. **Add `INTERNAL_API_SECRET` shared-secret auth between Next.js and Django.**
+   - Generate secret: `openssl rand -hex 32`
+   - Set on both Next.js and Django Render services (env vars)
+   - Add Django middleware that rejects any `/api/*` request without a valid `X-Internal-Auth` header (returns 401)
+   - Update existing Next.js fetchers in `lib/pm/api.ts` to send the header on every Django call
+   - Verify existing PM endpoints still work end-to-end
+2. Add `ea_user_id` (BigIntegerField, indexed, nullable) to `GroupSummary2026`
+3. Add `class_id` (BigIntegerField, indexed, nullable) to `GroupSummary2026`
+4. Update `compute_group_summaries_2026` to populate both fields
+5. Add group-level letter mastery aggregation (aggregate `ChildLetterAlignment2026` per group per letter, combine with session letter counts)
+6. Build `GET /api/ea/<user_id>/` endpoint (EA overview — used by both EA and PM views)
+7. Build `GET /api/ea/<user_id>/groups/<class_id>/` endpoint (group detail — used by both EA and PM views)
+8. Run data validation checks (see Section 1)
+9. Run nightly compute, verify data correctness
 
 ### Phase 1A: Auth & Routing (Next.js)
 
