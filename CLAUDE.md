@@ -57,6 +57,11 @@ See `.env.example`. Required: `NEXT_PUBLIC_MAPBOX_TOKEN`, `NEXT_PUBLIC_CLERK_PUB
 | [documentation/data-and-backend.md](documentation/data-and-backend.md) | Data files, Django API, ISR |
 | [documentation/assets.md](documentation/assets.md) | Static assets in `public/` |
 | [documentation/pm-dashboard-architecture.md](documentation/pm-dashboard-architecture.md) | PM Dashboard pages, data flow, flags, language-aware letters, Django endpoints |
+| [documentation/letter-mastery-data-model.md](documentation/letter-mastery-data-model.md) | **IMPORTANT** — how to interpret mastery data, what claims are supportable, and language guidance for EA-facing and AI-generated copy. Read before building anything that displays or reasons about child letter mastery. |
+
+## Terminology
+
+- **EA (Education Assistant)** — the frontline worker who teaches children in the Zazi iZandi programme. In other Masinyusane programmes the same role is called a **Literacy Coach (LC)**. The code and UI use "EA" consistently; if a user says "LCs" they mean EAs.
 
 # git
 - Always work on git branches. once code is working, merge back to main & push.
