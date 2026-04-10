@@ -37,13 +37,15 @@ Middleware at `middleware.ts` protects `/schools*` and `/pm*` routes. Roles: `fu
 
 Django source: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025`. Hosted on Render at `DJANGO_API_URL`. Nightly cron syncs from TeamPact API + computes group summaries and letter alignment.
 
+**Service auth:** All Next.js → Django calls must include the `X-Internal-Auth: ${INTERNAL_API_SECRET}` header. Django middleware rejects any `/api/*` request without it. Use the `lib/django-fetch.ts` helper — never call Django with raw `fetch` or the header will be missing. Both services must have `INTERNAL_API_SECRET` set in their Render env vars.
+
 ## Brand Colors
 
 `primary` (#2c5aa0) · `accent-yellow` (#ffd641) · `accent-red` (#e74c3c). Full palette in `globals.css`.
 
 ## Environment Variables
 
-See `.env.example`. Required: `NEXT_PUBLIC_MAPBOX_TOKEN`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `DJANGO_API_URL`.
+See `.env.example`. Required: `NEXT_PUBLIC_MAPBOX_TOKEN`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `DJANGO_API_URL`, `INTERNAL_API_SECRET` (must match the value set on the Django service).
 
 ## Further Documentation
 

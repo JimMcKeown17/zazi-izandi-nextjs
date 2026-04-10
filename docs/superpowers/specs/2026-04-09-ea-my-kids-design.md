@@ -470,10 +470,19 @@ The following components are data-driven and context-agnostic — they work in b
 
 1. **Add `INTERNAL_API_SECRET` shared-secret auth between Next.js and Django.**
    - Generate secret: `openssl rand -hex 32`
-   - Set on both Next.js and Django Render services (env vars)
+   - Set on both Next.js and Django Render services (env vars) **before deploying** the middleware
    - Add Django middleware that rejects any `/api/*` request without a valid `X-Internal-Auth` header (returns 401)
-   - Update existing Next.js fetchers in `lib/pm/api.ts` to send the header on every Django call
-   - Verify existing PM endpoints still work end-to-end
+   - Create a small helper `lib/django-fetch.ts` that wraps `fetch` and always injects the `X-Internal-Auth` header (so new callsites can't forget it)
+   - Update **all 7 existing Next.js → Django callsites** to use the helper:
+     - `lib/pm/api.ts` (multiple fetchers)
+     - `app/schools-2026/page.tsx` (direct server fetch)
+     - `app/api/letter-alignment/route.ts`
+     - `app/api/letter-alignment/unmatched/route.ts`
+     - `app/api/mentor-visits-summary/route.ts`
+     - `app/api/assessments-summary/route.ts`
+     - `app/api/flag-evidence/route.ts`
+   - **Atomic deploy required:** the Django middleware and all updated Next.js fetchers must ship in the same deploy. If the middleware goes live before the fetchers are updated, PM pages and `/schools-2026` will immediately break (401s). Deploy order: (a) set `INTERNAL_API_SECRET` on both Render services, (b) merge and deploy both Next.js and Django changes together, (c) smoke-test PM pages and `/schools-2026`.
+   - Verify existing PM endpoints and `/schools-2026` still work end-to-end after deploy.
 2. Add `ea_user_id` (BigIntegerField, indexed, nullable) to `GroupSummary2026`
 3. Add `class_id` (BigIntegerField, indexed, nullable) to `GroupSummary2026`
 4. Update `compute_group_summaries_2026` to populate both fields
