@@ -16,15 +16,17 @@
 
 ## Scope and Ordering
 
-Phase 0 is organized into five groups:
+Phase 0 is organized into five groups, with three automated test tasks interleaved (4b, 10b, 15b):
 
-1. **Service auth setup** (Tasks 1–6) — shared secret between Next.js and Django. Must ship atomically.
+1. **Service auth setup** (Tasks 1–6, with 4b for middleware tests) — shared secret between Next.js and Django. Must ship atomically.
 2. **Model changes** (Tasks 7–9) — add `ea_user_id` and `class_id` to `GroupSummary2026`.
-3. **Compute command updates** (Tasks 10–11) — populate new fields during nightly compute.
-4. **New endpoints** (Tasks 12–16) — `/api/ea/<user_id>/` and `/api/ea/<user_id>/groups/<class_id>/`.
+3. **Letter mastery aggregation** (Tasks 10–11, with 10b for helper tests) — aggregate per-letter mastery and session counts.
+4. **New endpoints** (Tasks 12–16, with 15b for view tests) — `/api/ea/<user_id>/` and `/api/ea/<user_id>/groups/<class_id>/`.
 5. **Data validation and deploy** (Tasks 17–19) — run checks, deploy, verify.
 
 **Important:** Group 1 must ship atomically (middleware + fetcher refactor together). Groups 2–5 can ship incrementally after that, but they also depend on Group 1 being live.
+
+**Automated tests** are inserted as letter-suffixed tasks (4b, 10b, 15b) right after the code they cover, so each subsystem ships with its own test gate. The tests run via `python manage.py test api`.
 
 ---
 
@@ -51,9 +53,12 @@ Phase 0 is organized into five groups:
 - **Modify:** `api/models.py` — add `ea_user_id` and `class_id` fields to `GroupSummary2026`
 - **Modify:** `api/management/commands/compute_group_summaries_2026.py` — populate new fields
 - **Create:** `api/ea_mastery.py` — helper that aggregates group-level letter mastery from `ChildLetterAlignment2026` + session letter counts
-- **Modify:** `api/views.py` — add `ea_detail_overview` and `ea_group_detail` view functions
+- **Modify:** `api/views.py` — add `ea_detail_overview` and `ea_group_detail` view functions (with audit logging via `api.ea` logger)
 - **Modify:** `api/urls.py` — register new URL routes
-- **Create:** `api/management/commands/validate_ea_data_2026.py` — data validation checks command
+- **Create:** `api/management/commands/validate_ea_data_2026.py` — data validation checks command (DB + TeamPact API checks)
+- **Create:** `api/tests_middleware.py` — automated tests for `InternalAuthMiddleware`
+- **Create:** `api/tests_ea_mastery.py` — automated tests for `compute_group_letter_mastery`
+- **Create:** `api/tests_ea_views.py` — automated tests for both EA endpoints (auth, scoping, shape)
 
 ---
 
@@ -83,14 +88,16 @@ INTERNAL_API_SECRET=<paste_value_from_step_1>
 
 - [ ] **Step 3: Add the secret to Django's local env**
 
-In the Django project at `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025`, check whether there's an `.env` or `.env.local` file. If it exists, add:
+Django's `config/settings/base.py` (line 17) hardcodes `dotenv_path = BASE_DIR/.env` — it does **not** read `.env.local`. In the Django project at `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025`, edit (or create) the `.env` file in the project root:
+
 ```
 INTERNAL_API_SECRET=<same_value_from_step_1>
 ```
 
-If there's no env file pattern for Django, export it in the shell you'll use to run `manage.py runserver`:
+If for some reason you can't use a `.env` file (e.g., running in a subshell), export it before starting `manage.py runserver`:
 ```bash
 export INTERNAL_API_SECRET=<same_value_from_step_1>
+python manage.py runserver 8000
 ```
 
 Both sides MUST use the same secret value.
@@ -355,6 +362,115 @@ Stop the dev server (Ctrl+C).
 cd /Users/jimmckeown/Development/Zazi_iZandi_Website_2025
 git add config/settings/base.py
 git commit -m "feat(config): register InternalAuthMiddleware and INTERNAL_API_SECRET setting"
+```
+
+---
+
+### Task 4b: Write automated tests for `InternalAuthMiddleware`
+
+**Files:**
+- Create: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025/api/tests_middleware.py`
+
+**Why:** The middleware is the entire child-data security boundary. Manual curl in Task 4 is insufficient — we want a test that runs on every deploy and catches regressions (e.g., a future refactor that removes the header check).
+
+- [ ] **Step 1: Create the test file**
+
+Create `api/tests_middleware.py`:
+
+```python
+"""
+Tests for InternalAuthMiddleware.
+
+These tests verify the service-auth boundary: unauthenticated /api/*
+requests must be rejected, authenticated ones must pass through, and
+non-/api/* paths must remain unaffected.
+"""
+from django.test import TestCase, override_settings, Client
+
+
+@override_settings(INTERNAL_API_SECRET="test-secret-123")
+class InternalAuthMiddlewareTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def test_api_path_without_header_returns_401(self):
+        """Any /api/* request without the header is rejected."""
+        res = self.client.get("/api/programme-overview/")
+        self.assertEqual(res.status_code, 401)
+        self.assertEqual(res.json(), {"error": "unauthorized"})
+
+    def test_api_path_with_wrong_header_returns_401(self):
+        """A wrong secret is the same as no secret — rejected."""
+        res = self.client.get(
+            "/api/programme-overview/",
+            HTTP_X_INTERNAL_AUTH="wrong-value",
+        )
+        self.assertEqual(res.status_code, 401)
+
+    def test_api_path_with_correct_header_passes_through(self):
+        """The middleware does not block a valid request.
+
+        We don't care about the downstream view's status here — only that
+        the middleware itself returns neither 401 nor blocks the request.
+        A 200 OR any other non-401 status means the middleware passed through.
+        """
+        res = self.client.get(
+            "/api/programme-overview/",
+            HTTP_X_INTERNAL_AUTH="test-secret-123",
+        )
+        self.assertNotEqual(res.status_code, 401)
+
+    def test_non_api_path_passes_through_without_header(self):
+        """Non-/api/* paths (admin, auth) don't require the header."""
+        res = self.client.get("/admin/login/")
+        # 200 or 302 — anything other than 401 means the middleware didn't block it
+        self.assertNotEqual(res.status_code, 401)
+
+
+@override_settings(INTERNAL_API_SECRET="")
+class InternalAuthMiddlewareWithEmptySecretTests(TestCase):
+    """When the secret is unset, all /api/* requests should still be rejected.
+
+    This protects against misconfiguration — you can't accidentally
+    disable auth by forgetting to set the env var.
+    """
+
+    def test_empty_secret_rejects_everything(self):
+        client = Client()
+        res = client.get(
+            "/api/programme-overview/",
+            HTTP_X_INTERNAL_AUTH="anything",
+        )
+        self.assertEqual(res.status_code, 401)
+```
+
+- [ ] **Step 2: Run the tests**
+
+```bash
+cd /Users/jimmckeown/Development/Zazi_iZandi_Website_2025
+source venv/bin/activate
+python manage.py test api.tests_middleware -v 2
+```
+
+Expected:
+```
+test_api_path_with_correct_header_passes_through ... ok
+test_api_path_with_wrong_header_returns_401 ... ok
+test_api_path_without_header_returns_401 ... ok
+test_non_api_path_passes_through_without_header ... ok
+test_empty_secret_rejects_everything ... ok
+
+Ran 5 tests in X.XXXs
+OK
+```
+
+If any test fails, diagnose and fix the middleware before proceeding.
+
+- [ ] **Step 3: Commit (Django repo)**
+
+```bash
+git add api/tests_middleware.py
+git commit -m "test(api): add InternalAuthMiddleware tests (401/200/pass-through)"
 ```
 
 ---
@@ -918,6 +1034,193 @@ git commit -m "feat(api): add group letter mastery aggregation helper"
 
 ---
 
+### Task 10b: Write automated tests for `compute_group_letter_mastery`
+
+**Files:**
+- Create: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025/api/tests_ea_mastery.py`
+
+**Why:** The mastery helper powers the central visualization on the group detail page. A regression here would silently corrupt the "average letter tracker" EAs rely on. Tests cover three critical paths: (1) normal with both mastery and sessions, (2) no-assessment fallback (session-only), (3) deduplication of session rows by `session_id`.
+
+- [ ] **Step 1: Create the test file**
+
+Create `api/tests_ea_mastery.py`:
+
+```python
+"""
+Tests for compute_group_letter_mastery in api/ea_mastery.py.
+
+Uses an in-memory-style Django TestCase with fabricated rows in
+GroupSummary2026, TeampactSession2026, and ChildLetterAlignment2026
+to verify the aggregation logic without needing real TeamPact data.
+"""
+from datetime import datetime, timezone as dt_timezone
+
+from django.test import TestCase
+from django.utils import timezone
+
+from api.models import (
+    GroupSummary2026,
+    TeampactSession2026,
+    ChildLetterAlignment2026,
+)
+from api.ea_mastery import compute_group_letter_mastery
+
+
+def _make_session_row(
+    session_id: int,
+    class_id: int,
+    letters_taught: str,
+    participant_id: int,
+    attendance_id: int,
+):
+    """Create one TeampactSession2026 row (one participant per session)."""
+    return TeampactSession2026.objects.create(
+        attendance_id=attendance_id,
+        session_id=session_id,
+        class_id=class_id,
+        program_name="Test School",
+        class_name="Test Group",
+        user_id=12345,
+        user_name="Test EA",
+        letters_taught=letters_taught,
+        session_started_at=timezone.now(),
+        attendance_status="PRESENT_BOTH",
+        participant_id=participant_id,
+        participant_name=f"Child {participant_id}",
+    )
+
+
+class LetterMasteryAggregationTests(TestCase):
+    def setUp(self):
+        self.group = GroupSummary2026.objects.create(
+            program_name="Test School",
+            class_name="Test Group",
+            ea_name="Test EA",
+            ea_user_id=12345,
+            class_id=99999,
+            grade="Grade R",
+            phase="letters",
+            language="isiXhosa",
+            children_count=4,
+            children_names=["Child 1", "Child 2", "Child 3", "Child 4"],
+            current_letter="e",
+            progress_index=1,
+            progress_pct=7.7,
+            sessions_this_week=3,
+        )
+
+    def test_with_mastery_and_sessions_happy_path(self):
+        """Normal case: group has both assessments and sessions."""
+        # Session 1: taught "a,e" with 3 participants (3 rows, same session_id)
+        _make_session_row(1, 99999, "a,e", 1001, 10001)
+        _make_session_row(1, 99999, "a,e", 1002, 10002)
+        _make_session_row(1, 99999, "a,e", 1003, 10003)
+        # Session 2: taught "a" only, 2 participants
+        _make_session_row(2, 99999, "a", 1001, 10004)
+        _make_session_row(2, 99999, "a", 1002, 10005)
+
+        # Assessment data: 3/4 children mastered 'a', 1/4 mastered 'e'
+        ChildLetterAlignment2026.objects.create(
+            participant_id=1001,
+            program_name="Test School",
+            class_name="Test Group",
+            language="isiXhosa",
+            letters_mastered=["a", "e"],
+        )
+        ChildLetterAlignment2026.objects.create(
+            participant_id=1002,
+            program_name="Test School",
+            class_name="Test Group",
+            language="isiXhosa",
+            letters_mastered=["a"],
+        )
+        ChildLetterAlignment2026.objects.create(
+            participant_id=1003,
+            program_name="Test School",
+            class_name="Test Group",
+            language="isiXhosa",
+            letters_mastered=["a"],
+        )
+
+        result = compute_group_letter_mastery(99999, self.group)
+
+        # Build a lookup by letter
+        by_letter = {r["letter"]: r for r in result}
+
+        # 'a' was taught in 2 unique sessions (dedup by session_id)
+        self.assertIn("a", by_letter)
+        self.assertEqual(by_letter["a"]["sessions_taught"], 2)
+        self.assertEqual(by_letter["a"]["children_mastered"], 3)
+        self.assertEqual(by_letter["a"]["children_total"], 4)
+        self.assertEqual(by_letter["a"]["mastery_pct"], 75)
+
+        # 'e' was taught in 1 session, mastered by 1 child
+        self.assertIn("e", by_letter)
+        self.assertEqual(by_letter["e"]["sessions_taught"], 1)
+        self.assertEqual(by_letter["e"]["children_mastered"], 1)
+        self.assertEqual(by_letter["e"]["mastery_pct"], 25)
+
+    def test_session_id_deduplication(self):
+        """Multiple rows with the same session_id count as one session."""
+        # 5 participants in the same session should still count as 1 session
+        for pid in range(2001, 2006):
+            _make_session_row(100, 99999, "a", pid, 20000 + pid)
+
+        result = compute_group_letter_mastery(99999, self.group)
+        by_letter = {r["letter"]: r for r in result}
+        self.assertEqual(by_letter["a"]["sessions_taught"], 1)
+
+    def test_no_assessment_data_fallback(self):
+        """Groups with no ChildLetterAlignment rows still show session data."""
+        # Only sessions, no alignment
+        _make_session_row(1, 99999, "a", 1001, 10001)
+        _make_session_row(2, 99999, "a,e", 1001, 10002)
+
+        result = compute_group_letter_mastery(99999, self.group)
+        by_letter = {r["letter"]: r for r in result}
+
+        # Letters should appear with sessions_taught populated...
+        self.assertEqual(by_letter["a"]["sessions_taught"], 2)
+        self.assertEqual(by_letter["e"]["sessions_taught"], 1)
+        # ...but mastery is 0 across the board
+        self.assertEqual(by_letter["a"]["children_mastered"], 0)
+        self.assertEqual(by_letter["a"]["mastery_pct"], 0)
+        self.assertEqual(by_letter["e"]["children_mastered"], 0)
+
+    def test_letters_with_neither_mastery_nor_sessions_are_omitted(self):
+        """Letters that never appeared anywhere should not show up."""
+        _make_session_row(1, 99999, "a", 1001, 10001)
+        result = compute_group_letter_mastery(99999, self.group)
+        letters_in_result = {r["letter"] for r in result}
+        # 'a' should be present
+        self.assertIn("a", letters_in_result)
+        # 'z' should be absent (never taught, never mastered)
+        self.assertNotIn("z", letters_in_result)
+
+    def test_empty_group_returns_empty_list(self):
+        """A group with no sessions and no alignment rows returns []."""
+        result = compute_group_letter_mastery(99999, self.group)
+        self.assertEqual(result, [])
+```
+
+- [ ] **Step 2: Run the tests**
+
+```bash
+source venv/bin/activate
+python manage.py test api.tests_ea_mastery -v 2
+```
+
+Expected: 5 tests pass. If any fail, fix `ea_mastery.py` before proceeding.
+
+- [ ] **Step 3: Commit (Django repo)**
+
+```bash
+git add api/tests_ea_mastery.py
+git commit -m "test(api): add tests for compute_group_letter_mastery"
+```
+
+---
+
 ### Task 11: Smoke-test the mastery helper against a real group
 
 **Files:** No new code. Verification only.
@@ -988,13 +1291,20 @@ def ea_detail_overview(request, user_id):
 
     Scoped strictly by ea_user_id — no name matching fallback.
     """
+    import logging
     from api.models import GroupSummary2026
     from collections import Counter
+
+    logger = logging.getLogger("api.ea")
 
     try:
         user_id_int = int(user_id)
     except (TypeError, ValueError):
+        logger.warning("ea_detail_overview: invalid user_id=%r", user_id)
         return JsonResponse({"error": "invalid user_id"}, status=400)
+
+    # Audit log: child-level data access
+    logger.info("ea_detail_overview: user_id=%s", user_id_int)
 
     groups_qs = (
         GroupSummary2026.objects
@@ -1011,12 +1321,19 @@ def ea_detail_overview(request, user_id):
         if name_counter:
             ea_name = name_counter.most_common(1)[0][0]
 
-    # Primary school: the one with the most groups (proxy for "most sessions")
+    # Primary school: the one where the EA has taught the most sessions
+    # (sum total_sessions per school, pick the highest)
     primary_school = ""
     if group_list:
-        school_counter = Counter(g.program_name for g in group_list if g.program_name)
-        if school_counter:
-            primary_school = school_counter.most_common(1)[0][0]
+        sessions_per_school: dict[str, int] = {}
+        for g in group_list:
+            if g.program_name:
+                sessions_per_school[g.program_name] = (
+                    sessions_per_school.get(g.program_name, 0)
+                    + (getattr(g, "total_sessions", 0) or 0)
+                )
+        if sessions_per_school:
+            primary_school = max(sessions_per_school.items(), key=lambda kv: kv[1])[0]
 
     # Last updated: max updated_at across this user's group summaries
     last_updated = None
@@ -1193,15 +1510,26 @@ def ea_group_detail(request, user_id, class_id):
     session. We aggregate by session_id for the "recent sessions" list and
     by participant_id for the children list.
     """
+    import logging
     from collections import defaultdict
     from api.models import GroupSummary2026, TeampactSession2026
     from api.ea_mastery import compute_group_letter_mastery
+
+    logger = logging.getLogger("api.ea")
 
     try:
         user_id_int = int(user_id)
         class_id_int = int(class_id)
     except (TypeError, ValueError):
+        logger.warning(
+            "ea_group_detail: invalid user_id=%r class_id=%r", user_id, class_id
+        )
         return JsonResponse({"error": "invalid user_id or class_id"}, status=400)
+
+    # Audit log: child-level data access
+    logger.info(
+        "ea_group_detail: user_id=%s class_id=%s", user_id_int, class_id_int
+    )
 
     # Scope check — this class must belong to this user
     try:
@@ -1210,6 +1538,11 @@ def ea_group_detail(request, user_id, class_id):
             class_id=class_id_int,
         )
     except GroupSummary2026.DoesNotExist:
+        logger.warning(
+            "ea_group_detail: 404 — user_id=%s class_id=%s not found",
+            user_id_int,
+            class_id_int,
+        )
         return JsonResponse({"error": "group not found"}, status=404)
 
     def is_present(status: str) -> bool:
@@ -1414,6 +1747,368 @@ git commit -m "feat(api): register ea_group_detail URL route"
 
 ---
 
+### Task 15b: Write automated tests for `ea_detail_overview` and `ea_group_detail`
+
+**Files:**
+- Create: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025/api/tests_ea_views.py`
+
+**Why:** These views expose child-level data and enforce scoping by `ea_user_id`. Automated tests catch scoping regressions (e.g., a future refactor that accidentally strips the filter) and response-shape drift (fields renamed, missing, or wrong type). Covers letter-phase, blending, no-assessment, and 404 scoping cases.
+
+- [ ] **Step 1: Create the test file**
+
+Create `api/tests_ea_views.py`:
+
+```python
+"""
+Tests for ea_detail_overview and ea_group_detail views.
+
+Verifies:
+- 401 is returned when the service-auth header is missing
+- Scoping is enforced by ea_user_id (wrong user = 404)
+- Response shape matches the spec for letter-phase groups
+- Response shape matches the spec for blending groups
+- No-assessment fallback returns session-only mastery data
+"""
+from django.test import TestCase, override_settings, Client
+from django.utils import timezone
+
+from api.models import (
+    GroupSummary2026,
+    TeampactSession2026,
+    ChildLetterAlignment2026,
+)
+
+
+AUTH_HEADERS = {"HTTP_X_INTERNAL_AUTH": "test-secret-123"}
+
+
+def _make_session_row(
+    attendance_id: int,
+    session_id: int,
+    class_id: int,
+    user_id: int,
+    letters_taught: str,
+    participant_id: int,
+    participant_name: str,
+    present: bool = True,
+):
+    return TeampactSession2026.objects.create(
+        attendance_id=attendance_id,
+        session_id=session_id,
+        class_id=class_id,
+        program_name="Test School",
+        class_name="Test Group",
+        user_id=user_id,
+        user_name="Test EA",
+        letters_taught=letters_taught,
+        session_started_at=timezone.now(),
+        session_text="Session notes here",
+        attendance_status="PRESENT_BOTH" if present else "ABSENT",
+        participant_id=participant_id,
+        participant_name=participant_name,
+    )
+
+
+@override_settings(INTERNAL_API_SECRET="test-secret-123")
+class EaDetailOverviewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user_id = 28764
+
+        # EA has 2 groups at the same school
+        GroupSummary2026.objects.create(
+            program_name="Test School",
+            class_name="Test Group 1",
+            ea_name="Test EA",
+            ea_user_id=self.user_id,
+            class_id=1001,
+            grade="Grade R",
+            phase="letters",
+            language="isiXhosa",
+            children_count=7,
+            children_names=[f"Child {i}" for i in range(7)],
+            current_letter="e",
+            progress_index=1,
+            progress_pct=7.7,
+            sessions_this_week=4,
+            total_sessions=18,
+        )
+        GroupSummary2026.objects.create(
+            program_name="Test School",
+            class_name="Test Group 2",
+            ea_name="Test EA",
+            ea_user_id=self.user_id,
+            class_id=1002,
+            grade="Grade 1",
+            phase="blending",
+            language="isiXhosa",
+            children_count=6,
+            children_names=[f"Child {i}" for i in range(6)],
+            sessions_this_week=3,
+            total_sessions=12,
+        )
+        # Another EA's group — must NOT appear in the overview
+        GroupSummary2026.objects.create(
+            program_name="Other School",
+            class_name="Other Group",
+            ea_name="Other EA",
+            ea_user_id=99999,
+            class_id=2001,
+            grade="Grade R",
+            phase="letters",
+            language="isiXhosa",
+            children_count=5,
+            children_names=[],
+            current_letter="a",
+            progress_index=0,
+            progress_pct=3.8,
+            sessions_this_week=2,
+            total_sessions=5,
+        )
+
+    def test_missing_header_returns_401(self):
+        res = self.client.get(f"/api/ea/{self.user_id}/")
+        self.assertEqual(res.status_code, 401)
+
+    def test_returns_only_this_users_groups(self):
+        res = self.client.get(f"/api/ea/{self.user_id}/", **AUTH_HEADERS)
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["teampact_user_id"], self.user_id)
+        self.assertEqual(data["ea_name"], "Test EA")
+        self.assertEqual(data["primary_school"], "Test School")
+        self.assertEqual(len(data["groups"]), 2)
+        class_ids = sorted(g["class_id"] for g in data["groups"])
+        self.assertEqual(class_ids, [1001, 1002])
+        # The other EA's group must be absent
+        for g in data["groups"]:
+            self.assertNotEqual(g["class_id"], 2001)
+
+    def test_each_group_carries_school_name(self):
+        res = self.client.get(f"/api/ea/{self.user_id}/", **AUTH_HEADERS)
+        data = res.json()
+        for g in data["groups"]:
+            self.assertIn("school_name", g)
+            self.assertEqual(g["school_name"], "Test School")
+
+    def test_letters_group_has_progress_fields(self):
+        res = self.client.get(f"/api/ea/{self.user_id}/", **AUTH_HEADERS)
+        data = res.json()
+        letters_group = next(g for g in data["groups"] if g["phase"] == "letters")
+        self.assertIn("current_letter", letters_group)
+        self.assertIn("progress_index", letters_group)
+        self.assertIn("progress_pct", letters_group)
+
+    def test_blending_group_has_blending_fields(self):
+        res = self.client.get(f"/api/ea/{self.user_id}/", **AUTH_HEADERS)
+        data = res.json()
+        blending_group = next(g for g in data["groups"] if g["phase"] == "blending")
+        self.assertIn("blending_start_date", blending_group)
+
+    def test_unknown_user_returns_empty_groups(self):
+        res = self.client.get("/api/ea/888888/", **AUTH_HEADERS)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["groups"], [])
+
+
+@override_settings(INTERNAL_API_SECRET="test-secret-123")
+class EaGroupDetailTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user_id = 28764
+        self.other_user_id = 99999
+        self.class_id = 1001
+        self.other_class_id = 2001
+
+        # Our EA's letters-phase group
+        self.group = GroupSummary2026.objects.create(
+            program_name="Test School",
+            class_name="Test Group 1",
+            ea_name="Test EA",
+            ea_user_id=self.user_id,
+            class_id=self.class_id,
+            grade="Grade R",
+            phase="letters",
+            language="isiXhosa",
+            children_count=2,
+            children_names=["Child A", "Child B"],
+            current_letter="e",
+            progress_index=1,
+            progress_pct=7.7,
+            sessions_this_week=2,
+            total_sessions=3,
+        )
+        # Another EA's group
+        GroupSummary2026.objects.create(
+            program_name="Other School",
+            class_name="Other Group",
+            ea_name="Other EA",
+            ea_user_id=self.other_user_id,
+            class_id=self.other_class_id,
+            grade="Grade R",
+            phase="letters",
+            language="isiXhosa",
+            children_count=1,
+            children_names=["Someone Else"],
+            current_letter="a",
+            progress_index=0,
+            progress_pct=3.8,
+            sessions_this_week=1,
+            total_sessions=1,
+        )
+
+        # 3 sessions, each with 2 participants (6 rows total for our group)
+        # Session 1: a, both present
+        _make_session_row(1, 101, self.class_id, self.user_id, "a", 5001, "Child A", True)
+        _make_session_row(2, 101, self.class_id, self.user_id, "a", 5002, "Child B", True)
+        # Session 2: a,e — A present, B absent
+        _make_session_row(3, 102, self.class_id, self.user_id, "a,e", 5001, "Child A", True)
+        _make_session_row(4, 102, self.class_id, self.user_id, "a,e", 5002, "Child B", False)
+        # Session 3: e — both present
+        _make_session_row(5, 103, self.class_id, self.user_id, "e", 5001, "Child A", True)
+        _make_session_row(6, 103, self.class_id, self.user_id, "e", 5002, "Child B", True)
+
+    def test_missing_header_returns_401(self):
+        res = self.client.get(f"/api/ea/{self.user_id}/groups/{self.class_id}/")
+        self.assertEqual(res.status_code, 401)
+
+    def test_wrong_user_returns_404(self):
+        """Requesting another user's class_id must return 404 (scoping)."""
+        res = self.client.get(
+            f"/api/ea/{self.user_id}/groups/{self.other_class_id}/",
+            **AUTH_HEADERS,
+        )
+        self.assertEqual(res.status_code, 404)
+
+    def test_nonexistent_class_returns_404(self):
+        res = self.client.get(
+            f"/api/ea/{self.user_id}/groups/999999/",
+            **AUTH_HEADERS,
+        )
+        self.assertEqual(res.status_code, 404)
+
+    def test_shape_of_response(self):
+        res = self.client.get(
+            f"/api/ea/{self.user_id}/groups/{self.class_id}/",
+            **AUTH_HEADERS,
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        for key in [
+            "class_id", "group_name", "school_name", "grade", "phase",
+            "language", "progress", "dosage_status", "sessions_this_week",
+            "total_sessions", "flags", "children", "recent_sessions", "letter_mastery",
+        ]:
+            self.assertIn(key, data, f"missing key {key!r}")
+
+    def test_recent_sessions_aggregate_by_session_id(self):
+        """3 unique sessions should produce 3 entries, not 6."""
+        res = self.client.get(
+            f"/api/ea/{self.user_id}/groups/{self.class_id}/",
+            **AUTH_HEADERS,
+        )
+        data = res.json()
+        self.assertEqual(len(data["recent_sessions"]), 3)
+
+        # Each session should have 2 attendees
+        for s in data["recent_sessions"]:
+            self.assertEqual(len(s["attendees"]), 2)
+
+    def test_children_list_aggregates_per_participant(self):
+        res = self.client.get(
+            f"/api/ea/{self.user_id}/groups/{self.class_id}/",
+            **AUTH_HEADERS,
+        )
+        data = res.json()
+        children = data["children"]
+        self.assertEqual(len(children), 2)
+
+        by_name = {c["name"]: c for c in children}
+        # Child A was present for all 3 sessions → 3/3
+        self.assertEqual(by_name["Child A"]["sessions_attended"], 3)
+        self.assertEqual(by_name["Child A"]["sessions_total"], 3)
+        self.assertEqual(by_name["Child A"]["attendance_rate"], 1.0)
+        # Child B was present for 2 of 3 sessions → 2/3
+        self.assertEqual(by_name["Child B"]["sessions_attended"], 2)
+        self.assertEqual(by_name["Child B"]["sessions_total"], 3)
+        self.assertAlmostEqual(by_name["Child B"]["attendance_rate"], 0.67, places=2)
+
+    def test_no_assessment_data_returns_session_only_mastery(self):
+        """Without ChildLetterAlignment2026 rows, mastery_pct is 0 but sessions_taught is populated."""
+        res = self.client.get(
+            f"/api/ea/{self.user_id}/groups/{self.class_id}/",
+            **AUTH_HEADERS,
+        )
+        data = res.json()
+        mastery = data["letter_mastery"]
+        self.assertGreater(len(mastery), 0, "expected mastery entries for taught letters")
+        for entry in mastery:
+            self.assertEqual(entry["mastery_pct"], 0)
+            self.assertEqual(entry["children_mastered"], 0)
+            self.assertGreater(entry["sessions_taught"], 0)
+
+    def test_blending_group_omits_letter_mastery_or_returns_empty(self):
+        """Blending groups have progress_index = -1 and no letter sequence progression."""
+        blending_group = GroupSummary2026.objects.create(
+            program_name="Test School",
+            class_name="Blending Group",
+            ea_name="Test EA",
+            ea_user_id=self.user_id,
+            class_id=3001,
+            grade="Grade 1",
+            phase="blending",
+            language="isiXhosa",
+            children_count=5,
+            children_names=[],
+            current_letter="",
+            progress_index=-1,
+            progress_pct=0,
+            sessions_this_week=3,
+            total_sessions=10,
+        )
+        # No sessions created for this class_id
+        res = self.client.get(
+            f"/api/ea/{self.user_id}/groups/3001/",
+            **AUTH_HEADERS,
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["phase"], "blending")
+        # letter_mastery should be empty (no sessions, no alignment) or a list of 0-session entries
+        self.assertIsInstance(data["letter_mastery"], list)
+```
+
+- [ ] **Step 2: Run the tests**
+
+```bash
+source venv/bin/activate
+python manage.py test api.tests_ea_views -v 2
+```
+
+Expected: all tests pass. If any fail, diagnose:
+- 401 tests — check middleware registration (Task 4)
+- 404 scoping tests — check the `.get()` filter in the view
+- Shape tests — check the view's response dict
+- Aggregation tests — check the `sessions_by_id` and `per_child` logic in `ea_group_detail`
+- Mastery tests — check `compute_group_letter_mastery` is called correctly
+
+- [ ] **Step 3: Run the full test suite to catch unintended regressions**
+
+```bash
+python manage.py test api -v 1
+```
+
+Expected: all tests pass. If any pre-existing test breaks, investigate before continuing.
+
+- [ ] **Step 4: Commit (Django repo)**
+
+```bash
+git add api/tests_ea_views.py
+git commit -m "test(api): add tests for ea_detail_overview and ea_group_detail"
+```
+
+---
+
 ### Task 16: Smoke-test both endpoints end-to-end locally
 
 **Files:** No new code. Verification only.
@@ -1508,31 +2203,109 @@ Surfaces anomalies that would cause EA-facing pages to show empty or
 incorrect data. Intended to be run manually before cutting EA access,
 and informs the future /pm/data-quality page.
 
+Covers all 5 checks required by the EA My Kids design spec Section 1:
+  1. TeamPact coaches without email addresses (cannot link to Clerk)
+  2. Our ea_user_ids missing from TeamPact /users API (stale data)
+  3. Groups where primary EA doesn't match TeamPact managers list
+  4. ea_name rows resolving to multiple ea_user_ids (name collisions)
+  5. GroupSummary2026 rows with null class_id (not resolvable from sessions)
+
+Plus two extra checks useful for operations:
+  6. Groups with >12 children (regrouping candidates)
+  7. EAs with sessions but no group summary rows (compute gaps)
+
 Usage:
     DJANGO_ENV=production python manage.py validate_ea_data_2026
+    DJANGO_ENV=production python manage.py validate_ea_data_2026 --skip-api     # offline only
+    DJANGO_ENV=production python manage.py validate_ea_data_2026 --manager-sample 25
 """
+import os
+import time
 from collections import Counter, defaultdict
 
+import requests
 from django.core.management.base import BaseCommand
 
 from api.models import GroupSummary2026, TeampactSession2026
 
 
+TEAMPACT_BASE_URL = os.environ.get(
+    "TEAMPACT_API_URL_BASE", "https://teampact.co/api/analytics/v1"
+)
+
+
+def _teampact_headers() -> dict:
+    token = os.environ.get("TEAMPACT_API_TOKEN")
+    if not token:
+        raise RuntimeError("TEAMPACT_API_TOKEN is not set — cannot run API checks")
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _fetch_all_users() -> list[dict]:
+    """Paginate through TeamPact /users and return the full list."""
+    users: list[dict] = []
+    page = 1
+    while True:
+        url = f"{TEAMPACT_BASE_URL}/users?page={page}&per_page=100"
+        res = requests.get(url, headers=_teampact_headers(), timeout=30)
+        res.raise_for_status()
+        payload = res.json()
+        batch = payload.get("data", [])
+        if not batch:
+            break
+        users.extend(batch)
+        meta = payload.get("meta", {})
+        if meta.get("current_page", page) >= meta.get("last_page", page):
+            break
+        page += 1
+        time.sleep(0.5)  # Rate-limit courtesy
+    return users
+
+
+def _fetch_group_managers(class_id: int) -> list[dict]:
+    """Return the managers list for a TeamPact group (class)."""
+    url = f"{TEAMPACT_BASE_URL}/groups/{class_id}"
+    res = requests.get(url, headers=_teampact_headers(), timeout=30)
+    res.raise_for_status()
+    return res.json().get("data", {}).get("managers", []) or []
+
+
 class Command(BaseCommand):
     help = "Run EA data validation checks for the My Kids feature."
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--skip-api",
+            action="store_true",
+            help="Skip TeamPact API checks (offline mode — only runs DB checks).",
+        )
+        parser.add_argument(
+            "--manager-sample",
+            type=int,
+            default=25,
+            help="How many groups to sample for the TeamPact managers check (default 25, use 0 for all).",
+        )
+
     def handle(self, *args, **options):
         out = self.stdout.write
+        skip_api = options["skip_api"]
+        manager_sample = options["manager_sample"]
 
         out("\n=== EA Data Validation (2026) ===\n")
 
-        # --- Check 1: GroupSummary rows missing ea_user_id ---
+        # ─── DB-only checks (always run) ──────────────────────────
+
         total = GroupSummary2026.objects.count()
+        if not total:
+            out("No GroupSummary2026 rows — nothing to validate.")
+            return
+
+        # Check 5: GroupSummary rows with null class_id or ea_user_id
         missing_ea = GroupSummary2026.objects.filter(ea_user_id__isnull=True).count()
         missing_class = GroupSummary2026.objects.filter(class_id__isnull=True).count()
         out(f"Total group summaries: {total}")
-        out(f"  Missing ea_user_id:  {missing_ea}  ({missing_ea/total*100:.1f}%)" if total else "  Missing ea_user_id: 0")
-        out(f"  Missing class_id:    {missing_class}  ({missing_class/total*100:.1f}%)" if total else "  Missing class_id: 0")
+        out(f"  [5a] Missing ea_user_id: {missing_ea} ({missing_ea/total*100:.1f}%)")
+        out(f"  [5b] Missing class_id:   {missing_class} ({missing_class/total*100:.1f}%)")
 
         if missing_ea:
             out("\n  Sample rows missing ea_user_id:")
@@ -1544,45 +2317,30 @@ class Command(BaseCommand):
             for g in GroupSummary2026.objects.filter(class_id__isnull=True)[:5]:
                 out(f"    - {g.program_name} / {g.class_name} (ea_name={g.ea_name!r})")
 
-        # --- Check 2: Same ea_name mapping to multiple ea_user_ids ---
-        out("\nName-to-ID conflicts (same ea_name, multiple ea_user_ids):")
+        # Check 4: Name-to-ID conflicts (same ea_name, multiple ea_user_ids)
+        out("\n[4] Name-to-ID conflicts (same ea_name, multiple ea_user_ids):")
         name_to_ids: dict[str, set[int]] = defaultdict(set)
-        for g in GroupSummary2026.objects.exclude(ea_user_id__isnull=True).exclude(ea_name=""):
+        for g in (
+            GroupSummary2026.objects
+            .exclude(ea_user_id__isnull=True)
+            .exclude(ea_name="")
+        ):
             name_to_ids[g.ea_name].add(g.ea_user_id)
-        conflicts = {name: ids for name, ids in name_to_ids.items() if len(ids) > 1}
+        conflicts = {n: ids for n, ids in name_to_ids.items() if len(ids) > 1}
         if conflicts:
             for name, ids in list(conflicts.items())[:10]:
                 out(f"  {name!r} -> {sorted(ids)}")
             out(f"  Total conflicts: {len(conflicts)}")
         else:
-            out("  None — all EA names map to a single user_id. ✓")
+            out("  None — all EA names map to a single user_id. OK")
 
-        # --- Check 3: ea_user_ids in summaries but missing from sessions ---
-        session_user_ids = set(
-            TeampactSession2026.objects
-            .exclude(user_id__isnull=True)
-            .values_list('user_id', flat=True)
-            .distinct()
-        )
-        summary_user_ids = set(
-            GroupSummary2026.objects
-            .exclude(ea_user_id__isnull=True)
-            .values_list('ea_user_id', flat=True)
-            .distinct()
-        )
-        orphaned = summary_user_ids - session_user_ids
-        out(f"\nEA user_ids in summaries but missing from sessions: {len(orphaned)}")
-        if orphaned:
-            for uid in list(orphaned)[:10]:
-                out(f"  - {uid}")
-
-        # --- Check 4: Groups with more than 12 children ---
+        # Extra check 6: Groups with >12 children
         oversized = GroupSummary2026.objects.filter(children_count__gt=12).order_by('-children_count')
-        out(f"\nGroups with >12 children: {oversized.count()}")
+        out(f"\n[6] Groups with >12 children: {oversized.count()}")
         for g in oversized[:10]:
             out(f"  - {g.children_count} kids in {g.class_name} ({g.program_name})")
 
-        # --- Check 5: EAs with zero groups linked ---
+        # Extra check 7: EAs with sessions but no group summary rows
         session_eas = {
             (row['user_id'], row['user_name'])
             for row in TeampactSession2026.objects
@@ -1590,11 +2348,123 @@ class Command(BaseCommand):
             .values('user_id', 'user_name')
             .distinct()
         }
-        eas_with_groups = set(GroupSummary2026.objects.exclude(ea_user_id__isnull=True).values_list('ea_user_id', flat=True).distinct())
-        session_only = [(uid, name) for (uid, name) in session_eas if uid not in eas_with_groups]
-        out(f"\nEAs with sessions but no group summary rows: {len(session_only)}")
+        eas_with_groups = set(
+            GroupSummary2026.objects
+            .exclude(ea_user_id__isnull=True)
+            .values_list('ea_user_id', flat=True)
+            .distinct()
+        )
+        session_only = [
+            (uid, name) for (uid, name) in session_eas if uid not in eas_with_groups
+        ]
+        out(f"\n[7] EAs with sessions but no group summary rows: {len(session_only)}")
         for uid, name in session_only[:10]:
             out(f"  - {uid} ({name!r})")
+
+        # ─── TeamPact API checks ──────────────────────────
+
+        if skip_api:
+            out("\n--skip-api set — skipping TeamPact API checks.")
+            out("\n=== Validation complete ===\n")
+            return
+
+        out("\nFetching TeamPact users list (paginated)…")
+        try:
+            tp_users = _fetch_all_users()
+        except Exception as e:
+            out(f"  FAILED to fetch TeamPact users: {e}")
+            out("  Skipping API-dependent checks. Rerun when TeamPact is reachable.")
+            out("\n=== Validation complete (partial) ===\n")
+            return
+
+        out(f"  Fetched {len(tp_users)} TeamPact users.")
+
+        coach_users = [
+            u for u in tp_users
+            if any(r.get("name") == "coach" for r in u.get("roles", []) or [])
+        ]
+        coach_by_id = {u["id"]: u for u in coach_users}
+        out(f"  Of those, {len(coach_users)} have role 'coach'.")
+
+        # Check 1: TeamPact coaches without emails
+        out("\n[1] Coaches without email addresses:")
+        no_email = [u for u in coach_users if not (u.get("email") or "").strip()]
+        if no_email:
+            for u in no_email[:20]:
+                out(f"  - id={u.get('id')} name={u.get('name')!r}")
+            out(f"  Total: {len(no_email)}")
+        else:
+            out("  None — all coaches have emails. OK")
+
+        # Check 2: Our ea_user_ids missing from TeamPact users API
+        out("\n[2] ea_user_ids in our DB but NOT in TeamPact /users:")
+        our_user_ids = set(
+            GroupSummary2026.objects
+            .exclude(ea_user_id__isnull=True)
+            .values_list('ea_user_id', flat=True)
+            .distinct()
+        )
+        tp_user_ids = set(u["id"] for u in tp_users)
+        stale = our_user_ids - tp_user_ids
+        if stale:
+            for uid in sorted(stale)[:20]:
+                sample = (
+                    GroupSummary2026.objects
+                    .filter(ea_user_id=uid)
+                    .values_list('ea_name', flat=True)
+                    .first()
+                )
+                out(f"  - {uid} (ea_name={sample!r})")
+            out(f"  Total stale ids: {len(stale)}")
+        else:
+            out("  None — all ea_user_ids exist in TeamPact. OK")
+
+        # Check 3: Groups where primary EA doesn't match TeamPact managers
+        out("\n[3] Groups where primary EA doesn't match TeamPact managers list:")
+        groups_with_ids = list(
+            GroupSummary2026.objects
+            .exclude(ea_user_id__isnull=True)
+            .exclude(class_id__isnull=True)
+            .values('class_id', 'ea_user_id', 'ea_name', 'class_name', 'program_name')
+        )
+        if manager_sample and manager_sample > 0:
+            sample_groups = groups_with_ids[:manager_sample]
+            out(f"  (Sampling first {len(sample_groups)} of {len(groups_with_ids)} groups — use --manager-sample 0 to check all)")
+        else:
+            sample_groups = groups_with_ids
+            out(f"  (Checking all {len(sample_groups)} groups)")
+
+        mismatches = []
+        for idx, g in enumerate(sample_groups, start=1):
+            try:
+                managers = _fetch_group_managers(g['class_id'])
+            except Exception as e:
+                out(f"  ! Failed to fetch group {g['class_id']}: {e}")
+                continue
+            manager_ids = {m.get("id") for m in managers}
+            if g['ea_user_id'] not in manager_ids:
+                mismatches.append({
+                    "class_id": g['class_id'],
+                    "class_name": g['class_name'],
+                    "program_name": g['program_name'],
+                    "our_ea_user_id": g['ea_user_id'],
+                    "our_ea_name": g['ea_name'],
+                    "tp_manager_ids": sorted(manager_ids),
+                })
+            if idx % 10 == 0:
+                out(f"  …checked {idx}/{len(sample_groups)}")
+            time.sleep(0.2)  # Rate-limit courtesy
+
+        if mismatches:
+            out(f"  Mismatches: {len(mismatches)}")
+            for m in mismatches[:10]:
+                out(
+                    f"    - class_id={m['class_id']} ({m['class_name']}): "
+                    f"ours={m['our_ea_user_id']}/{m['our_ea_name']!r} "
+                    f"tp_managers={m['tp_manager_ids']}"
+                )
+        else:
+            out("  None — all sampled groups' primary EA matches a TeamPact manager. OK")
 
         out("\n=== Validation complete ===\n")
 ```
@@ -1607,26 +2477,47 @@ python -c "import ast; ast.parse(open('api/management/commands/validate_ea_data_
 
 Expected: `OK`
 
-- [ ] **Step 3: Run the command locally**
+- [ ] **Step 3: Run the command locally (offline mode first)**
 
+Run without TeamPact API calls so you can verify the DB-only checks quickly:
+```bash
+source venv/bin/activate
+DJANGO_ENV=production python manage.py validate_ea_data_2026 --skip-api
+```
+
+Expected: prints DB checks 4, 5a, 5b, 6, 7. No API calls made. Review the output for unexpected counts.
+
+- [ ] **Step 4: Run the command with TeamPact API checks**
+
+Ensure `TEAMPACT_API_TOKEN` is set in your Django `.env` file, then run the full validation (sample 25 groups for the manager check — the default):
 ```bash
 DJANGO_ENV=production python manage.py validate_ea_data_2026
 ```
 
-Expected: prints all 5 checks with counts and sample rows. Review the output:
-- Record any counts that look unexpectedly high (e.g., >10% of groups missing `ea_user_id`).
-- Save the output to a file for later reference:
+Expected: runs all 7 checks, including fetching the full TeamPact users list (paginated) and checking a sample of 25 groups against TeamPact managers. Total runtime: ~1–3 minutes depending on TeamPact response times.
+
+Save the output to a file for later reference:
 ```bash
-DJANGO_ENV=production python manage.py validate_ea_data_2026 > /tmp/ea_validation_$(date +%Y%m%d).txt
+DJANGO_ENV=production python manage.py validate_ea_data_2026 \
+  > /tmp/ea_validation_$(date +%Y%m%d).txt
 ```
+
+- [ ] **Step 5: Review anomalies**
 
 Any anomalies surfaced here should be investigated but are NOT blockers for Phase 0 deploy (unless they indicate a bug in the compute command). The future `/pm/data-quality` page will surface these lists to the field team.
 
-- [ ] **Step 4: Commit (Django repo)**
+Blockers (must fix before deploy):
+- Check 5a or 5b showing >10% missing → indicates a bug in `compute_group_summaries_2026`
+- Check 2 showing many stale `ea_user_id`s in DB → data drift, may need a resync
+
+Non-blockers (surface and move on):
+- Checks 1, 3, 4, 6, 7 — expected to have some entries even in a healthy dataset
+
+- [ ] **Step 6: Commit (Django repo)**
 
 ```bash
 git add api/management/commands/validate_ea_data_2026.py
-git commit -m "feat(api): add EA data validation checks command"
+git commit -m "feat(api): add EA data validation checks command with TeamPact API checks"
 ```
 
 ---
@@ -1743,13 +2634,18 @@ Phase 0 is done when all of the following are true:
 
 - [ ] `INTERNAL_API_SECRET` is set on both Render services and all Next.js → Django callsites route through `lib/django-fetch.ts`.
 - [ ] Django middleware rejects `/api/*` requests without the valid header (401) in production.
+- [ ] **Automated tests** for the middleware pass (`api.tests_middleware`).
 - [ ] `GroupSummary2026` has `ea_user_id` and `class_id` columns populated for ≥90% of rows.
 - [ ] The `compute_group_summaries_2026` command populates both fields on every run.
+- [ ] **Automated tests** for `compute_group_letter_mastery` pass (`api.tests_ea_mastery`).
 - [ ] `/api/ea/<user_id>/` returns the expected shape with real production data.
 - [ ] `/api/ea/<user_id>/groups/<class_id>/` returns the expected shape including `children`, `recent_sessions`, and `letter_mastery`.
 - [ ] Scoping is enforced: requesting a `class_id` that doesn't belong to the given `user_id` returns 404.
+- [ ] **Automated tests** for both views pass (`api.tests_ea_views`), including 401, 404, scoping, and shape checks.
+- [ ] Both views log `user_id` and `class_id` on every call (`api.ea` logger).
 - [ ] PM pages (`/pm/*`) and `/schools-2026` still load correctly (regression check).
-- [ ] `validate_ea_data_2026` command runs successfully and surfaces known anomalies for future investigation.
+- [ ] `validate_ea_data_2026` command runs successfully (with `--skip-api` and full mode) and surfaces known anomalies for future investigation.
+- [ ] Full test suite passes: `python manage.py test api`.
 
 ---
 
