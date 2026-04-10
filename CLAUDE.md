@@ -57,3 +57,7 @@ See `.env.example`. Required: `NEXT_PUBLIC_MAPBOX_TOKEN`, `NEXT_PUBLIC_CLERK_PUB
 | [documentation/data-and-backend.md](documentation/data-and-backend.md) | Data files, Django API, ISR |
 | [documentation/assets.md](documentation/assets.md) | Static assets in `public/` |
 | [documentation/pm-dashboard-architecture.md](documentation/pm-dashboard-architecture.md) | PM Dashboard pages, data flow, flags, language-aware letters, Django endpoints |
+
+# git
+- Always work on git branches. once code is working, merge back to main & push.
+- Do not write co-written by claude etc on git commits.
