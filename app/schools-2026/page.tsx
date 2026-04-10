@@ -7,6 +7,7 @@ import type { School2026Data } from "@/lib/schools-2026/school2026-data";
 import { getGroups2026, getSessionsActivity } from "@/lib/pm/api";
 import { enrichSchoolsWithGroups } from "@/lib/schools-2026/enrich";
 import { AlertTriangle, MapPin } from "lucide-react";
+import { djangoFetch } from "@/lib/django-fetch";
 
 interface Schools2026ApiResponse {
   generated_at: string;
@@ -21,14 +22,8 @@ interface Schools2026ApiResponse {
 }
 
 async function getSchools2026Data(): Promise<Schools2026ApiResponse | null> {
-  const apiUrl = process.env.DJANGO_API_URL;
-  if (!apiUrl) {
-    console.error("DJANGO_API_URL is not set");
-    return null;
-  }
-
   try {
-    const res = await fetch(`${apiUrl}/api/schools-2026/`, {
+    const res = await djangoFetch("/api/schools-2026/", {
       next: { revalidate: 300 },
     });
 

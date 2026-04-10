@@ -1,16 +1,9 @@
 import { NextResponse } from "next/server";
+import { djangoFetch } from "@/lib/django-fetch";
 
 export async function GET() {
-  const apiUrl = process.env.DJANGO_API_URL;
-  if (!apiUrl) {
-    return NextResponse.json(
-      { error: "Backend API URL not configured" },
-      { status: 503 }
-    );
-  }
-
   try {
-    const res = await fetch(`${apiUrl}/api/letter-alignment/unmatched/`);
+    const res = await djangoFetch("/api/letter-alignment/unmatched/");
 
     if (!res.ok) {
       return NextResponse.json(

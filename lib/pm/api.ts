@@ -12,6 +12,7 @@ import type {
 import type { School2026Data } from "@/lib/schools-2026/school2026-data";
 import type { EnrichedSchool2026 } from "@/lib/schools-2026/types";
 import { enrichSchoolsWithGroups } from "@/lib/schools-2026/enrich";
+import { djangoFetch } from "@/lib/django-fetch";
 
 // ─── Programme Overview ──────────────────────────────────────────
 
@@ -80,16 +81,9 @@ function transformOverviewResponse(raw: any): ProgrammeOverviewResponse {
 export async function getProgrammeOverview(
   cohort = "all"
 ): Promise<ProgrammeOverviewResult> {
-  const apiUrl = process.env.DJANGO_API_URL;
-
-  if (!apiUrl) {
-    console.warn("[pm/api] DJANGO_API_URL not set — data unavailable");
-    return { data: EMPTY_PROGRAMME_OVERVIEW, isLive: false };
-  }
-
   try {
-    const res = await fetch(
-      `${apiUrl}/api/programme-overview/?cohort=${encodeURIComponent(cohort)}`,
+    const res = await djangoFetch(
+      `/api/programme-overview/?cohort=${encodeURIComponent(cohort)}`,
       { next: { revalidate: 300 } }
     );
 
@@ -147,15 +141,8 @@ export interface SchoolRowsResult {
 }
 
 export async function getSchoolPerformanceRows(): Promise<SchoolRowsResult> {
-  const apiUrl = process.env.DJANGO_API_URL;
-
-  if (!apiUrl) {
-    console.warn("[pm/api] DJANGO_API_URL not set — school data unavailable");
-    return { data: [], isLive: false };
-  }
-
   try {
-    const res = await fetch(`${apiUrl}/api/schools-2026/`, {
+    const res = await djangoFetch("/api/schools-2026/", {
       next: { revalidate: 300 },
     });
 
@@ -184,17 +171,11 @@ export interface SchoolDetailResult {
 export async function getSchoolDetail(
   schoolSlug: string
 ): Promise<SchoolDetailResult> {
-  const apiUrl = process.env.DJANGO_API_URL;
-
-  if (!apiUrl) {
-    return { data: null, isLive: false };
-  }
-
   try {
     const [schoolsRes, groupsRes, sessionsRes] = await Promise.all([
-      fetch(`${apiUrl}/api/schools-2026/`, { next: { revalidate: 300 } }),
-      fetch(`${apiUrl}/api/groups-2026/`, { next: { revalidate: 300 } }),
-      fetch(`${apiUrl}/api/sessions-activity/?days=30`, { next: { revalidate: 300 } }),
+      djangoFetch("/api/schools-2026/", { next: { revalidate: 300 } }),
+      djangoFetch("/api/groups-2026/", { next: { revalidate: 300 } }),
+      djangoFetch("/api/sessions-activity/?days=30", { next: { revalidate: 300 } }),
     ]);
 
     if (!schoolsRes.ok) {
@@ -237,16 +218,9 @@ export async function getSessionsActivity(
   days = 30,
   cohort = "all"
 ): Promise<SessionsActivityResult> {
-  const apiUrl = process.env.DJANGO_API_URL;
-
-  if (!apiUrl) {
-    console.warn("[pm/api] DJANGO_API_URL not set — sessions activity unavailable");
-    return { data: EMPTY_SESSIONS_ACTIVITY, isLive: false };
-  }
-
   try {
-    const res = await fetch(
-      `${apiUrl}/api/sessions-activity/?days=${days}&cohort=${cohort}`,
+    const res = await djangoFetch(
+      `/api/sessions-activity/?days=${days}&cohort=${cohort}`,
       { next: { revalidate: 300 } }
     );
 
@@ -279,15 +253,8 @@ export interface Groups2026Result {
 }
 
 export async function getGroups2026(): Promise<Groups2026Result> {
-  const apiUrl = process.env.DJANGO_API_URL;
-
-  if (!apiUrl) {
-    console.warn("[pm/api] DJANGO_API_URL not set — groups data unavailable");
-    return { data: EMPTY_GROUPS_2026, isLive: false };
-  }
-
   try {
-    const res = await fetch(`${apiUrl}/api/groups-2026/`, {
+    const res = await djangoFetch("/api/groups-2026/", {
       next: { revalidate: 300 },
     });
 
@@ -327,16 +294,13 @@ export async function getLetterAlignment(
   school?: string,
   group?: string
 ): Promise<LetterAlignmentResponse[] | null> {
-  const apiUrl = process.env.DJANGO_API_URL;
-  if (!apiUrl) return null;
-
   try {
     const params = new URLSearchParams();
     if (school) params.set("school", school);
     if (group) params.set("group", group);
 
-    const res = await fetch(
-      `${apiUrl}/api/letter-alignment/?${params.toString()}`,
+    const res = await djangoFetch(
+      `/api/letter-alignment/?${params.toString()}`,
       { next: { revalidate: 300 } }
     );
 
@@ -369,16 +333,9 @@ export interface AssessmentsSummaryResult {
 export async function getAssessmentsSummary(
   grade = "all"
 ): Promise<AssessmentsSummaryResult> {
-  const apiUrl = process.env.DJANGO_API_URL;
-
-  if (!apiUrl) {
-    console.warn("[pm/api] DJANGO_API_URL not set — assessments data unavailable");
-    return { data: EMPTY_ASSESSMENTS_SUMMARY, isLive: false };
-  }
-
   try {
-    const res = await fetch(
-      `${apiUrl}/api/assessments-summary/?grade=${encodeURIComponent(grade)}`,
+    const res = await djangoFetch(
+      `/api/assessments-summary/?grade=${encodeURIComponent(grade)}`,
       { next: { revalidate: 300 } }
     );
 
@@ -422,15 +379,8 @@ export interface MentorVisitsSummaryResult {
 }
 
 export async function getMentorVisitsSummary(): Promise<MentorVisitsSummaryResult> {
-  const apiUrl = process.env.DJANGO_API_URL;
-
-  if (!apiUrl) {
-    console.warn("[pm/api] DJANGO_API_URL not set — mentor visits data unavailable");
-    return { data: EMPTY_MENTOR_VISITS_SUMMARY, isLive: false };
-  }
-
   try {
-    const res = await fetch(`${apiUrl}/api/mentor-visits-summary/`, {
+    const res = await djangoFetch("/api/mentor-visits-summary/", {
       next: { revalidate: 300 },
     });
 
@@ -529,16 +479,9 @@ export interface EAPerformanceResult {
 export async function getEAPerformance(
   cohort = "all"
 ): Promise<EAPerformanceResult> {
-  const apiUrl = process.env.DJANGO_API_URL;
-
-  if (!apiUrl) {
-    console.warn("[pm/api] DJANGO_API_URL not set — EA performance data unavailable");
-    return { data: EMPTY_EA_PERFORMANCE, isLive: false };
-  }
-
   try {
-    const res = await fetch(
-      `${apiUrl}/api/ea-performance/?cohort=${encodeURIComponent(cohort)}`,
+    const res = await djangoFetch(
+      `/api/ea-performance/?cohort=${encodeURIComponent(cohort)}`,
       { next: { revalidate: 300 } }
     );
 

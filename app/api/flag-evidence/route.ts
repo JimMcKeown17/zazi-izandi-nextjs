@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { djangoFetch } from "@/lib/django-fetch";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -12,17 +13,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const apiUrl = process.env.DJANGO_API_URL;
-  if (!apiUrl) {
-    return NextResponse.json(
-      { error: "Backend API URL not configured" },
-      { status: 503 }
-    );
-  }
-
   try {
-    const res = await fetch(
-      `${apiUrl}/api/flag-evidence/?school=${encodeURIComponent(school)}&group=${encodeURIComponent(group)}`
+    const res = await djangoFetch(
+      `/api/flag-evidence/?school=${encodeURIComponent(school)}&group=${encodeURIComponent(group)}`
     );
 
     if (!res.ok) {
