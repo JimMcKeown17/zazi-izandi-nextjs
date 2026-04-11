@@ -56,7 +56,8 @@ export default clerkMiddleware(async (auth, req) => {
 
   for (const [route, minRole] of Object.entries(PROTECTED_ROUTES)) {
     if (pathname.startsWith(route)) {
-      const userLevel = userRole ? (ROLE_LEVELS[userRole] ?? 0) : 0;
+      const userLevel =
+        userRole !== undefined ? (ROLE_LEVELS[userRole] ?? -1) : -1;
       const requiredLevel = ROLE_LEVELS[minRole];
       if (userLevel < requiredLevel) {
         return NextResponse.redirect(
