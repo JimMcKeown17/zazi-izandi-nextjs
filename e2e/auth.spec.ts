@@ -39,15 +39,20 @@ test.describe("Protected pages", () => {
 });
 
 test.describe("Header navigation", () => {
-  test("guest sees no Schools link in header", async ({ page }) => {
+  test("guest does not see the Project Management group in header", async ({
+    page,
+  }) => {
     await setupClerkTestingToken({ page });
     await page.goto("/");
     const nav = page.locator("header nav");
-    await expect(nav.getByRole("link", { name: "Home" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "About" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Impact" })).toBeVisible();
-    // Schools should be hidden for guests
-    await expect(nav.getByRole("link", { name: "Schools" })).not.toBeVisible();
+    // Public nav groups render as NavigationMenuTrigger buttons
+    await expect(nav.getByRole("button", { name: "About" })).toBeVisible();
+    await expect(nav.getByRole("button", { name: "Impact" })).toBeVisible();
+    await expect(nav.getByRole("button", { name: "Resources" })).toBeVisible();
+    // Project Management (which contains the Schools sub-items) is gated on role=funder
+    await expect(
+      nav.getByRole("button", { name: "Project Management" })
+    ).not.toBeVisible();
   });
 
   test("guest sees Login link in header", async ({ page }) => {
