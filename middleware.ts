@@ -43,7 +43,10 @@ export default clerkMiddleware(async (auth, req) => {
   // Not signed in → redirect to login
   if (!userId) {
     const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("redirect_url", req.nextUrl.pathname);
+    loginUrl.searchParams.set(
+      "redirect_url",
+      req.nextUrl.pathname + req.nextUrl.search
+    );
     return NextResponse.redirect(loginUrl);
   }
 
