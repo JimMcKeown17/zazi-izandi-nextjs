@@ -4,11 +4,12 @@ import { NextResponse } from "next/server";
 // Role hierarchy — higher number = more access
 // Assign roles in Clerk Dashboard → User → Metadata:
 //   publicMetadata: { "role": "funder" }
-// Roles: funder | junior_staff | senior_staff | admin
+// Roles: ea | funder | junior_staff | senior_staff | admin
 // Guest = not signed in
-type Role = "funder" | "junior_staff" | "senior_staff" | "admin";
+type Role = "ea" | "funder" | "junior_staff" | "senior_staff" | "admin";
 
 const ROLE_LEVELS: Record<Role, number> = {
+  ea: 0,
   funder: 1,
   junior_staff: 2,
   senior_staff: 3,
