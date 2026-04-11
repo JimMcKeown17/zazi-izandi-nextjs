@@ -394,6 +394,8 @@ git commit -m "feat(login): set fallbackRedirectUrl to /after-login"
 - [ ] **Step 1: Create the file**
 
 ```typescript
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
