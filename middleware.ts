@@ -21,13 +21,18 @@ const ROLE_LEVELS: Record<Role, number> = {
 const PROTECTED_ROUTES: Record<string, Role> = {
   "/schools": "funder",
   "/pm": "funder",
+  "/my-kids": "ea",
 };
 
 // IMPORTANT: For sessionClaims.metadata.role to work, add a custom claim in
 // Clerk Dashboard → Configure → Sessions → Customize session token:
 //   { "metadata": "{{user.public_metadata}}" }
 
-const isProtectedRoute = createRouteMatcher(["/schools(.*)", "/pm(.*)"]);
+const isProtectedRoute = createRouteMatcher([
+  "/schools(.*)",
+  "/pm(.*)",
+  "/my-kids(.*)",
+]);
 
 export default clerkMiddleware(async (auth, req) => {
   // Public routes pass through immediately
