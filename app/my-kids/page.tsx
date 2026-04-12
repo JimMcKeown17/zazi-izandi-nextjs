@@ -1,19 +1,14 @@
 import { auth } from "@clerk/nextjs/server";
 import { getEaOverview } from "@/lib/ea/api";
 import type { EaMetadata } from "@/lib/ea/types";
+import { getStaleHoursAgo } from "@/lib/ea/stale-data";
 import { NotLinkedState } from "@/components/my-kids/not-linked-state";
 import { ZeroGroupsState } from "@/components/my-kids/zero-groups-state";
 import { BackendErrorState } from "@/components/my-kids/backend-error-state";
 import { GroupCard } from "@/components/my-kids/group-card";
 
-function StaleDataNotice({ lastUpdated }: { lastUpdated: string | null }) {
-  if (!lastUpdated) return null;
-  const updatedAt = new Date(lastUpdated);
-  if (isNaN(updatedAt.getTime())) return null;
-  const hoursAgo = Math.floor(
-    (Date.now() - updatedAt.getTime()) / (1000 * 60 * 60)
-  );
-  if (hoursAgo < 12) return null;
+function StaleDataNotice({ hoursAgo }: { hoursAgo: number | null }) {
+  if (hoursAgo === null || hoursAgo < 12) return null;
   return (
     <p className="text-xs text-slate-400">
       Last updated: {hoursAgo} hours ago
@@ -59,7 +54,7 @@ export default async function MyKidsOverviewPage() {
         <h1 className="text-xl font-semibold text-slate-900">My Groups</h1>
         <p className="text-sm text-slate-500">{dateStr}</p>
         {data.last_updated ? (
-          <StaleDataNotice lastUpdated={data.last_updated} />
+          <StaleDataNotice hoursAgo={getStaleHoursAgo(data.last_updated)} />
         ) : null}
       </div>
 
