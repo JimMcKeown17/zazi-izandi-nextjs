@@ -4,11 +4,12 @@ import { NextResponse } from "next/server";
 // Role hierarchy — higher number = more access
 // Assign roles in Clerk Dashboard → User → Metadata:
 //   publicMetadata: { "role": "funder" }
-// Roles: funder | junior_staff | senior_staff | admin
+// Roles: ea | funder | junior_staff | senior_staff | admin
 // Guest = not signed in
-type Role = "funder" | "junior_staff" | "senior_staff" | "admin";
+type Role = "ea" | "funder" | "junior_staff" | "senior_staff" | "admin";
 
 const ROLE_LEVELS: Record<Role, number> = {
+  ea: 0,
   funder: 1,
   junior_staff: 2,
   senior_staff: 3,
@@ -20,13 +21,18 @@ const ROLE_LEVELS: Record<Role, number> = {
 const PROTECTED_ROUTES: Record<string, Role> = {
   "/schools": "funder",
   "/pm": "funder",
+  "/my-kids": "ea",
 };
 
 // IMPORTANT: For sessionClaims.metadata.role to work, add a custom claim in
 // Clerk Dashboard → Configure → Sessions → Customize session token:
 //   { "metadata": "{{user.public_metadata}}" }
 
-const isProtectedRoute = createRouteMatcher(["/schools(.*)", "/pm(.*)"]);
+const isProtectedRoute = createRouteMatcher([
+  "/schools(.*)",
+  "/pm(.*)",
+  "/my-kids(.*)",
+]);
 
 export default clerkMiddleware(async (auth, req) => {
   // Public routes pass through immediately
@@ -37,7 +43,10 @@ export default clerkMiddleware(async (auth, req) => {
   // Not signed in → redirect to login
   if (!userId) {
     const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("redirect_url", req.nextUrl.pathname);
+    loginUrl.searchParams.set(
+      "redirect_url",
+      req.nextUrl.pathname + req.nextUrl.search
+    );
     return NextResponse.redirect(loginUrl);
   }
 
@@ -50,7 +59,8 @@ export default clerkMiddleware(async (auth, req) => {
 
   for (const [route, minRole] of Object.entries(PROTECTED_ROUTES)) {
     if (pathname.startsWith(route)) {
-      const userLevel = userRole ? (ROLE_LEVELS[userRole] ?? 0) : 0;
+      const userLevel =
+        userRole !== undefined ? (ROLE_LEVELS[userRole] ?? -1) : -1;
       const requiredLevel = ROLE_LEVELS[minRole];
       if (userLevel < requiredLevel) {
         return NextResponse.redirect(

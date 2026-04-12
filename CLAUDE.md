@@ -31,7 +31,14 @@ Frontend-only Next.js site for **Zazi iZandi**, a South African early literacy i
 
 ## Authentication (Clerk RBAC)
 
-Middleware at `middleware.ts` protects `/schools*` and `/pm*` routes. Roles: `funder` (min) → `junior_staff` → `senior_staff` → `admin`. Set in Clerk Dashboard → publicMetadata: `{ "role": "funder" }`. Session token needs custom claim: `{ "metadata": "{{user.public_metadata}}" }`.
+Middleware at `middleware.ts` protects `/schools*`, `/pm*`, and `/my-kids*` routes. Roles: `ea` (min, rank 0) → `funder` (1) → `junior_staff` (2) → `senior_staff` (3) → `admin` (4). Set in Clerk Dashboard → publicMetadata:
+
+- **Staff:** `{ "role": "funder" }` (or higher)
+- **Education Assistants:** `{ "role": "ea", "teampact_user_id": <number>, "teampact_user_name": "<string>" }` — `teampact_user_id` is the scoping key for `/api/ea/<user_id>/` calls and must match a real TeamPact user.
+
+Session token needs custom claim: `{ "metadata": "{{user.public_metadata}}" }`.
+
+Post-login redirect: `/login` uses `fallbackRedirectUrl="/after-login"`. The `/after-login` server component reads `sessionClaims.metadata.role` and redirects EAs to `/my-kids`, everyone else to `/`. Clerk's own `redirect_url` query param takes precedence when set by middleware, which preserves deep links including query strings (e.g. an EA opening `/my-kids/groups/67610?tab=sessions` from WhatsApp lands on that exact URL after signing in).
 
 ## Django Backend
 
@@ -58,6 +65,7 @@ See `.env.example`. Required: `NEXT_PUBLIC_MAPBOX_TOKEN`, `NEXT_PUBLIC_CLERK_PUB
 | [documentation/assets.md](documentation/assets.md) | Static assets in `public/` |
 | [documentation/pm-dashboard-architecture.md](documentation/pm-dashboard-architecture.md) | PM Dashboard pages, data flow, flags, language-aware letters, Django endpoints |
 | [documentation/letter-mastery-data-model.md](documentation/letter-mastery-data-model.md) | **IMPORTANT** — how to interpret mastery data, what claims are supportable, and language guidance for EA-facing and AI-generated copy. Read before building anything that displays or reasons about child letter mastery. |
+| [documentation/clerk-user-setup.md](documentation/clerk-user-setup.md) | How to create and configure Clerk users — staff roles vs EA role, required publicMetadata fields (`teampact_user_id`, `teampact_user_name`), and the custom session token claim. |
 
 ## Terminology
 

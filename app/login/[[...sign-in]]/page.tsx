@@ -12,7 +12,7 @@ export default function LoginPage() {
         </p>
       </div>
 
-      <SignIn />
+      <SignIn fallbackRedirectUrl="/after-login" />
 
       <p className="mt-6 text-sm text-gray-500">
         Need access?{" "}

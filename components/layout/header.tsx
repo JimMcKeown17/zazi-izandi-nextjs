@@ -28,9 +28,10 @@ import {
 } from "@/components/ui/navigation-menu";
 
 // Role hierarchy — mirrors middleware.ts
-type Role = "funder" | "junior_staff" | "senior_staff" | "admin";
+type Role = "ea" | "funder" | "junior_staff" | "senior_staff" | "admin";
 
 const ROLE_LEVELS: Record<Role, number> = {
+  ea: 0,
   funder: 1,
   junior_staff: 2,
   senior_staff: 3,
