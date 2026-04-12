@@ -64,6 +64,7 @@ export default async function MyKidsOverviewPage() {
             key={group.class_id ?? index}
             group={group}
             showSchoolName={!allSameSchool}
+            eaName={data.ea_name}
           />
         ))}
       </div>

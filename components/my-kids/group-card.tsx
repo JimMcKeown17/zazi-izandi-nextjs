@@ -2,10 +2,16 @@ import { BookOpen, Layers } from "lucide-react";
 import type { EaGroup } from "@/lib/ea/types";
 import { CoachingTip, getTopFlag } from "./coaching-tip";
 
+function formatGroupName(raw: string, eaName?: string): string {
+  if (!eaName) return raw;
+  const prefix = `${eaName}-`;
+  return raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
+}
+
 function StatusBadge({ flags }: { flags: string[] }) {
   if (flags.includes("ghost_group")) {
     return (
-      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 shrink-0 whitespace-nowrap">
         Low dosage
       </span>
     );
@@ -16,13 +22,13 @@ function StatusBadge({ flags }: { flags: string[] }) {
     flags.includes("curriculum_gaps")
   ) {
     return (
-      <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800">
+      <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 shrink-0 whitespace-nowrap">
         Needs attention
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 shrink-0 whitespace-nowrap">
       On track
     </span>
   );
@@ -84,17 +90,19 @@ function BlendingSessionBar({
 interface GroupCardProps {
   group: EaGroup;
   showSchoolName?: boolean;
+  eaName?: string;
 }
 
-export function GroupCard({ group, showSchoolName = false }: GroupCardProps) {
+export function GroupCard({ group, showSchoolName = false, eaName }: GroupCardProps) {
   const topFlag = getTopFlag(group.flags);
+  const displayName = formatGroupName(group.group_name, eaName);
 
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold text-slate-900">
-            {group.group_name}
+            {displayName}
           </h2>
           <p className="text-xs text-slate-500">
             {group.grade}
