@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { EAPerformanceItem } from "@/lib/pm/types";
 
 // Human-readable flag labels
@@ -70,56 +71,73 @@ export function EADetailPanel({ ea, onClose }: EADetailPanelProps) {
           Groups
         </h4>
         <div className="space-y-1.5">
-          {ea.groups.map((group) => (
-            <div
-              key={`${group.class_name}-${group.phase}`}
-              className={`grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-2 items-center px-3 py-2 rounded-md text-sm ${
-                group.phase === "blending"
-                  ? "bg-slate-100 opacity-60"
-                  : "bg-slate-50"
-              }`}
-            >
-              <div>
-                <span className="font-medium">{group.class_name}</span>
-                <span className="text-slate-400 ml-1">· {group.phase}</span>
-              </div>
-              <div className="text-slate-500">
-                {group.children_count} children
-              </div>
-              <div className="text-slate-500">
-                {group.avg_sessions_per_week} sess/wk
-              </div>
+          {ea.groups.map((group) => {
+            const rowBody = (
               <div
-                className={
-                  group.alignment_avg_score !== null
-                    ? group.alignment_avg_score >= 50
-                      ? "text-green-600"
-                      : "text-amber-600"
-                    : "text-slate-400"
-                }
+                className={`grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-2 items-center px-3 py-2 rounded-md text-sm transition-colors ${
+                  group.phase === "blending"
+                    ? "bg-slate-100 opacity-60"
+                    : "bg-slate-50 hover:bg-slate-100"
+                }`}
               >
-                {group.alignment_avg_score !== null
-                  ? `${group.alignment_avg_score}%`
-                  : "—"}
+                <div>
+                  <span className="font-medium">{group.class_name}</span>
+                  <span className="text-slate-400 ml-1">· {group.phase}</span>
+                </div>
+                <div className="text-slate-500">
+                  {group.children_count} children
+                </div>
+                <div className="text-slate-500">
+                  {group.avg_sessions_per_week} sess/wk
+                </div>
+                <div
+                  className={
+                    group.alignment_avg_score !== null
+                      ? group.alignment_avg_score >= 50
+                        ? "text-green-600"
+                        : "text-amber-600"
+                      : "text-slate-400"
+                  }
+                >
+                  {group.alignment_avg_score !== null
+                    ? `${group.alignment_avg_score}%`
+                    : "—"}
+                </div>
+                <div>
+                  {group.flags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {group.flags.map((flag) => (
+                        <span
+                          key={flag}
+                          className="bg-amber-50 text-amber-700 text-[10px] font-medium px-1.5 py-0.5 rounded"
+                        >
+                          {FLAG_LABELS[flag] || flag}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-slate-400 text-xs">No flags</span>
+                  )}
+                </div>
               </div>
-              <div>
-                {group.flags.length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {group.flags.map((flag) => (
-                      <span
-                        key={flag}
-                        className="bg-amber-50 text-amber-700 text-[10px] font-medium px-1.5 py-0.5 rounded"
-                      >
-                        {FLAG_LABELS[flag] || flag}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-slate-400 text-xs">No flags</span>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+
+            const key = `${group.class_name}-${group.phase}`;
+
+            if (ea.ea_user_id !== null && group.class_id !== null) {
+              return (
+                <Link
+                  key={key}
+                  href={`/pm/education-assistants/${ea.ea_user_id}/groups/${group.class_id}`}
+                  className="block focus:outline-none focus:ring-2 focus:ring-primary/40 rounded-md"
+                >
+                  {rowBody}
+                </Link>
+              );
+            }
+
+            return <div key={key}>{rowBody}</div>;
+          })}
         </div>
       </div>
     </div>

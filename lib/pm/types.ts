@@ -381,6 +381,7 @@ export interface EAPerformanceResponse {
 
 export interface EAPerformanceItem {
   ea_name: string;
+  ea_user_id: number | null;
   school: string;
   sessions_per_programme_day: number;
   alignment_avg_score: number | null;
@@ -395,6 +396,7 @@ export interface EAPerformanceItem {
 
 export interface EAGroupDetail {
   class_name: string;
+  class_id: number | null;
   phase: "letters" | "blending";
   children_count: number;
   avg_sessions_per_week: number;
