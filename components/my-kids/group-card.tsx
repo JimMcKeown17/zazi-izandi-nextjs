@@ -1,37 +1,12 @@
 import { BookOpen, Layers } from "lucide-react";
 import type { EaGroup } from "@/lib/ea/types";
-import { CoachingTip, getTopFlag } from "./coaching-tip";
+import { CoachingTip, getTopFlag } from "@/components/group-detail/coaching-tip";
+import { StatusBadge } from "@/components/group-detail/status-badge";
 
 function formatGroupName(raw: string, eaName?: string): string {
   if (!eaName) return raw;
   const prefix = `${eaName}-`;
   return raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
-}
-
-function StatusBadge({ flags }: { flags: string[] }) {
-  if (flags.includes("ghost_group")) {
-    return (
-      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 shrink-0 whitespace-nowrap">
-        Low dosage
-      </span>
-    );
-  }
-  if (
-    flags.includes("moving_too_fast") ||
-    flags.includes("stagnation") ||
-    flags.includes("curriculum_gaps")
-  ) {
-    return (
-      <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 shrink-0 whitespace-nowrap">
-        Needs attention
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 shrink-0 whitespace-nowrap">
-      On track
-    </span>
-  );
 }
 
 function LetterProgressBar({
