@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { BookOpen, Layers } from "lucide-react";
 import type { EaGroup } from "@/lib/ea/types";
 import { CoachingTip, getTopFlag } from "@/components/group-detail/coaching-tip";
@@ -72,8 +73,8 @@ export function GroupCard({ group, showSchoolName = false, eaName }: GroupCardPr
   const topFlag = getTopFlag(group.flags);
   const displayName = formatGroupName(group.group_name, eaName);
 
-  return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+  const cardBody = (
+    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-slate-300">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold text-slate-900">
@@ -107,5 +108,18 @@ export function GroupCard({ group, showSchoolName = false, eaName }: GroupCardPr
 
       {topFlag ? <CoachingTip flag={topFlag} /> : null}
     </article>
+  );
+
+  if (group.class_id === null) {
+    return cardBody;
+  }
+
+  return (
+    <Link
+      href={`/my-kids/groups/${group.class_id}`}
+      className="block focus:outline-none focus:ring-2 focus:ring-primary/40 rounded-xl"
+    >
+      {cardBody}
+    </Link>
   );
 }
