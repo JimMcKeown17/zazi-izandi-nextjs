@@ -169,7 +169,7 @@ Django doesn't know about Clerk. Auth is handled by the **Next.js layer**: the s
       "sessions_this_week": 4,
       "total_sessions": 18,
       "last_session_date": "2026-04-09",
-      "dosage_status": "on_track",
+      "avg_sessions_per_week": 3.5,
       "flags": ["moving_too_fast"],
       "language": "isiXhosa"
     },
@@ -184,7 +184,7 @@ Django doesn't know about Clerk. Auth is handled by the **Next.js layer**: the s
       "total_sessions": 12,
       "blending_start_date": "2026-03-18",
       "last_session_date": "2026-04-09",
-      "dosage_status": "on_track",
+      "avg_sessions_per_week": 3.5,
       "flags": [],
       "language": "isiXhosa"
     }
@@ -219,7 +219,7 @@ Django doesn't know about Clerk. Auth is handled by the **Next.js layer**: the s
     "progress_index": 2,
     "progress_pct": 11.5
   },
-  "dosage_status": "on_track",
+  "avg_sessions_per_week": 3.5,
   "sessions_this_week": 4,
   "total_sessions": 18,
   "flags": ["moving_too_fast"],

@@ -10,11 +10,23 @@
 
 ## TL;DR
 
-1. **"Mastery" in our database is a single-assessment snapshot**, not a live indicator of what a child currently knows. There is no way — today — for an EA to report "Sipho mastered letter 'i' in today's session."
-2. **Any claim that "children are struggling" or "children aren't learning" cannot be drawn from our current data**, because we don't have a current measurement. Mastery data is frozen at the moment of the baseline assessment.
-3. **The only alignment signal we can safely surface today is `teaching_known_letters`** — letters a child already knew at baseline that the EA is still drilling. That's genuinely wasted effort we can point at with evidence.
-4. **UI copy and AI prompts must be careful about the word "mastered."** Prefer phrasings that make the temporal scope clear: "known at baseline", "entered knowing", "baseline assessment showed…".
-5. **When child-level mastery capture ships (future mobile app / PWA)**, this constraint lifts. Until then, plan around it.
+There are two completely different categories of signals in this data, and they have different rules:
+
+**Category A — Curriculum coverage signals** (the strongest, safest coaching signals):
+
+1. **Curriculum coverage is fully observable from session data alone.** What letters did the EA teach? In what order? Did they jump past required letters in the programme sequence? These are facts about EA teaching behavior, NOT claims about child knowledge. They are safe to surface verbatim and they are the most actionable coaching signals we have.
+2. **The strongest curriculum signals are `letters_skipped`, `flag_skipping_needed`, and `flag_curriculum_gaps`.** They tell us "the EA moved past these letters in the programme order without ever teaching them." This is a real, evidence-based pedagogical concern.
+
+**Category B — Baseline mastery signals** (use carefully, past-tense framing only):
+
+3. **"Mastery" in our database is a single-assessment snapshot**, not a live indicator of what a child currently knows. There is no way — today — for an EA to report "Sipho mastered letter 'i' in today's session."
+4. **Any claim that "children are struggling" or "children aren't learning" cannot be drawn from this data**, because we don't have a current measurement. Mastery data is frozen at the moment of the baseline assessment.
+5. **`teaching_known_letters` is a minor secondary signal** — letters a child already knew at baseline that the EA is still teaching. This flags wasted instructional time, but it's a weak concern: drilling known letters can support automaticity and is largely harmless if it's only here and there. It is far less actionable than curriculum gaps. Surface it as low-priority coaching, not as a primary concern.
+6. **UI copy and AI prompts must be careful about the word "mastered."** Prefer phrasings that make the temporal scope clear: "known at baseline", "entered knowing", "baseline assessment showed…".
+
+**Future:**
+
+7. **When child-level mastery capture ships (future mobile app / PWA)**, the Category B constraints lift. Curriculum coverage signals (Category A) are unchanged.
 
 ---
 
@@ -69,26 +81,61 @@ This is the data that drives the group-detail visualization (the "average letter
 
 ---
 
-## How to interpret the four cells
+## How to interpret the four per-letter cells (Category B view)
 
-Every letter on a group's mastery path falls into one of four cells. Only one of them is actionable; the other three look similar but mean very different things.
+This section is about reading **a single letter cell** on the mastery path: the combination of `children_mastered` and `sessions_taught` for one letter. It is the **per-letter mastery view** and falls under Category B (baseline mastery signals).
+
+For the **curriculum coverage view** (Category A — comparing the EA's session order against the programme order, surfacing skipped letters), see § "Two interpretable signals" below. The two views answer different questions and complement each other.
+
+Per-letter mastery patterns:
 
 | Pattern | Example | What we can say (accurately) | What we CANNOT say | Action? |
 |---|---|---|---|---|
 | **High `children_mastered`, 0 sessions** | `e`: 6 of 7 knew at baseline, 0 sessions taught | The EA correctly skipped a letter the group already knew. Good pedagogy. | — | ✅ None — this is the desired behaviour |
-| **High `children_mastered`, many sessions** | `a`: 6 of 7 knew at baseline, 2 sessions taught | Some children are being drilled on letters they already knew. This is **alignment waste** — `teaching_known_letters` territory. | Whether *all* children in the sessions knew the letter. Only those flagged at the child level were "known." | ⚠️ Coach: "Most of this group already knew 'a' at baseline — you can move on faster." Use gentle language. |
+| **High `children_mastered`, many sessions** | `a`: 6 of 7 knew at baseline, 2 sessions taught | Some children are being drilled on letters they already knew. This is the `teaching_known_letters` signal. | Whether *all* children in the sessions knew the letter. Only those flagged at the child level were "known." | ℹ️ Minor: "Most of this group already knew 'a' at baseline — you can move faster on it for these children if you'd like." Low-priority secondary observation, not a primary coaching concern. |
 | **Low `children_mastered`, many sessions** | `i`: 0 of 7 knew at baseline, 3 sessions taught | The EA is teaching this letter and, at baseline, no child knew it. | **"Children aren't learning"** — we have no post-assessment data. Children may have learned it; may be in mid-instruction; may genuinely be struggling. We cannot tell these apart from this data. | ❌ None — insufficient information to coach on this |
 | **Low `children_mastered`, 0 sessions, still ahead in the sequence** | `q`: 0 of 7, 0 sessions, programme says it comes later | Normal curriculum progression. Letter is in the "not yet reached" part of the programme. | — | ✅ None — this is neutral |
 
-The mistake I want us to avoid is **treating pattern 3 as if it were a coaching signal**. It looks alarming ("0 of 7 children know 'i' after 3 sessions") but the data doesn't support the alarm — we simply have no idea how many children currently know 'i'. Three sessions of instruction may have taken them from 0/7 to 6/7 and the assessment can't see that.
+The mistake I want us to avoid is **treating pattern 3 as if it were a per-letter coaching signal**. It looks alarming ("0 of 7 children know 'i' after 3 sessions") but the data doesn't support the alarm — we simply have no idea how many children currently know 'i'. Three sessions of instruction may have taken them from 0/7 to 6/7 and the assessment can't see that.
 
-### The only safely interpretable signal
+**However**, pattern 3 across MANY letters in a row, OR a letter at pattern 4 ("low mastered, 0 sessions") that should have been taught by now per the programme order, IS a curriculum gap signal — the cross-cell view is where the real coaching opportunity lives. See the next section.
 
-**`teaching_known_letters` / `flag_teaching_known` is the only coaching signal we can stand behind today.** This field is populated at the per-child level from the alignment analysis: for each child, list the letters the EA is teaching that the child already got correct on their assessment. If the EA is drilling letter 'a' and three children in the group had 'a' in `letters_mastered`, those three children contribute to `teaching_known_letters`.
+### Two interpretable signals
 
-When a group has many children with a populated `teaching_known_letters`, it means the EA is spending time on letters the class already knew at baseline, and the children likely still know them. That's genuinely wasted time and a fair thing to raise — carefully — with the EA.
+There are two signals from the alignment data that we can surface in coaching: a strong one based on curriculum coverage, and a weaker one based on baseline mastery. Both are factual; neither requires inferring what a child currently knows.
 
-**Prefer this field over re-deriving the signal from group-level mastery patterns.** The per-child field is more precise (it handles mixed groups where some kids knew the letter and others didn't) and it already captures the correct pedagogical interpretation.
+#### 1. Curriculum coverage (the strongest signal)
+
+**Fields:** `letters_skipped` (per-child), `flag_skipping_needed` (per-child), `flag_curriculum_gaps` (group-level).
+
+The Zazi iZandi programme defines a strict pedagogical letter sequence per language (`api/letter_constants.py`). The expectation is that EAs teach letters left-to-right in this sequence, only skipping a letter when ≥80–90% of the group already knew it at baseline (a "skip with cause"). When session data shows the EA has moved past letters in the sequence without ever teaching them, that's a curriculum gap.
+
+**This is observable directly from session data.** It's a fact about teacher behavior measured against the programme's own rules. No inference about child knowledge is involved. It is fully safe to surface verbatim in EA-facing and PM-facing UIs, and it is the most actionable coaching signal we have.
+
+Concrete example: if an EA's most recent sessions taught letters `k` and `t` while the per-child `letters_skipped` lists `p, c, f, o, r` (letters before `k` in the programme order that were never taught), that's a clear curriculum gap. The right coaching tip is *"The programme order has letters p, c, f, o, r before your current position, but they haven't been taught yet. Consider going back to cover them before moving forward."* That tip is fact-based, actionable, and free of any claim about what the children currently know.
+
+#### 2. Drilling known letters (the weaker signal)
+
+**Fields:** `teaching_known_letters` (per-child), `flag_teaching_known` (per-child).
+
+For each child, lists letters the EA is teaching that the child already mastered on their baseline assessment. When many children in a group have a populated `teaching_known_letters`, it means the EA is spending time on letters most of the group already knew at baseline.
+
+**This is a weaker signal than curriculum coverage.** Drilling known letters supports automaticity and is largely harmless if it's only here and there — children may benefit from the practice even if they "knew" the letter on a one-shot baseline assessment. Surface this as a low-priority secondary observation, not as a primary coaching concern. The framing should suggest *"you can move faster on these for them if you'd like"* rather than implying the EA is wasting time.
+
+#### Why these two and not others
+
+These two signals are safe because they don't require inferring what children currently know. Both are about teaching behavior measured against teaching expectations:
+
+- Curriculum coverage compares actual sessions against the programme's prescribed letter sequence.
+- Drilling known letters compares actual sessions against each child's baseline assessment record.
+
+Neither asks "did the child learn it?" because we don't have post-assessment data. Both ask "what did the EA do?" — a question we can answer factually from session logs and baseline records.
+
+#### Group-level vs per-child framing
+
+Curriculum gaps are usually a GROUP-level issue because the programme order is shared across the group. If the EA skipped letters `p, c, f`, every child in the group is affected by the same gap. Frame curriculum gaps at the group level: *"Your group has not yet covered letters p, c, f from the programme order"* — not *"3 of 7 children have gaps."* The gap is in the EA's teaching coverage, not in the children's individual knowledge.
+
+Drilling-known-letters can be either group-level or per-child, depending on how varied the children's baseline mastery was. If most kids in the group knew "a" at baseline, surface it as a group-level note. If only a few kids knew it, name those kids specifically — they're the ones for whom the practice is redundant.
 
 ---
 
@@ -96,11 +143,20 @@ When a group has many children with a populated `teaching_known_letters`, it mea
 
 ### May say
 
-- "Most of this group already knew these letters at their baseline assessment — you can probably move on faster from them."
+**Curriculum coverage (Category A — strongest signals, frame at group level):**
+
+- "Your most recent sessions taught {letters}, but the programme order has letters {letters_skipped} before your current position that haven't been taught yet."
+- "These letters from the programme order are still missing from your sessions: {letters_skipped}. Consider going back to cover them before moving forward."
+- "Your group has skipped letters {letters_skipped} in the programme sequence."
+- "You haven't yet covered {letters_needed.slice(0,3)} — the programme order suggests these next."
 - "Letters you've taught: a, e, i. Sessions per letter: ..."
+
+**Baseline mastery (Category B — secondary signals, past-tense framing required):**
+
+- "Most of this group already knew these letters at their baseline assessment — you can move faster on them if you'd like."
+- "These children — {names} — already knew letters {teaching_known_letters} at their baseline assessment. You can move faster on these for them."
 - "These children still need to learn: {letters_needed}"
 - "At their baseline assessment, your group's strongest letters were {top from letters_mastered}"
-- "You haven't yet covered {letters_needed.slice(0,3)} — the programme order suggests these next"
 
 ### May NOT say
 
@@ -160,21 +216,30 @@ The Phase 2 AI insights generator ("Today's Plan," coaching tips) and the Phase 
 
 Recommended system-prompt additions:
 
-> "Mastery data in this system comes from a single baseline assessment per child. It does NOT reflect what children currently know — only what they knew at the moment they took their first assessment. Do not make claims about current knowledge, current struggles, or how well children are learning from recent teaching. You may only make claims about (a) what children knew at baseline, (b) what the EA has taught, (c) which letters are in which position in the programme sequence, and (d) the `teaching_known_letters` signal where the EA is drilling letters children already knew. If asked whether children are learning, explain that we don't have live mastery data yet and suggest the EA look for in-session signs like child confidence, speed, or correct responses."
+> "There are two categories of signals in this data, and they have different rules.
+>
+> CATEGORY A — CURRICULUM COVERAGE SIGNALS (the strongest coaching signals): These are facts about what the EA has taught vs the programme order, observable directly from session data. They include `letters_skipped`, `flag_skipping_needed`, and `flag_curriculum_gaps`. You may freely surface these in coaching tips. Example: 'Your most recent sessions taught letters k and t, but the programme order has p, c, f before your current position — these letters haven't been taught yet. Consider going back to cover them.' These are factual statements about teaching behavior, not claims about child knowledge. Frame curriculum gaps at the GROUP level — every child in a group is affected by the same skipped letters.
+>
+> CATEGORY B — BASELINE MASTERY SIGNALS (use carefully): Mastery data in this system comes from a single baseline assessment per child. It does NOT reflect what children currently know — only what they knew at the moment they took their first assessment. Do not make claims about current knowledge, current struggles, or how well children are learning from recent teaching. You may make past-tense statements about what children knew at baseline, including the `teaching_known_letters` signal. Frame these as mild observations, not as primary concerns — drilling known letters is largely harmless and supports automaticity.
+>
+> FORBIDDEN: Do not say 'children are struggling', 'children are not learning', 'children have not mastered letter X', 'your group is behind', or anything that implies a CURRENT knowledge state. We do not have post-baseline assessment data. If asked whether children are learning, explain that we don't have live mastery data yet and suggest the EA look for in-session signs like child confidence, speed, or correct responses.
+>
+> PRIORITIZE Category A over Category B in coaching output. Curriculum gaps are the most actionable signal we have."
 
 ---
 
 ## Future: child-level mastery capture
 
-When we ship the ability for EAs to mark a child as having mastered a letter — probably via a mobile app or PWA — this entire document needs a section added, and the constraints change:
+When we ship the ability for EAs to mark a child as having mastered a letter — probably via a mobile app or PWA — this entire document needs a section added, and the Category B constraints change:
 
 - `children_mastered` can reflect **current** knowledge, not just baseline.
 - Coaching tips about "children aren't learning" become **possible** to write accurately — the data will support them.
 - The mastery path visualization becomes a live progress tracker instead of a baseline + teaching-activity overlay.
-- `teaching_known_letters` remains useful but becomes less important, because live mastery updates give a more immediate signal about what's redundant.
+- `teaching_known_letters` becomes even less important than it already is, because live mastery updates give a more immediate signal about what's redundant.
 - The AI guardrails about "don't claim current knowledge" can be relaxed.
+- **Category A curriculum coverage signals are unchanged** — they were never about child knowledge in the first place. They remain the most actionable coaching signal whether or not live mastery capture exists.
 
-Until then, the whole EA experience must treat mastery as a **snapshot**, not a stream.
+Until then, the EA experience must treat baseline mastery (Category B) as a **snapshot**, not a stream. Curriculum coverage (Category A) has no equivalent constraint.
 
 ### When to build this
 
