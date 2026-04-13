@@ -1521,29 +1521,36 @@ export function LetterMasteryPath({ letters }: LetterMasteryPathProps) {
         ))}
       </div>
 
-      {letters.length > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500">
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-sm border border-green-300 bg-green-100" />
-            Most knew at baseline (&gt;70%)
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-sm border border-amber-300 bg-amber-100" />
-            Some knew at baseline (30–70%)
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-sm border border-red-300 bg-red-100" />
-            Few knew at baseline (&lt;30%)
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-sm border border-slate-200 bg-slate-50" />
-            Not assessed
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-1 w-1 rounded-full bg-blue-500" />
-            = 1 session taught
-          </span>
-        </div>
+      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500">
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-sm border border-green-300 bg-green-100" />
+          Most knew at baseline (&gt;70%)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-sm border border-amber-300 bg-amber-100" />
+          Some knew at baseline (30–70%)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-sm border border-red-300 bg-red-100" />
+          Few knew at baseline (&lt;30%)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-sm border border-slate-200 bg-slate-50" />
+          Not assessed
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-1 w-1 rounded-full bg-blue-500" />
+          = 1 session taught
+        </span>
+      </div>
+
+      {hasAssessments ? (
+        <p className="mt-2 text-[10px] italic text-slate-400">
+          Percentages reflect the {childrenAssessed}{" "}
+          {childrenAssessed === 1 ? "child" : "children"} with completed
+          baseline assessments. Children without a baseline assessment are
+          not included in the percentages.
+        </p>
       ) : null}
     </section>
   );
@@ -1560,6 +1567,7 @@ export function LetterMasteryPath({ letters }: LetterMasteryPathProps) {
 - Session dots: literal dots up to 9, then `× N` badge. The user confirmed real data currently peaks at 4–5 sessions per letter, so the cap almost never fires.
 - Grid is `grid-cols-5` on mobile (390px wide → ~70px per cell with 2×0.5rem gaps, legible for the letter + percentage + dots) and `grid-cols-6` on `sm` breakpoint (640px+) for slightly denser layout on tablets.
 - The `letters.length === 0` defensive guard is dead code under the Task 1 contract (the helper always returns the full sequence), but kept as cheap insurance against malformed responses.
+- **Denominator disclosure footer** (italic slate-400 text below the legend): when assessments exist, the component shows *"Percentages reflect the N children with completed baseline assessments. Children without a baseline assessment are not included in the percentages."* This makes the new denominator semantic from Finding 1 visible to the user — without it, percentages can look more complete than they are when assessment coverage is partial. Hidden when no assessments exist (the explainer text above the grid already covers that case).
 - No `"use client"` directive — purely server-rendered.
 - The `&apos;` in `haven't` and `can't` uses the escaped form to satisfy `react/no-unescaped-entities` lint rule.
 
@@ -1745,6 +1753,7 @@ export function ChildrenList({
   - **`Knew at baseline: a, e`** — slate background (lower visual weight). This is the drilling-known-letters signal — minor secondary observation per the data doc. Past-tense framing enforces mastery-data compliance. Shown when `flag_teaching_known` is true.
 - Both badges are shown ONLY when the corresponding flag is true AND the letter list is non-empty.
 - The amber-then-slate visual ordering matches the priority order in `CoachingTipPanel` (curriculum > drilling-known).
+- **Relationship to `CoachingTipPanel` curriculum gap tip (intentional, not duplication):** `CoachingTipPanel` (Task 9) renders ONE group-level curriculum gap tip showing the union of `letters_skipped` across all assessed children. `ChildrenList` (this task) renders a per-child badge on each individual child whose `flag_skipping_needed` is true. These complement each other — the group-level tip says *"the EA has these gaps in their teaching"*, the per-child badge says *"for this specific child, here are the gaps that affect them"*. They're related but not identical because each child's `letters_skipped` array is computed individually based on their `current_teaching_index` — in practice they're usually the same set across the group, but they can differ if children joined the group at different times. The implementer should NOT view this as conflicting instructions: the group tip is the primary coaching signal, the per-child badges are supporting detail.
 - Date formatting uses `Intl.DateTimeFormat("en-ZA")` with `Africa/Johannesburg` timezone, matching the Phase 1B pattern on the overview page.
 - A child with `sessions_total === 0` renders "Not yet attended" as the subtext — no fraction, no percentage, just the ⚠ icon signaling "this kid needs to come to sessions".
 - `child.name || \`Child #${child.participant_id}\`` handles the edge case where a TeamPact name is empty.
@@ -2240,6 +2249,14 @@ export default async function PMEaDetailPage({
 
   const { data } = result;
 
+  // The Django ea_detail_overview view returns 200 with empty fields for
+  // unknown user_ids — it does NOT 404. We can't distinguish "unknown user"
+  // from "real EA with zero groups" from the response shape alone, so we
+  // render a single explainer that covers both cases. The user gets a
+  // visible signal that something's missing and a "Back to EAs" link to
+  // recover, rather than either a misleading redirect or a fully blank page.
+  const isEmptyOrUnknown = !data.ea_name && data.groups.length === 0;
+
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <Link
@@ -2251,17 +2268,33 @@ export default async function PMEaDetailPage({
       </Link>
 
       <div>
-        <h1 className="text-lg font-semibold text-slate-900">{data.ea_name}</h1>
-        <p className="text-xs text-slate-500">{data.primary_school}</p>
+        <h1 className="text-lg font-semibold text-slate-900">
+          {data.ea_name || `EA ${userIdNum}`}
+        </h1>
+        {data.primary_school ? (
+          <p className="text-xs text-slate-500">{data.primary_school}</p>
+        ) : null}
         <p className="mt-1 text-xs text-slate-400">
           {data.groups.length}{" "}
           {data.groups.length === 1 ? "group" : "groups"}
         </p>
       </div>
 
-      {data.groups.length === 0 ? (
+      {isEmptyOrUnknown ? (
+        <div className="rounded-md border border-slate-200 bg-white p-4">
+          <p className="text-sm font-medium text-slate-900">
+            No data for this EA yet
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Either the EA ID <code className="font-mono text-slate-600">{userIdNum}</code>{" "}
+            doesn&apos;t match any known EA, or this EA has been added but has
+            no group sessions yet. Use the back link above to return to the EA
+            list.
+          </p>
+        </div>
+      ) : data.groups.length === 0 ? (
         <p className="rounded-md border border-slate-200 bg-white p-4 text-xs text-slate-500">
-          No groups for this EA yet.
+          This EA has no groups in the current data.
         </p>
       ) : (
         <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
@@ -2319,7 +2352,10 @@ export default async function PMEaDetailPage({
 - **`max-w-2xl mx-auto`** matches the EA detail page width inside the PM sidebar.
 - **`Phase 1D will expand this page` footer note** — sets explicit expectations for any PM who lands here in the meantime. Italic + tiny font, doesn't dominate the page but makes the temporary nature visible.
 - **No `"use client"` directive** — purely server-rendered.
-- **404/error handling**: invalid user_id → redirect to scatter plot. API error → `BackendErrorState`. EA with zero groups → friendly empty state, not an error.
+- **Unknown-user-id and empty-EA handling — read carefully:** The Django `ea_detail_overview` view does NOT return 404 for unknown user_ids. It returns 200 with `ea_name: ""`, `primary_school: ""`, `groups: []`. From the response shape alone we cannot distinguish "unknown user_id" from "real EA who has been added but has no groups yet" — both produce the same empty payload. So this page renders an explanatory card when both `ea_name === ""` and `groups.length === 0` (the `isEmptyOrUnknown` flag). The card text covers both cases honestly: *"Either the EA ID doesn't match any known EA, or this EA has been added but has no group sessions yet."* The user manually navigates back via the "Back to EAs" link. We deliberately do NOT redirect on this signal because a heuristic redirect would catch real new-hire EAs in its false-positive net. A real EA with at least one group always has a non-empty `ea_name` (computed from `Counter` over group names), so the explainer only fires on the empty case.
+- **Real EA with non-empty `ea_name` but zero groups** → shows "This EA has no groups in the current data." (a different, less alarming message). Edge case that probably never fires in practice but handled defensively.
+- **`{data.ea_name || \`EA ${userIdNum}\`}` fallback for the heading** — when `ea_name` is empty, display the user_id rather than a blank heading. Keeps the page from looking broken.
+- **Validation/error handling**: malformed `user_id` (non-numeric or ≤ 0) → redirect to scatter plot via the early `redirect()` call. API throws an error → `BackendErrorState`. Empty payload → in-page explainer card (above).
 
 - [ ] **Step 2: Type-check and lint**
 
@@ -2466,12 +2502,16 @@ git commit -m "feat(pm): add group detail route reusing components/group-detail"
 
 ---
 
-## Task 18: Playwright e2e tests for invalid-detail-route redirects
+## Task 18: Playwright e2e tests for the new PM detail routes
 
-**Goal:** Automated regression coverage for the unauthenticated-deep-link and malformed-`class_id` redirect paths. Builds on the existing pattern in `e2e/my-kids-auth.spec.ts` which already covers `/my-kids` itself. Phase 1B added 3 new e2e tests for the auth surface; this task adds 2 new ones for the detail-route surface.
+**Goal:** Automated regression coverage for the **new routes Phase 1C adds**. Specifically: verify that middleware protects the new PM EA detail page and the new PM group detail page, and that both preserve `redirect_url` correctly for unauthenticated users.
+
+**Scope honesty:** Playwright tests in this project run without Clerk authentication (no test tokens are set up), so they can only exercise routes BEFORE the page-level logic runs — i.e. the middleware redirect surface. The page-level logic (404 → redirect, malformed class_id → redirect, empty-EA card) cannot be tested by Playwright today and is covered by Task 19 (manual smoke test) instead. A future task could add Clerk testing tokens to enable signed-in e2e tests, but that's out of scope for Phase 1C.
+
+**Why we don't duplicate the existing tests:** `e2e/my-kids-auth.spec.ts` already covers `unauthenticated deep link to a group detail page redirects with full path preserved` (test #2 in the file). We don't add another test that does the same thing. The new tests focus on the routes Phase 1C introduces that nothing currently covers — the PM-side routes.
 
 **Files:**
-- Create or modify: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2026/zazi-izandi-nextjs/e2e/my-kids-auth.spec.ts`
+- Modify: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2026/zazi-izandi-nextjs/e2e/my-kids-auth.spec.ts` (add tests in a new `test.describe` block since the new tests are PM-side, not /my-kids-side)
 
 - [ ] **Step 1: Read the existing test file**
 
@@ -2479,37 +2519,39 @@ git commit -m "feat(pm): add group detail route reusing components/group-detail"
 cat e2e/my-kids-auth.spec.ts
 ```
 
-Note the existing test structure (test groups, helpers, expectations). The new tests should follow the same structure.
+Note the existing test structure (test groups, helpers, URL builders). The new tests should follow the same conventions.
 
-- [ ] **Step 2: Add the new tests at the end of the existing test group**
+- [ ] **Step 2: Add the new tests in a new `test.describe` block**
 
-Append these test blocks inside the existing `test.describe("/my-kids auth", ...)` block:
+Append a new describe block at the end of `e2e/my-kids-auth.spec.ts`:
 
 ```typescript
-  test("unauthenticated deep link to a group detail page redirects with full path preserved", async ({
+test.describe("/pm/education-assistants/[user-id] auth (Phase 1C)", () => {
+  test("unauthenticated visit to PM EA detail page redirects to login with redirect_url preserved", async ({
     page,
   }) => {
-    await page.goto("/my-kids/groups/67982");
+    await page.goto("/pm/education-assistants/28739");
     await expect(page).toHaveURL(
-      /\/login\?redirect_url=%2Fmy-kids%2Fgroups%2F67982/,
+      /\/login\?redirect_url=%2Fpm%2Feducation-assistants%2F28739/,
     );
   });
 
-  test("malformed class_id in detail route redirects to overview (signed-out users still see login first)", async ({
+  test("unauthenticated visit to PM group detail page redirects to login with redirect_url preserved", async ({
     page,
   }) => {
-    // Signed-out users hit middleware first → redirect to login regardless
-    // of whether the URL is malformed. We just verify they don't crash and
-    // they end up on a login page.
-    await page.goto("/my-kids/groups/abc");
-    // Either the middleware redirects to /login, or the page-level
-    // validation redirects to /my-kids first then middleware redirects
-    // to /login. Both are acceptable as long as the user lands on /login.
-    await expect(page).toHaveURL(/\/login/);
+    await page.goto("/pm/education-assistants/28739/groups/67982");
+    await expect(page).toHaveURL(
+      /\/login\?redirect_url=%2Fpm%2Feducation-assistants%2F28739%2Fgroups%2F67982/,
+    );
   });
+});
 ```
 
-If the existing file uses a different convention (e.g. `test.describe.only`, or explicit URL builders), match it.
+These tests verify two things that nothing else covers:
+1. The middleware matcher `/pm*` includes the new dynamic segments — a regression guard against future matcher changes that might accidentally exclude `[user-id]` or `[user-id]/groups/[class_id]`.
+2. The `redirect_url` query param is constructed correctly with both URL-encoded path segments — Phase 1A added this for `/my-kids`, but the PM path with two dynamic segments hasn't been exercised before.
+
+If the existing file uses `test()` directly (no `describe`), match that convention instead — just add the two tests as siblings to the existing tests.
 
 - [ ] **Step 3: Run the affected test file**
 
@@ -2531,7 +2573,7 @@ Expected: 13 tests pass (11 from before + 2 new).
 
 ```bash
 git add e2e/my-kids-auth.spec.ts
-git commit -m "test(my-kids): add e2e regression for detail-route redirect paths"
+git commit -m "test(pm): add e2e auth regression for new PM detail routes"
 ```
 
 ---
@@ -2638,11 +2680,22 @@ Manually enter `http://localhost:3000/pm/education-assistants/28739/groups/99999
 
 **Expected:** Silent redirect to `/pm/education-assistants/28739` (the EA detail stub for Shadey), NOT to the scatter plot. The PM stays in the EA's context.
 
-- [ ] **Step 11: Scenario J — PM view: invalid user_id**
+- [ ] **Step 11: Scenario J — PM view: unknown user_id (numeric but no data)**
 
-Manually enter `http://localhost:3000/pm/education-assistants/99999/groups/1`.
+Manually enter `http://localhost:3000/pm/education-assistants/99999` (the EA detail stub for a user_id that doesn't match any real EA).
 
-**Expected:** Silent redirect to `/pm/education-assistants` (the scatter plot landing page) — both segments are bad, so we bounce all the way back.
+**Expected:**
+- Page renders (NOT a redirect).
+- Heading shows `EA 99999` (the user_id fallback, since `ea_name` is empty).
+- Below the heading: an explainer card titled "No data for this EA yet" with text *"Either the EA ID 99999 doesn't match any known EA, or this EA has been added but has no group sessions yet."*
+- "Back to EAs" link is visible at the top.
+- Click "Back to EAs" → lands on `/pm/education-assistants` (scatter plot).
+
+This is intentional behavior — Django returns 200 with empty fields for unknown user_ids, and we can't distinguish "unknown" from "newly hired EA with zero groups" without backend changes. The explainer card covers both cases honestly.
+
+**Then test malformed user_id:** manually enter `http://localhost:3000/pm/education-assistants/abc` (non-numeric).
+
+**Expected:** Silent redirect to `/pm/education-assistants` (scatter plot). The route validates `Number.isFinite(userIdNum) && userIdNum > 0` at the top of the page and bounces non-numeric input.
 
 - [ ] **Step 12: Scenario K — Curriculum gap coaching tip (verify Finding 2 reversal)**
 
@@ -2778,15 +2831,15 @@ Phase 1C + 1D-lite are done when all of the following are true:
 **Routes (Tasks 14–17):**
 - [ ] `GroupCard` is wrapped in a `<Link>` to `/my-kids/groups/[class_id]` when `class_id` is non-null. Falls back to a non-clickable article when `class_id === null`.
 - [ ] `/my-kids/groups/[class_id]/page.tsx` renders all sections: header, coaching tip panel, letter mastery path (letters phase only), children list, recent sessions. Does NOT render `FlagPillStrip` (PM-only).
-- [ ] `/pm/education-assistants/[user-id]/page.tsx` exists as a minimal 1D-lite stub: EA name + school + group list with clickable rows + back link to `/pm/education-assistants`.
+- [ ] `/pm/education-assistants/[user-id]/page.tsx` exists as a minimal 1D-lite stub: EA name + school + group list with clickable rows + back link to `/pm/education-assistants`. Renders an in-page explainer card ("No data for this EA yet — either the ID doesn't match a known EA, or the EA has no group sessions yet") when `ea_name === "" && groups.length === 0`. Does NOT redirect on this signal — Django returns 200 with empty fields for unknown user_ids and we cannot distinguish "unknown" from "newly hired EA with no groups yet" without backend changes.
 - [ ] `/pm/education-assistants/[user-id]/groups/[class_id]/page.tsx` renders the same sections inside the PM layout AND additionally renders `FlagPillStrip` between the header and the coaching tip panel.
 - [ ] Invalid `class_id` (EA view) → redirects to `/my-kids`. Verified manually.
 - [ ] Invalid `class_id` (PM view, valid user_id) → redirects to `/pm/education-assistants/[user-id]` (the EA detail stub from Task 16). Verified manually. Matches spec § 7 line 460.
-- [ ] Invalid `user_id` (PM view) → redirects to `/pm/education-assistants` (scatter plot). Verified manually.
+- [ ] Malformed `user_id` (non-numeric or ≤ 0) on PM EA detail or PM group detail → redirects to `/pm/education-assistants` (scatter plot). Verified manually. (Unknown-but-numeric user_ids render the explainer card above instead of redirecting, per the Django contract limitation.)
 - [ ] PM EA detail stub back arrow → `/pm/education-assistants` (scatter plot). PM group detail back arrow → `/pm/education-assistants/[user-id]` (the EA detail stub).
 
 **Verification (Tasks 18–20):**
-- [ ] Two new Playwright e2e tests exist for `/my-kids/groups/[class_id]` redirect paths: unauthenticated deep link preserves the redirect_url; malformed class_id ends up on a login page.
+- [ ] Two new Playwright e2e tests exist covering the PM-side routes Phase 1C introduces: unauthenticated `/pm/education-assistants/<user-id>` and `/pm/education-assistants/<user-id>/groups/<class_id>` both redirect to login with `redirect_url` preserved. Page-level redirect logic (signed-in 404 handling, malformed class_id) is NOT covered by Playwright (no Clerk testing tokens) — it's covered by Task 19 manual smoke tests instead.
 - [ ] Mobile viewport (390px) renders all sections without horizontal scroll.
 - [ ] All 13 Playwright tests pass (11 from Phase 1A/1B + 2 from Task 18).
 - [ ] Production deploy is green, EA detail page renders correctly on a real phone, PM detail page renders correctly.

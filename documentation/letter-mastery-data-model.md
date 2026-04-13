@@ -75,7 +75,8 @@ The EA "My Kids" page aggregates per-child data to per-group numbers via `api/ea
 
 - For each letter in the group's programme sequence, count **how many children in the group had `letters_mastered` containing that letter** → this is `children_mastered`.
 - For each letter, count **how many unique sessions taught that letter** → this is `sessions_taught`.
-- Letters with neither mastery nor sessions are omitted entirely from the result.
+- **The denominator (`children_total`) is the count of children with `ChildLetterAlignment2026` rows for this group — the "assessed cohort"**, NOT the session-derived `group_summary.children_count`. Numerator and denominator come from the same data source so the percentage is arithmetically meaningful: *"of children we measured at baseline, how many knew this letter."* Children who haven't been baseline-assessed are not in either count.
+- **Every letter in the language sequence is included**, even letters with `children_mastered: 0` and `sessions_taught: 0`. The frontend renders these as grey "not yet reached" cells. Callers can detect "no baseline assessments exist" via `children_total === 0` (the reliable signal — not via `mastery_pct > 0`, which can't distinguish "no assessments" from "assessments exist but nobody mastered anything yet").
 
 This is the data that drives the group-detail visualization (the "average letter tracker" / "stepping stones" path).
 
