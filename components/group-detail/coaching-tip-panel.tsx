@@ -59,6 +59,14 @@ export function CoachingTipPanel({ group }: CoachingTipPanelProps) {
   // overview card does).
   const groupFlags = GROUP_FLAG_PRIORITY.filter((f) => group.flags.includes(f));
 
+  // When the curriculum gap tip above has already rendered with specific
+  // skipped letters, suppress the generic curriculum_gaps flag tip below
+  // to avoid two amber callouts saying essentially the same thing.
+  // The other three group flags remain — they're semantically distinct.
+  const groupFlagsToRender = hasCurriculumGap
+    ? groupFlags.filter((f) => f !== "curriculum_gaps")
+    : groupFlags;
+
   // PRIORITY 3: Drilling-known-letters (minor secondary signal per the data
   // doc — drilling known letters supports automaticity and is largely
   // harmless if only here and there). Frame gently and last.
@@ -106,8 +114,8 @@ export function CoachingTipPanel({ group }: CoachingTipPanelProps) {
         </div>
       ) : null}
 
-      {/* PRIORITY 2: Group-level flag tips (all of them) */}
-      {groupFlags.map((flag) => (
+      {/* PRIORITY 2: Group-level flag tips (curriculum_gaps suppressed when curriculum gap tip above already fires) */}
+      {groupFlagsToRender.map((flag) => (
         <CoachingTip key={flag} flag={flag} />
       ))}
 
