@@ -17,6 +17,7 @@
 - Add a page with descriptions/explanations of the different ways we're thinking about and viewing the data.
 
 ## Other Features
+- Add an export or list of kids that were assessed but are not receiving sessions (from Teatment or SEF schools)
 - Blending page
 - Page for EAs with 2 classrooms.
 - Badges for EAs
@@ -38,4 +39,6 @@
 - See which pages I need to delete the blending groups from, such as the letter alignment calculations.
 - Figure out Busisiwe Kampeni (Teampact UserID: 28755) and why she's showing so many sessions for March 18.
 - Kampeni appears to be working in more than 1 school. Same with Yonela Lewu. I need to figure out how to deal with that.
+- **Multi-group alignment data bug** (flagged during Phase 1C review, deferred): `ChildLetterAlignment2026` uses `participant_id` as the primary key, so each child can have exactly one alignment row. The nightly `compute_letter_alignment_2026` assigns `pid_to_group[pid] = group_key` unconditionally as it iterates session rows — for multi-group children (kids who attend sessions across two groups/EAs), only the LAST group seen wins. The losing group silently loses that child's alignment data (coaching tips, per-child badges, mastery percentages). Impact: ~<5% of kids are multi-group (Kampeni's and Yonela Lewu's cohorts are the main affected groups, tying in with the item above). Shadey Africander's groups are unaffected. Fix requires a schema migration on `ChildLetterAlignment2026` (composite PK or autoincrement ID), refactor of `compute_letter_alignment_2026.py` to build per-group rows, and updates to `ea_mastery.py` and `ea_group_detail` view queries to handle multiple rows per participant. Estimate: 1–2 days of focused backend work. Should also add an integration test that exercises the multi-group scenario via the actual compute command (current tests create `ChildLetterAlignment2026` rows directly, bypassing the bug).
+- **PMSidebar Clerk UserButton hydration warning** (dev-mode only, deferred): the `<UserButton>` in `components/pm/layout/pm-sidebar.tsx:125` sometimes throws a React hydration mismatch on first navigation to a `/pm/*` route after a cold dev-server start. The mismatch is between Clerk's SSR placeholder `<div data-clerk-component="UserButton">` and the sibling `<span>Account</span>`. React marks it "Recoverable Error" and regenerates the subtree on the client, so behavior is unaffected and a refresh clears it. Does NOT reproduce in production (routes are pre-compiled and Clerk session state is resolved consistently). Fix options if it ever matters: (1) wrap the UserButton in `<Suspense fallback={null}>`, or (2) use `next/dynamic` with `ssr: false` to skip SSR entirely for the button. Option 1 is the minimal fix.
 
