@@ -82,16 +82,15 @@ export function LetterMasteryPath({ letters }: LetterMasteryPathProps) {
 
       {!hasAssessments && anySessions ? (
         <p className="mb-3 text-xs leading-relaxed text-slate-500">
-          Your kids haven&apos;t taken their baseline assessments yet, so we
-          can&apos;t show what they knew when you started. The dots below show
-          the sessions you&apos;ve taught so far.
+          No baseline assessment data is linked to this group yet. The dots
+          below show the sessions you&apos;ve taught so far.
         </p>
       ) : null}
 
       {!hasAssessments && !anySessions ? (
         <p className="mb-3 text-xs leading-relaxed text-slate-500">
           Letter progress will appear here once your group starts sessions and
-          completes their baseline assessments.
+          baseline assessment data is linked.
         </p>
       ) : null}
 
