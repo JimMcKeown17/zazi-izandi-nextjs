@@ -1,37 +1,13 @@
+import Link from "next/link";
 import { BookOpen, Layers } from "lucide-react";
 import type { EaGroup } from "@/lib/ea/types";
-import { CoachingTip, getTopFlag } from "./coaching-tip";
+import { CoachingTip, getTopFlag } from "@/components/group-detail/coaching-tip";
+import { StatusBadge } from "@/components/group-detail/status-badge";
 
 function formatGroupName(raw: string, eaName?: string): string {
   if (!eaName) return raw;
   const prefix = `${eaName}-`;
   return raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
-}
-
-function StatusBadge({ flags }: { flags: string[] }) {
-  if (flags.includes("ghost_group")) {
-    return (
-      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 shrink-0 whitespace-nowrap">
-        Low dosage
-      </span>
-    );
-  }
-  if (
-    flags.includes("moving_too_fast") ||
-    flags.includes("stagnation") ||
-    flags.includes("curriculum_gaps")
-  ) {
-    return (
-      <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 shrink-0 whitespace-nowrap">
-        Needs attention
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 shrink-0 whitespace-nowrap">
-      On track
-    </span>
-  );
 }
 
 function LetterProgressBar({
@@ -97,8 +73,8 @@ export function GroupCard({ group, showSchoolName = false, eaName }: GroupCardPr
   const topFlag = getTopFlag(group.flags);
   const displayName = formatGroupName(group.group_name, eaName);
 
-  return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+  const cardBody = (
+    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-slate-300">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold text-slate-900">
@@ -132,5 +108,18 @@ export function GroupCard({ group, showSchoolName = false, eaName }: GroupCardPr
 
       {topFlag ? <CoachingTip flag={topFlag} /> : null}
     </article>
+  );
+
+  if (group.class_id === null) {
+    return cardBody;
+  }
+
+  return (
+    <Link
+      href={`/my-kids/groups/${group.class_id}`}
+      className="block focus:outline-none focus:ring-2 focus:ring-primary/40 rounded-xl"
+    >
+      {cardBody}
+    </Link>
   );
 }

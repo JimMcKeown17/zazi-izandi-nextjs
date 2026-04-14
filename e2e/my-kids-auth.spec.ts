@@ -36,3 +36,29 @@ test.describe("/my-kids auth", () => {
     );
   });
 });
+
+test.describe("/pm/education-assistants/[user-id] auth (Phase 1C)", () => {
+  test("unauthenticated visit to PM EA detail page redirects to login with redirect_url preserved", async ({
+    page,
+  }) => {
+    await setupClerkTestingToken({ page });
+    await page.goto("/pm/education-assistants/28739");
+    await page.waitForURL(/\/login/);
+    expect(page.url()).toContain("/login");
+    expect(page.url()).toContain(
+      "redirect_url=%2Fpm%2Feducation-assistants%2F28739"
+    );
+  });
+
+  test("unauthenticated visit to PM group detail page redirects to login with redirect_url preserved", async ({
+    page,
+  }) => {
+    await setupClerkTestingToken({ page });
+    await page.goto("/pm/education-assistants/28739/groups/67982");
+    await page.waitForURL(/\/login/);
+    expect(page.url()).toContain("/login");
+    expect(page.url()).toContain(
+      "redirect_url=%2Fpm%2Feducation-assistants%2F28739%2Fgroups%2F67982"
+    );
+  });
+});
