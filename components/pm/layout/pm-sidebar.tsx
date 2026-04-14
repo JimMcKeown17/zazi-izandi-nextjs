@@ -39,12 +39,14 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 // Explicit mobile tabs — looked up by href so reordering NAV_ITEMS
-// doesn't silently break the mobile bottom tab bar.
+// doesn't silently break the mobile bottom tab bar. These are the top 4
+// priorities from the desktop nav, plus the "Back to site" arrow
+// rendered separately in the mobile tab bar JSX.
 const MOBILE_NAV_HREFS = [
   "/pm",
-  "/pm/schools",
   "/pm/education-assistants",
-  "/pm/letter-progress",
+  "/pm/sessions",
+  "/pm/quality-flags",
 ];
 const MOBILE_NAV_ITEMS: NavItem[] = MOBILE_NAV_HREFS
   .map((href) => NAV_ITEMS.find((item) => item.href === href))
