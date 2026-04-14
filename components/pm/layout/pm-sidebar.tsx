@@ -6,6 +6,7 @@ import { UserButton } from "@clerk/nextjs";
 import {
   LayoutDashboard,
   School,
+  Smartphone,
   Calendar,
   BookOpen,
   AlertTriangle,
@@ -26,23 +27,30 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { name: "Overview", href: "/pm", icon: LayoutDashboard, exact: true },
-  { name: "Schools", href: "/pm/schools", icon: School },
-  { name: "Sessions", href: "/pm/sessions", icon: Calendar },
   { name: "Education Assistants", href: "/pm/education-assistants", icon: Users },
-  { name: "Letter Progress", href: "/pm/letter-progress", icon: BookOpen },
+  { name: "Sessions", href: "/pm/sessions", icon: Calendar },
   { name: "Quality Flags", href: "/pm/quality-flags", icon: AlertTriangle },
   { name: "Letter Alignment", href: "/pm/letter-alignment", icon: Grid3X3 },
+  { name: "Schools", href: "/pm/schools", icon: School },
   { name: "Assessments", href: "/pm/assessments", icon: ClipboardCheck },
   { name: "Mentor Visits", href: "/pm/mentor-visits", icon: Eye },
+  { name: "Letter Progress", href: "/pm/letter-progress", icon: BookOpen },
+  { name: "EA Mobile View", href: "/pm/ea-mobile-view", icon: Smartphone },
 ];
 
-// Explicit mobile tabs — decoupled from desktop nav order
-const MOBILE_NAV_ITEMS = [
-  NAV_ITEMS[0], // Overview
-  NAV_ITEMS[1], // Schools
-  NAV_ITEMS[3], // Education Assistants
-  NAV_ITEMS[4], // Letter Progress
+// Explicit mobile tabs — looked up by href so reordering NAV_ITEMS
+// doesn't silently break the mobile bottom tab bar. These are the top 4
+// priorities from the desktop nav, plus the "Back to site" arrow
+// rendered separately in the mobile tab bar JSX.
+const MOBILE_NAV_HREFS = [
+  "/pm",
+  "/pm/education-assistants",
+  "/pm/sessions",
+  "/pm/quality-flags",
 ];
+const MOBILE_NAV_ITEMS: NavItem[] = MOBILE_NAV_HREFS
+  .map((href) => NAV_ITEMS.find((item) => item.href === href))
+  .filter((item): item is NavItem => item !== undefined);
 
 
 interface PMSidebarProps {

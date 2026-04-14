@@ -67,9 +67,15 @@ interface GroupCardProps {
   group: EaGroup;
   showSchoolName?: boolean;
   eaName?: string;
+  /**
+   * Optional href builder. Defaults to `/my-kids/groups/${class_id}`.
+   * Pass a custom builder when rendering GroupCard in a non-EA context
+   * (e.g. PM EA Mobile View preview) to redirect clicks to a different route.
+   */
+  groupHref?: (group: EaGroup) => string;
 }
 
-export function GroupCard({ group, showSchoolName = false, eaName }: GroupCardProps) {
+export function GroupCard({ group, showSchoolName = false, eaName, groupHref }: GroupCardProps) {
   const topFlag = getTopFlag(group.flags);
   const displayName = formatGroupName(group.group_name, eaName);
 
@@ -114,9 +120,13 @@ export function GroupCard({ group, showSchoolName = false, eaName }: GroupCardPr
     return cardBody;
   }
 
+  const href = groupHref
+    ? groupHref(group)
+    : `/my-kids/groups/${group.class_id}`;
+
   return (
     <Link
-      href={`/my-kids/groups/${group.class_id}`}
+      href={href}
       className="block focus:outline-none focus:ring-2 focus:ring-primary/40 rounded-xl"
     >
       {cardBody}
