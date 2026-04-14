@@ -6,6 +6,7 @@ import { UserButton } from "@clerk/nextjs";
 import {
   LayoutDashboard,
   School,
+  Smartphone,
   Calendar,
   BookOpen,
   AlertTriangle,
@@ -34,6 +35,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: "Letter Alignment", href: "/pm/letter-alignment", icon: Grid3X3 },
   { name: "Assessments", href: "/pm/assessments", icon: ClipboardCheck },
   { name: "Mentor Visits", href: "/pm/mentor-visits", icon: Eye },
+  { name: "EA Mobile View", href: "/pm/ea-mobile-view", icon: Smartphone },
 ];
 
 // Explicit mobile tabs — decoupled from desktop nav order
