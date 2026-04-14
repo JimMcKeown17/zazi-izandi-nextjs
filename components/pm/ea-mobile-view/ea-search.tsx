@@ -56,7 +56,13 @@ export function EaSearch({ eas }: EaSearchProps) {
           </li>
         ) : (
           filtered.map((ea) => (
-            <li key={ea.ea_user_id}>
+            // Composite key: Django's ea_performance view groups by
+            // ea_name (TeampactSession.user_name), so the same ea_user_id
+            // can legitimately appear under different display names (e.g.
+            // an EA's name was changed in TeamPact mid-year and both
+            // variants show up in historical session rows). Combining
+            // both fields gives a stable unique key.
+            <li key={`${ea.ea_user_id}-${ea.ea_name}`}>
               <Link
                 href={`/pm/ea-mobile-view/${ea.ea_user_id}`}
                 className="flex items-center justify-between gap-3 px-4 py-3 text-sm hover:bg-slate-50"
