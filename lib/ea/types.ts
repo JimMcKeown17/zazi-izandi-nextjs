@@ -108,6 +108,7 @@ export interface EaGroupDetail {
   avg_sessions_per_week: number;
   sessions_this_week: number;
   total_sessions: number;
+  children_count: number;
   flags: EaFlag[];
   children: EaChild[];
   recent_sessions: EaSession[];

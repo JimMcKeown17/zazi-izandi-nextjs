@@ -23,7 +23,7 @@ export function GroupDetailHeader({
   eaName,
 }: GroupDetailHeaderProps) {
   const displayName = formatGroupName(group.group_name, eaName);
-  const childrenCount = group.children.length;
+  const childrenCount = group.children_count;
 
   return (
     <header className="space-y-3">
