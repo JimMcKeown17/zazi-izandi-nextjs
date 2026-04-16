@@ -2,9 +2,20 @@
 
 import { useCallback, useRef, useState } from "react";
 import { Sparkles, RotateCcw } from "lucide-react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import type { DailyBrief } from "@/lib/ea/types";
 import { BriefErrorState } from "./brief-error-state";
+
+const MARKDOWN_CLASSES =
+  "[&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0" +
+  " [&_ul]:my-2 [&_ul]:pl-5 [&_ul]:list-disc [&_ol]:my-2 [&_ol]:pl-5 [&_ol]:list-decimal" +
+  " [&_li]:my-1 [&_strong]:font-semibold [&_em]:italic" +
+  " [&_h1]:mt-3 [&_h1]:mb-2 [&_h1]:text-base [&_h1]:font-semibold" +
+  " [&_h2]:mt-3 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-semibold" +
+  " [&_h3]:mt-2 [&_h3]:mb-1 [&_h3]:text-sm [&_h3]:font-semibold" +
+  " [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs";
 
 type Props = {
   initialBrief: DailyBrief | null;
@@ -161,11 +172,16 @@ export function DailyBriefPanel({
       </div>
       <div
         className={cn(
-          "mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-800",
+          "mt-3 text-sm leading-relaxed text-slate-800",
+          MARKDOWN_CLASSES,
           streaming && "animate-pulse",
         )}
       >
-        {textContent || (streaming ? "…" : "")}
+        {textContent ? (
+          <Markdown remarkPlugins={[remarkGfm]}>{textContent}</Markdown>
+        ) : streaming ? (
+          "…"
+        ) : null}
       </div>
       {state.status === "done" ? (
         <div className="mt-3 flex items-center justify-between text-xs text-slate-400">

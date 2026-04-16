@@ -118,6 +118,14 @@ export interface EaGroupDetail {
 
 // --- AI Assistant types (matches Django ai_assistant serializers) ---
 
+export interface EaSkippedLetter {
+  letter: string;
+  baseline_pct: number;
+  sessions_taught: number;
+}
+
+export type EaAlignmentBand = "red" | "amber" | "green";
+
 export interface EaAiSnapshotGroup {
   class_id: number;
   group_name_clean: string;
@@ -126,8 +134,11 @@ export interface EaAiSnapshotGroup {
   language: string;
   current_letter: string;
   progress_pct: number;
-  letters_skipped: string[];
+  letters_skipped: EaSkippedLetter[];
   letters_needed_next_3: string[];
+  letters_still_needed: string[];
+  avg_alignment_score: number | null;
+  alignment_band: EaAlignmentBand | null;
   sessions_this_week: number;
   avg_sessions_per_week: number;
   last_session_date: string | null;

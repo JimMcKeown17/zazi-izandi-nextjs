@@ -4,8 +4,16 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { Send, Search } from "lucide-react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import type { ChatMessage as StoredChatMessage } from "@/lib/ea/types";
+
+const ASSISTANT_MARKDOWN_CLASSES =
+  "[&_p]:my-1.5 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0" +
+  " [&_ul]:my-1.5 [&_ul]:pl-5 [&_ul]:list-disc [&_ol]:my-1.5 [&_ol]:pl-5 [&_ol]:list-decimal" +
+  " [&_li]:my-0.5 [&_strong]:font-semibold [&_em]:italic" +
+  " [&_code]:rounded [&_code]:bg-slate-200/60 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs";
 
 type Props = {
   initialMessages: StoredChatMessage[];
@@ -95,7 +103,7 @@ export function EaChat({ initialMessages, chatCap, chatMessagesToday }: Props) {
                       : "rounded-bl-sm bg-slate-100 text-slate-800",
                   )}
                 >
-                  {renderParts(m.parts ?? [])}
+                  {renderParts(m.parts ?? [], m.role)}
                 </div>
               </li>
             ))}
@@ -153,12 +161,20 @@ type UIPart =
     }
   | { type: string };
 
-function renderParts(parts: readonly UIPart[]) {
+function renderParts(parts: readonly UIPart[], role: "user" | "assistant" | string) {
   return parts.map((part, i) => {
     if (part.type === "text") {
+      const text = (part as { text?: string }).text ?? "";
+      if (role === "assistant") {
+        return (
+          <div key={i} className={ASSISTANT_MARKDOWN_CLASSES}>
+            <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
+          </div>
+        );
+      }
       return (
         <span key={i} className="whitespace-pre-wrap">
-          {(part as { text?: string }).text ?? ""}
+          {text}
         </span>
       );
     }
