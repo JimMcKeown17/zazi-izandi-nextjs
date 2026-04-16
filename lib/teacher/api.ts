@@ -3,8 +3,13 @@ import type { EaGroupDetail } from "@/lib/ea/types";
 import type { ClassroomSummary } from "./types";
 import { aggregateGroupsToClassroom } from "./aggregate";
 
+export interface GroupSessionInfo {
+  group_name: string;
+  total_sessions: number;
+}
+
 export type ClassroomResult =
-  | { ok: true; data: ClassroomSummary }
+  | { ok: true; data: ClassroomSummary; groupSessions: GroupSessionInfo[] }
   | { ok: false; error: string };
 
 export async function getTeacherClassroom(
@@ -39,5 +44,10 @@ export async function getTeacherClassroom(
     teacher_name: teacherName,
   });
 
-  return { ok: true, data: summary };
+  const groupSessions: GroupSessionInfo[] = groupDetails.map((g) => ({
+    group_name: g.group_name,
+    total_sessions: g.total_sessions,
+  }));
+
+  return { ok: true, data: summary, groupSessions };
 }

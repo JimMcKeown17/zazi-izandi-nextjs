@@ -5,9 +5,7 @@ import Footer from "@/components/layout/footer";
 import type { TeacherMetadata } from "@/lib/teacher/types";
 import { getTeacherClassroom } from "@/lib/teacher/api";
 import { ClassroomHeader } from "@/components/teacher/classroom-header";
-import { ClassroomKPIs } from "@/components/teacher/classroom-kpis";
-import { ClassroomLetterGrid } from "@/components/teacher/classroom-letter-grid";
-import { ClassroomChildrenChart } from "@/components/teacher/classroom-children-chart";
+import { ClassroomView } from "@/components/teacher/classroom-view";
 
 export default async function MyClassroomPage() {
   const { userId, sessionClaims } = await auth();
@@ -66,7 +64,7 @@ export default async function MyClassroomPage() {
     );
   }
 
-  const { data } = result;
+  const { data, groupSessions } = result;
 
   return (
     <>
@@ -74,9 +72,7 @@ export default async function MyClassroomPage() {
       <main className="pt-20">
         <div className="mx-auto max-w-4xl px-4 py-8 space-y-4">
           <ClassroomHeader summary={data} />
-          <ClassroomKPIs summary={data} />
-          <ClassroomLetterGrid summary={data} />
-          <ClassroomChildrenChart summary={data} />
+          <ClassroomView summary={data} groupSessions={groupSessions} />
         </div>
       </main>
       <Footer />
