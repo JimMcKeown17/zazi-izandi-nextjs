@@ -115,3 +115,77 @@ export interface EaGroupDetail {
   recent_sessions: EaSession[];
   letter_mastery: EaLetterMastery[];
 }
+
+// --- AI Assistant types (matches Django ai_assistant serializers) ---
+
+export interface EaAiSnapshotGroup {
+  class_id: number;
+  group_name_clean: string;
+  grade: string;
+  phase: "letters" | "blending";
+  language: string;
+  current_letter: string;
+  progress_pct: number;
+  letters_skipped: string[];
+  letters_needed_next_3: string[];
+  sessions_this_week: number;
+  avg_sessions_per_week: number;
+  last_session_date: string | null;
+  days_since_last_session: number | null;
+  flags: EaFlag[];
+  children_count: number;
+  last_3_sessions: Array<{
+    date: string | null;
+    letters_taught: string[];
+    attendance_rate: number;
+  }>;
+  children_first_names: string[];
+}
+
+export interface EaAiSnapshot {
+  ea: {
+    name: string;
+    primary_school: string;
+    teampact_user_id: number;
+  };
+  today: {
+    date_iso: string;
+    day_of_week: string;
+    last_updated_from_django: string | null;
+  };
+  groups: EaAiSnapshotGroup[];
+  programme_position_summary: string;
+}
+
+export interface DailyBrief {
+  brief_id: number;
+  date: string;
+  generation_index: number;
+  model: string;
+  content: string;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  cost_usd_cents: number | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface ChatMessage {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  model: string;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  cost_usd_cents: number | null;
+  tool_calls: unknown | null;
+  created_at: string;
+}
+
+export interface AiUsageCounter {
+  date: string;
+  briefs_today: number;
+  chat_messages_today: number;
+  brief_cap: number;
+  chat_cap: number;
+}

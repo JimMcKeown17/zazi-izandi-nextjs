@@ -33,3 +33,26 @@ export async function djangoFetch(
 
   return fetch(url, { ...init, headers });
 }
+
+/**
+ * POST a JSON body to Django. Mirrors djangoFetch but adds Content-Type
+ * and serialises the body. Use this for any Next.js → Django write path.
+ *
+ * Returns the raw Response so the caller can decide how to handle 429s,
+ * 404s, etc.
+ */
+export async function djangoPost(
+  path: string,
+  body: unknown,
+  init?: RequestInit
+): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
+  return djangoFetch(path, {
+    ...init,
+    method: "POST",
+    headers,
+    body: JSON.stringify(body ?? {}),
+    cache: "no-store",
+  });
+}

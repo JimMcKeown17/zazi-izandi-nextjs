@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
 import { MyKidsTopBar } from "@/components/my-kids/top-bar";
+import { BottomNav } from "@/components/my-kids/bottom-nav";
 import { getEaOverview } from "@/lib/ea/api";
 import type { EaMetadata } from "@/lib/ea/types";
 
@@ -31,7 +32,8 @@ export default async function MyKidsLayout({
   return (
     <div className="min-h-screen bg-slate-50">
       <MyKidsTopBar eaName={eaName} schoolName={schoolName} />
-      <main className="mx-auto max-w-2xl px-4 py-6 pb-20">{children}</main>
+      <main className="mx-auto max-w-2xl px-4 py-6 pb-28">{children}</main>
+      <BottomNav />
     </div>
   );
 }
