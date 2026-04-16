@@ -65,6 +65,7 @@ export interface EaChild {
   attendance_rate: number;
   last_attended: string | null;
   alignment: EaChildAlignment | null;
+  letters_total_correct: number | null;
 }
 
 export interface EaLetterMastery {

@@ -27,11 +27,12 @@ import {
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu";
 
-// Role hierarchy — mirrors middleware.ts
-type Role = "ea" | "funder" | "junior_staff" | "senior_staff" | "admin";
+// Mirrors middleware.ts role union
+type Role = "ea" | "teacher" | "funder" | "junior_staff" | "senior_staff" | "admin";
 
 const ROLE_LEVELS: Record<Role, number> = {
   ea: 0,
+  teacher: 1,
   funder: 1,
   junior_staff: 2,
   senior_staff: 3,
@@ -244,6 +245,20 @@ export default function Header() {
             </NavigationMenuList>
           </NavigationMenu>
 
+          {/* Teacher shortcut — single destination, no dropdown */}
+          {isSignedIn && userRole === "teacher" && (
+            <Link
+              href="/my-classroom"
+              className={`ml-1 font-medium text-sm px-3 py-2 rounded-md transition-colors ${
+                pathname.startsWith("/my-classroom")
+                  ? "text-primary bg-primary/5"
+                  : "text-gray-700 hover:text-primary"
+              }`}
+            >
+              My Classroom
+            </Link>
+          )}
+
           {/* Auth: show UserButton when signed in, Login link when not */}
           {isSignedIn ? (
             <UserButton afterSignOutUrl="/" />
@@ -309,6 +324,23 @@ export default function Header() {
                 )}
               </div>
             ))}
+
+            {/* Teacher shortcut in mobile menu */}
+            {isSignedIn && userRole === "teacher" && (
+              <div className="pt-2">
+                <Link
+                  href="/my-classroom"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-2 py-2 text-sm font-semibold transition-colors ${
+                    pathname.startsWith("/my-classroom")
+                      ? "text-primary"
+                      : "text-gray-700 hover:text-primary"
+                  }`}
+                >
+                  My Classroom
+                </Link>
+              </div>
+            )}
 
             {/* Auth in mobile menu */}
             <div className="pt-3 border-t border-gray-100">
