@@ -13,6 +13,7 @@ import {
   ClipboardCheck,
   Eye,
   ArrowLeft,
+  GraduationCap,
   Grid3X3,
   Users,
 } from "lucide-react";
@@ -36,6 +37,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: "Mentor Visits", href: "/pm/mentor-visits", icon: Eye },
   { name: "Letter Progress", href: "/pm/letter-progress", icon: BookOpen },
   { name: "EA Mobile View", href: "/pm/ea-mobile-view", icon: Smartphone },
+  { name: "Teacher View", href: "/pm/teacher-view", icon: GraduationCap },
 ];
 
 // Explicit mobile tabs — looked up by href so reordering NAV_ITEMS
