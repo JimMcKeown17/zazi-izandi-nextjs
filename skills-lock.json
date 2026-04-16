@@ -11,6 +11,11 @@
       "sourceType": "github",
       "computedHash": "2462fa74e41cf41b83ba098a34b316c4ce126e4597da7db39dd8e659cfee9136"
     },
+    "ai-sdk": {
+      "source": "vercel/ai",
+      "sourceType": "github",
+      "computedHash": "27827bb6ca05cb6757953e507f46dc1c2bf44e48c1928eb3e49f2b675a168492"
+    },
     "clerk": {
       "source": "clerk/skills",
       "sourceType": "github",
@@ -105,6 +110,11 @@
       "source": "anthropics/skills",
       "sourceType": "github",
       "computedHash": "063a0e6448123cd359ad0044cc46b0e490cc7964d45ef4bb9fd842bd2ffbca67"
+    },
+    "openai-docs": {
+      "source": "openai/skills",
+      "sourceType": "github",
+      "computedHash": "7c0cb31b80f601a4394449bf27bc865a9ff31cd0daaa1088a017fdb57b7ae306"
     }
   }
 }
