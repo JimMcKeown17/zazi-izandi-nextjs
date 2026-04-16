@@ -17,7 +17,7 @@ export default async function AfterLoginPage() {
   }
 
   if (role === "ea") {
-    redirect("/my-kids");
+    redirect("/my-kids/today");
   }
 
   redirect("/");

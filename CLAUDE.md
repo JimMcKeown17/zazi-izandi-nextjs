@@ -38,7 +38,7 @@ Middleware at `middleware.ts` protects `/schools*`, `/pm*`, and `/my-kids*` rout
 
 Session token needs custom claim: `{ "metadata": "{{user.public_metadata}}" }`.
 
-Post-login redirect: `/login` uses `fallbackRedirectUrl="/after-login"`. The `/after-login` server component reads `sessionClaims.metadata.role` and redirects EAs to `/my-kids`, everyone else to `/`. Clerk's own `redirect_url` query param takes precedence when set by middleware, which preserves deep links including query strings (e.g. an EA opening `/my-kids/groups/67610?tab=sessions` from WhatsApp lands on that exact URL after signing in).
+Post-login redirect: `/login` uses `fallbackRedirectUrl="/after-login"`. The `/after-login` server component reads `sessionClaims.metadata.role` and redirects EAs to `/my-kids/today` (the Today tab — AI brief + chat), everyone else to `/`. Clerk's own `redirect_url` query param takes precedence when set by middleware, which preserves deep links including query strings (e.g. an EA opening `/my-kids/groups/67610?tab=sessions` from WhatsApp lands on that exact URL after signing in).
 
 ## Django Backend
 
@@ -53,6 +53,22 @@ Django source: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025`. Hosted 
 ## Environment Variables
 
 See `.env.example`. Required: `NEXT_PUBLIC_MAPBOX_TOKEN`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `DJANGO_API_URL`, `INTERNAL_API_SECRET` (must match the value set on the Django service).
+
+## EA AI Assistant (/my-kids/today)
+
+Per-EA chatbot that generates a daily "plan today's sessions" brief and answers follow-ups. Lives behind two new streaming routes: `POST /api/ea/brief` and `POST /api/ea/chat`. Both scope to `sessionClaims.metadata.teampact_user_id`.
+
+**Provider:** Direct OpenAI via `@ai-sdk/openai` (no Vercel Gateway). Default model: `gpt-5.4-mini`. Set via `EA_AI_MODEL`.
+
+**Storage:** All prompt/completion pairs and chat turns persist to Django's new `ai_assistant` app (`DailyBrief`, `ChatMessage`, `AiUsageCounter` models). Snapshot data is assembled in Django at `GET /api/ea/<user_id>/ai-snapshot/` — Next.js never synthesises prompt input from multiple endpoints.
+
+**Rate limits:** Atomic in Django via `select_for_update` + `F()` increment inside one transaction. Defaults: 3 briefs/day/EA (1 initial + 2 regens), 20 chat messages/day/EA. Kill switch: `EA_AI_ENABLED=false` returns 503 from both routes. Partial brief rows burn counter slots on purpose to keep the math atomic; a phase-2 sweeper cron can reconcile.
+
+**PII scope:** First names only. `participant_id` is NEVER sent to OpenAI or stored in `prompt_json`. See `documentation/letter-mastery-data-model.md` for the Category A/B framing the system prompt enforces verbatim.
+
+**Env vars:** `OPENAI_API_KEY`, `EA_AI_ENABLED`, `EA_AI_MODEL`, `EA_AI_DAILY_BRIEF_CAP`, `EA_AI_DAILY_CHAT_CAP`, `EA_AI_CHAT_HISTORY_PAIRS`.
+
+**Plan:** [docs/superpowers/plans/2026-04-16-ea-ai-assistant.md](docs/superpowers/plans/2026-04-16-ea-ai-assistant.md).
 
 ## Further Documentation
 

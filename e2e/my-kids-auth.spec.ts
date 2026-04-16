@@ -12,6 +12,16 @@ test.describe("/my-kids auth", () => {
     expect(page.url()).toContain("redirect_url=%2Fmy-kids");
   });
 
+  test("unauthenticated visit to /my-kids/today preserves redirect", async ({
+    page,
+  }) => {
+    await setupClerkTestingToken({ page });
+    await page.goto("/my-kids/today");
+    await page.waitForURL(/\/login/);
+    expect(page.url()).toContain("/login");
+    expect(page.url()).toContain("redirect_url=%2Fmy-kids%2Ftoday");
+  });
+
   test("unauthenticated deep link to a group redirects with full path preserved", async ({
     page,
   }) => {
