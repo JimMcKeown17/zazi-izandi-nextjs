@@ -1,6 +1,9 @@
 import { Users, Target } from "lucide-react";
 import type { EaGroupDetail, EaChild, EaFlag } from "@/lib/ea/types";
+import { sequenceIndex } from "@/lib/letter-sequences";
 import { CoachingTip } from "./coaching-tip";
+
+const SKIPPED_LETTERS_DISPLAY_CAP = 6;
 
 const GROUP_FLAG_PRIORITY: EaFlag[] = [
   "ghost_group",
@@ -33,13 +36,17 @@ function formatNameList(children: EaChild[], maxDisplay = 3): string {
 function unionLetters(
   children: EaChild[],
   field: "teaching_known_letters" | "letters_skipped",
+  language?: string,
 ): string[] {
   const letters = new Set<string>();
   for (const c of children) {
     const list = c.alignment?.[field] ?? [];
     for (const l of list) letters.add(l.toLowerCase());
   }
-  return Array.from(letters).sort();
+  const idx = sequenceIndex(language);
+  return Array.from(letters).sort(
+    (a, b) => (idx[a] ?? 999) - (idx[b] ?? 999),
+  );
 }
 
 interface CoachingTipPanelProps {
@@ -51,8 +58,20 @@ export function CoachingTipPanel({ group }: CoachingTipPanelProps) {
   // Aggregate letters_skipped at the GROUP level — the gap is in the EA's
   // teaching coverage, which affects every assessed child the same way.
   // Frame as a group-level statement, not "N of X children".
-  const groupSkippedLetters = unionLetters(group.children, "letters_skipped");
+  const groupSkippedLetters = unionLetters(
+    group.children,
+    "letters_skipped",
+    group.language,
+  );
   const hasCurriculumGap = groupSkippedLetters.length > 0;
+  const displayedSkippedLetters = groupSkippedLetters.slice(
+    0,
+    SKIPPED_LETTERS_DISPLAY_CAP,
+  );
+  const extraSkippedCount = Math.max(
+    groupSkippedLetters.length - displayedSkippedLetters.length,
+    0,
+  );
 
   // PRIORITY 2: Group-level flags (Phase 1B's CoachingTip renderer). All
   // applicable flags are shown, not just the top one (which is what the
@@ -97,17 +116,19 @@ export function CoachingTipPanel({ group }: CoachingTipPanelProps) {
           <div>
             <p>
               <span className="font-semibold">
-                Letters from the programme order that haven&apos;t been taught
-                yet:
+                Next letters to cover from the programme order:
               </span>{" "}
               <span className="font-semibold">
-                {groupSkippedLetters.join(", ")}
+                {displayedSkippedLetters.join(", ")}
               </span>
+              {extraSkippedCount > 0
+                ? ` (and ${extraSkippedCount} more)`
+                : ""}
               .
             </p>
             <p className="mt-1">
               These come before your current position in the programme
-              sequence. Consider going back to cover them before moving
+              sequence. Work through them left-to-right before moving
               forward.
             </p>
           </div>
@@ -137,7 +158,7 @@ export function CoachingTipPanel({ group }: CoachingTipPanelProps) {
               </span>
               .
             </p>
-            {unionLetters(teachingKnownKids, "teaching_known_letters").length >
+            {unionLetters(teachingKnownKids, "teaching_known_letters", group.language).length >
             0 ? (
               <p className="mt-1">
                 Letters they already knew:{" "}

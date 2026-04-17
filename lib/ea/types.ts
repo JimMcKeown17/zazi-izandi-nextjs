@@ -23,6 +23,7 @@ export interface EaGroupBase {
   avg_sessions_per_week: number;
   flags: EaFlag[];
   language: string;
+  avg_alignment_score: number | null;
 }
 
 export interface EaLetterGroup extends EaGroupBase {

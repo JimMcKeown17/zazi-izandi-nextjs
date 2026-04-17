@@ -10,25 +10,33 @@ function formatGroupName(raw: string, eaName?: string): string {
   return raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
 }
 
-function LetterProgressBar({
-  progressPct,
-  currentLetter,
-}: {
-  progressPct: number;
-  currentLetter: string;
-}) {
+function alignmentBarClasses(score: number | null): {
+  fill: string;
+  label: string;
+} {
+  if (score === null) {
+    return { fill: "bg-slate-300", label: "text-slate-500" };
+  }
+  if (score >= 70) return { fill: "bg-emerald-500", label: "text-emerald-700" };
+  if (score >= 50) return { fill: "bg-amber-500", label: "text-amber-700" };
+  return { fill: "bg-red-500", label: "text-red-700" };
+}
+
+function AlignmentBar({ score }: { score: number | null }) {
+  const { fill, label } = alignmentBarClasses(score);
+  const width = score === null ? 0 : Math.max(0, Math.min(score, 100));
+  const display =
+    score === null ? "not yet scored" : `${Math.round(score)}%`;
   return (
     <div className="mt-2">
       <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-        <span>Letter progress</span>
-        <span className="font-medium text-slate-700">
-          {Math.round(progressPct)}% · letter {currentLetter}
-        </span>
+        <span>Alignment score</span>
+        <span className={`font-medium ${label}`}>{display}</span>
       </div>
       <div className="h-2 w-full rounded-full bg-slate-200">
         <div
-          className="h-2 rounded-full bg-primary transition-all"
-          style={{ width: `${Math.min(progressPct, 100)}%` }}
+          className={`h-2 rounded-full transition-all ${fill}`}
+          style={{ width: `${width}%` }}
         />
       </div>
     </div>
@@ -95,10 +103,7 @@ export function GroupCard({ group, showSchoolName = false, eaName, groupHref }: 
       </div>
 
       {group.phase === "letters" ? (
-        <LetterProgressBar
-          progressPct={group.progress_pct}
-          currentLetter={group.current_letter}
-        />
+        <AlignmentBar score={group.avg_alignment_score} />
       ) : (
         <BlendingSessionBar totalSessions={group.total_sessions} />
       )}
