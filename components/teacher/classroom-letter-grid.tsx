@@ -14,10 +14,10 @@ function cellStyle(mastery_pct: number, hasAssessments: boolean): string {
 }
 
 function SessionDots({ count }: { count: number }) {
-  if (count === 0) return <div className="mt-1 h-1.5" aria-hidden="true" />;
+  if (count === 0) return <div className="mt-1 h-1.5 print:hidden" aria-hidden="true" />;
   if (count <= 9) {
     return (
-      <div className="mt-1 flex h-1.5 items-center justify-center gap-0.5">
+      <div className="mt-1 flex h-1.5 items-center justify-center gap-0.5 print:hidden">
         {Array.from({ length: count }).map((_, i) => (
           <span
             key={i}
@@ -29,7 +29,7 @@ function SessionDots({ count }: { count: number }) {
     );
   }
   return (
-    <div className="mt-1 text-[9px] font-semibold text-blue-600">×{count}</div>
+    <div className="mt-1 text-[9px] font-semibold text-blue-600 print:hidden">×{count}</div>
   );
 }
 
@@ -44,7 +44,7 @@ export function ClassroomLetterGrid({ summary }: Props) {
     return (
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-semibold text-slate-900">
-          Letter progress
+          Letters My Class Knows
         </h2>
         <p className="mt-2 text-xs text-slate-500">
           Letter progress data unavailable.
@@ -58,10 +58,15 @@ export function ClassroomLetterGrid({ summary }: Props) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="mb-3 flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-900">
-          Letter progress
-        </h2>
-        <span className="text-[10px] text-slate-400">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">
+            Letters My Class Knows
+          </h2>
+          <p className="mt-0.5 text-[11px] text-slate-500">
+            Average share of children who got each letter correct.
+          </p>
+        </div>
+        <span className="text-[10px] text-slate-400 print:hidden">
           Pedagogical sequence →
         </span>
       </div>
@@ -99,7 +104,7 @@ export function ClassroomLetterGrid({ summary }: Props) {
           <span className="inline-block h-2 w-2 rounded-sm border border-red-300 bg-red-100" />
           Few knew (&lt;30%)
         </span>
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1 print:hidden">
           <span className="inline-block h-1 w-1 rounded-full bg-blue-500" />
           = 1 session taught
         </span>

@@ -9,7 +9,7 @@ interface Props {
 
 export function ClassroomMobileTabs({ active, onChange }: Props) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 md:hidden border-t border-slate-200 bg-white">
+    <div className="fixed bottom-0 left-0 right-0 z-40 md:hidden print:hidden border-t border-slate-200 bg-white">
       <div className="grid grid-cols-2 h-11">
         <button
           onClick={() => onChange("results")}

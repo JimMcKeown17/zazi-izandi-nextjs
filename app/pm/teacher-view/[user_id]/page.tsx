@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { getTeacherClassroom } from "@/lib/teacher/api";
 import { ClassroomHeader } from "@/components/teacher/classroom-header";
 import { ClassroomView } from "@/components/teacher/classroom-view";
+import { PrintButton } from "@/components/teacher/print-button";
+import { PrintHeader } from "@/components/teacher/print-header";
 
 interface Params {
   user_id: string;
@@ -50,15 +52,20 @@ export default async function TeacherViewDetailPage({
 
   return (
     <div className="space-y-4">
-      <Link
-        href="/pm/teacher-view"
-        className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-        Back to classroom search
-      </Link>
+      <PrintHeader summary={data} />
 
-      <div>
+      <div className="flex items-start justify-between gap-4 print:hidden">
+        <Link
+          href="/pm/teacher-view"
+          className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          Back to classroom search
+        </Link>
+        <PrintButton />
+      </div>
+
+      <div className="print:hidden">
         <h1 className="text-lg font-semibold text-slate-900">
           Viewing as: {data.teacher_display_name}
         </h1>
@@ -68,7 +75,9 @@ export default async function TeacherViewDetailPage({
         </p>
       </div>
 
-      <ClassroomHeader summary={data} />
+      <div className="print:hidden">
+        <ClassroomHeader summary={data} />
+      </div>
       <ClassroomView summary={data} groupSessions={groupSessions} />
     </div>
   );

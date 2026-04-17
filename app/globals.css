@@ -232,3 +232,93 @@ section {
   inset: 0;
   background-color: rgb(255 255 255 / 0.9);
 }
+
+/* ── Print styles ─────────────────────────────────────────────
+   Targets /pm/teacher-view "Download PDF" flow. Renders the page
+   as a branded A4 handout: logo + teacher/school header, both
+   sections fully visible, page numbers in the footer.
+   ──────────────────────────────────────────────────────────── */
+@media print {
+  /* Force backgrounds + colors to render — without this, browsers
+     strip bg colors to save ink and the letter-grid red/amber/green
+     cells all come out white. */
+  *,
+  *::before,
+  *::after {
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+
+  /* A4 page with a bit of breathing room at top (logo) and bottom
+     (page number). */
+  @page {
+    size: A4;
+    margin: 16mm 14mm 18mm 14mm;
+
+    /* Suppress the browser's default print header (URL/date/title).
+       Defining these margin boxes (even empty) overrides Chrome's
+       built-in header chrome. */
+    @top-left { content: ""; }
+    @top-center { content: ""; }
+    @top-right { content: ""; }
+
+    @bottom-center {
+      content: "www.zazi-izandi.co.za";
+      font-size: 9pt;
+      color: #64748b;
+    }
+
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font-size: 9pt;
+      color: #64748b;
+    }
+  }
+
+  html,
+  body {
+    background: white !important;
+    font-size: 10.5pt;
+    color: #0f172a;
+  }
+
+  /* Remove the PM dashboard's sidebar column in print — `flex` keeps
+     the layout, but the sidebar itself is already `print:!hidden`,
+     so main takes full width. Zero the padding that assumed a sidebar
+     neighbour. */
+  main {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Keep individual card-style blocks from being sliced in half by
+     a page break. Matches the teacher-view card wrappers. */
+  .rounded-xl,
+  .rounded-lg,
+  .rounded-md {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Headings — sit close to their content, never trail alone at the
+     bottom of a page. */
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* Hide links' underline-hover color from leaking into print. */
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+
+  /* Container tweaks — remove any max-width / centering that would
+     leave a narrow column on A4. */
+  .container,
+  [class*="max-w-"] {
+    max-width: none !important;
+  }
+}
