@@ -24,10 +24,10 @@ export function ClassroomView({ summary, groupSessions }: Props) {
   return (
     <>
       {/* ── Desktop: both zones stacked with section headers ── */}
-      <div className="hidden md:block space-y-4">
+      <div className="hidden md:block print:!block space-y-4" data-classroom-view>
         <div>
           <h2 className="text-base font-semibold text-slate-900 mb-3 border-b border-slate-200 pb-2">
-            How my children are learning
+            Key Stats
           </h2>
           <div className="space-y-4">
             <ClassroomKPIs summary={summary} />
@@ -36,7 +36,7 @@ export function ClassroomView({ summary, groupSessions }: Props) {
           </div>
         </div>
 
-        <div>
+        <div data-programme-section className="print:hidden">
           <h2 className="text-base font-semibold text-slate-900 mb-3 border-b border-slate-200 pb-2">
             How my programme is running
           </h2>
@@ -53,7 +53,7 @@ export function ClassroomView({ summary, groupSessions }: Props) {
       </div>
 
       {/* ── Mobile: tabbed, one zone at a time ── */}
-      <div className="md:hidden pb-14">
+      <div className="md:hidden print:!hidden pb-14">
         {activeTab === "results" && (
           <div className="space-y-3">
             <ClassroomKPIs summary={summary} />

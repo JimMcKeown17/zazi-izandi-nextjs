@@ -103,7 +103,7 @@ export function PMSidebar({ flagCount }: PMSidebarProps) {
 
   return (
     <>
-      <aside className="hidden md:flex flex-col w-12 lg:w-52 bg-slate-900 sticky top-0 h-screen shrink-0">
+      <aside className="hidden md:flex print:!hidden flex-col w-12 lg:w-52 bg-slate-900 sticky top-0 h-screen shrink-0">
         {/* Brand */}
         <div className="px-3 py-4 border-b border-slate-700/50">
           <span className="hidden lg:block text-accent-yellow font-bold text-sm leading-tight">
@@ -141,7 +141,7 @@ export function PMSidebar({ flagCount }: PMSidebarProps) {
       </aside>
 
       {/* Mobile bottom tab bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 flex justify-around py-2 z-50">
+      <nav className="md:hidden print:!hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 flex justify-around py-2 z-50">
         {MOBILE_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.href, item.exact);
