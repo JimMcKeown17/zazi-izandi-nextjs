@@ -10,9 +10,9 @@ export const LETTER_SEQUENCES: Record<string, readonly string[]> = {
     "g", "t", "q", "r", "c", "j",
   ],
   English: [
-    "a", "m", "s", "t", "n", "i", "p", "c", "f", "d",
-    "h", "o", "r", "b", "l", "k", "e", "g", "w", "v",
-    "u", "j", "y", "z", "q", "x",
+    "o", "i", "a", "u", "e", "s", "t", "p", "n", "c",
+    "k", "h", "r", "m", "d", "g", "l", "f", "b", "q",
+    "j", "z", "w", "v", "y", "x",
   ],
   Afrikaans: [
     "o", "i", "a", "u", "e", "s", "n", "m", "d", "l",

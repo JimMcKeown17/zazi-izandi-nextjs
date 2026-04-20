@@ -22,7 +22,7 @@ Three languages, each with a different teaching sequence:
 | Language | Length | Sequence |
 |----------|--------|----------|
 | isiXhosa | 26 | a, e, i, o, u, b, l, m, k, p, s, h, z, n, d, y, f, w, v, x, g, t, q, r, c, j |
-| English | 26 | a, m, s, t, n, i, p, c, f, d, h, o, r, b, l, k, e, g, w, v, u, j, y, z, q, x |
+| English | 26 | o, i, a, u, e, s, t, p, n, c, k, h, r, m, d, g, l, f, b, q, j, z, w, v, y, x |
 | Afrikaans | 22 | o, i, a, u, e, s, n, m, d, l, t, k, f, b, p, y, r, v, w, h, g, j |
 
 **Key constraint:** Sequences have different lengths. All progress calculations must use `len(sequence)` rather than hardcoding 26.
@@ -40,9 +40,9 @@ LETTER_SEQUENCES = {
     'isiXhosa':  ['a','e','i','o','u','b','l','m','k','p',
                   's','h','z','n','d','y','f','w','v','x',
                   'g','t','q','r','c','j'],
-    'English':   ['a','m','s','t','n','i','p','c','f','d',
-                  'h','o','r','b','l','k','e','g','w','v',
-                  'u','j','y','z','q','x'],
+    'English':   ['o','i','a','u','e','s','t','p','n','c',
+                  'k','h','r','m','d','g','l','f','b','q',
+                  'j','z','w','v','y','x'],
     'Afrikaans': ['o','i','a','u','e','s','n','m','d','l',
                   't','k','f','b','p','y','r','v','w','h',
                   'g','j'],
@@ -305,7 +305,7 @@ Replace single `LETTER_SEQUENCE` with language-keyed lookup:
 ```typescript
 export const LETTER_SEQUENCES: Record<string, readonly string[]> = {
   isiXhosa: ["a","e","i","o","u","b","l","m","k","p","s","h","z","n","d","y","f","w","v","x","g","t","q","r","c","j"],
-  English: ["a","m","s","t","n","i","p","c","f","d","h","o","r","b","l","k","e","g","w","v","u","j","y","z","q","x"],
+  English: ["o","i","a","u","e","s","t","p","n","c","k","h","r","m","d","g","l","f","b","q","j","z","w","v","y","x"],
   Afrikaans: ["o","i","a","u","e","s","n","m","d","l","t","k","f","b","p","y","r","v","w","h","g","j"],
 } as const;
 
