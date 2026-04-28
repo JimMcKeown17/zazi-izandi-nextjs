@@ -404,6 +404,10 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
               dataKey="sessions_per_programme_day"
               name="Sessions/Day"
               domain={[0, maxX]}
+              // Without this Recharts auto-expands the domain to fit any
+              // outlier dot, so the axis snaps from 5 → 7 when today's data
+              // contains an EA with sessions/day > 5. We want a hard cap.
+              allowDataOverflow
               tick={{ fontSize: 11, fill: "#64748b" }}
               label={{
                 value: "Avg Sessions / Programme Day",
