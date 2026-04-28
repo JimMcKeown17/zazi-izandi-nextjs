@@ -403,3 +403,29 @@ export interface EAGroupDetail {
   alignment_avg_score: number | null;
   flags: string[];
 }
+
+// ─── EA Performance History (dot-movement over time) ──────────
+
+export interface EATrajectoryPoint {
+  date: string; // ISO YYYY-MM-DD
+  x: number;
+  y: number | null;
+}
+
+export interface EATrajectory {
+  ea_user_id: number | null;
+  ea_name: string;
+  school: string;
+  trajectory: EATrajectoryPoint[];
+}
+
+export interface EAPerformanceHistoryResponse {
+  generated_at: string;
+  dates: string[];
+  eas: EATrajectory[];
+}
+
+export interface EAPerformanceHistoryResult {
+  data: EAPerformanceHistoryResponse;
+  isLive: boolean;
+}

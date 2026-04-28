@@ -8,6 +8,8 @@ import type {
   AssessmentsSummaryResponse,
   MentorVisitsSummaryResponse,
   EAPerformanceResponse,
+  EAPerformanceHistoryResponse,
+  EAPerformanceHistoryResult,
 } from "./types";
 import type { School2026Data } from "@/lib/schools-2026/school2026-data";
 import type { EnrichedSchool2026 } from "@/lib/schools-2026/types";
@@ -505,5 +507,34 @@ const EMPTY_EA_PERFORMANCE: EAPerformanceResponse = {
     avg_alignment_score: 0,
     quadrant_counts: { top_right: 0, top_left: 0, bottom_right: 0, bottom_left: 0 },
   },
+  eas: [],
+};
+
+// ─── EA Performance History ──────────────────────────────────
+
+export async function getEAPerformanceHistory(
+  cohort = "all"
+): Promise<EAPerformanceHistoryResult> {
+  try {
+    const res = await djangoFetch(
+      `/api/ea-performance-history/?cohort=${encodeURIComponent(cohort)}`,
+      { next: { revalidate: 300 } }
+    );
+
+    if (!res.ok) {
+      console.error(`[pm/api] EA performance history returned ${res.status}`);
+      return { data: EMPTY_EA_PERFORMANCE_HISTORY, isLive: false };
+    }
+
+    return { data: await res.json(), isLive: true };
+  } catch (error) {
+    console.error("[pm/api] Failed to fetch EA performance history:", error);
+    return { data: EMPTY_EA_PERFORMANCE_HISTORY, isLive: false };
+  }
+}
+
+const EMPTY_EA_PERFORMANCE_HISTORY: EAPerformanceHistoryResponse = {
+  generated_at: "",
+  dates: [],
   eas: [],
 };
