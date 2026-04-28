@@ -482,7 +482,11 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
               data={dotsToShow}
               onClick={handleClick}
               cursor={sliderActive ? "default" : "pointer"}
-              isAnimationActive={sliderActive}
+              // Animation must stay on across the slider→today transition,
+              // otherwise the final tick paints instantly with no
+              // interpolation. Cost: a small entry animation on first
+              // render (dots fade in), which is fine.
+              isAnimationActive
               animationDuration={600}
             >
               {dotsToShow.map((ea) => {
