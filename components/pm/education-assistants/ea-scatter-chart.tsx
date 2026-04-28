@@ -16,7 +16,7 @@ import type { EAPerformanceItem } from "@/lib/pm/types";
 import { EADetailPanel } from "./ea-detail-panel";
 
 const X_MID = 2.0;
-const Y_MID = 50;
+const Y_MID = 67;
 
 const QUADRANT_COLORS = {
   topRight: "#22c55e",   // green
