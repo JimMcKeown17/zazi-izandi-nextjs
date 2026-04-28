@@ -123,15 +123,18 @@ export default async function SchoolDetailPage({ params }: Props) {
           )}
 
           {/* Education Assistants */}
+          {(() => {
+            const visibleEAs = school.eas.filter((ea) => ea.is_active !== false);
+            return (
           <section className="space-y-3">
             <h2 className="text-lg font-semibold text-slate-800">Education Assistants</h2>
-            {school.eas.length === 0 ? (
+            {visibleEAs.length === 0 ? (
               <p className="text-sm text-slate-400 text-center py-8">No EA data available.</p>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {school.eas.map((ea) => (
+                {visibleEAs.map((ea) => (
                   <div
-                    key={ea.name}
+                    key={ea.user_id ?? ea.name}
                     className="bg-white rounded-lg border border-slate-200 shadow-sm p-4 space-y-3"
                   >
                     {/* EA name + dosage badge */}
@@ -223,6 +226,8 @@ export default async function SchoolDetailPage({ params }: Props) {
               </div>
             )}
           </section>
+            );
+          })()}
         </>
       )}
     </div>

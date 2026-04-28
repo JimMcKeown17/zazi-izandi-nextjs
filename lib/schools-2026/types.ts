@@ -27,6 +27,8 @@ export interface EnrichedSchool2026 {
 
 export interface EADetail {
   name: string;
+  user_id?: number | null;
+  is_active?: boolean;
   groups_count: number;
   children_count: number;
   sessions_this_week: number;

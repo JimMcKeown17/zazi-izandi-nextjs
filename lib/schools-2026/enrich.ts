@@ -120,11 +120,16 @@ function buildEADetails(
   totalFlags: number;
   flagBreakdown: FlagBreakdown;
 } {
-  const byEA = new Map<string, GroupSummary[]>();
+  // Group by ea_user_id (canonical) with ea_name fallback. This avoids the
+  // duplicate-name fragility that name-only keys had — two EAs with the
+  // same display name now correctly remain distinct.
+  type EAKey = number | string;
+  const byEA = new Map<EAKey, GroupSummary[]>();
   for (const g of groups) {
-    const arr = byEA.get(g.ea_name);
+    const key: EAKey = g.ea_user_id ?? `name:${g.ea_name}`;
+    const arr = byEA.get(key);
     if (arr) arr.push(g);
-    else byEA.set(g.ea_name, [g]);
+    else byEA.set(key, [g]);
   }
 
   const flagBreakdown: FlagBreakdown = {
@@ -138,7 +143,14 @@ function buildEADetails(
   let totalFlags = 0;
   const eas: EADetail[] = [];
 
-  for (const [eaName, eaGroups] of byEA) {
+  for (const [, eaGroups] of byEA) {
+    const firstGroup = eaGroups[0];
+    const eaName = firstGroup.ea_name;
+    const eaUserId = firstGroup.ea_user_id ?? null;
+    // Resigned status is consistent across an EA's groups (same user_id);
+    // any "true" wins for safety.
+    const isActive = !eaGroups.some((g) => g.ea_resigned === true);
+
     let eaFlagsCount = 0;
     let eaChildrenCount = 0;
     let eaSessionsThisWeek = 0;
@@ -173,7 +185,9 @@ function buildEADetails(
     const avgDosage = eaGroups.length > 0 ? dosageSum / eaGroups.length : 0;
     const weightedDosage = Math.round(avgDosage * 10) / 10;
 
-    // Per-EA avg sessions per day worked (all-time, from Django heatmap row)
+    // Per-EA avg sessions per day worked (all-time, from Django heatmap row).
+    // Heatmap is keyed by name|school; resigned EAs won't have a heatmap row
+    // anymore, so this returns null and the renderer shows "—".
     const heatmapRow = heatmapByEA.get(`${eaName}|${schoolName}`);
     const avgPerDayWorked = heatmapRow?.avg_per_day_worked ?? null;
 
@@ -185,6 +199,8 @@ function buildEADetails(
 
     eas.push({
       name: eaName,
+      user_id: eaUserId,
+      is_active: isActive,
       groups_count: eaGroups.length,
       children_count: eaChildrenCount,
       sessions_this_week: eaSessionsThisWeek,
