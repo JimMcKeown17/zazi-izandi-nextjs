@@ -39,14 +39,14 @@ export function classifyMovement(
  * available point if the EA has no data at the target date (e.g., joined the
  * programme after the window's start).
  *
- * Returns null only if the trajectory is empty.
+ * Returns null only if the trajectory is empty. Used by the slider where any
+ * point (including null-y) is acceptable as a chart projection.
  */
 export function pointAt(
   trajectory: EATrajectoryPoint[],
   targetDateISO: string
 ): EATrajectoryPoint | null {
   if (trajectory.length === 0) return null;
-  // Find the latest point whose date <= targetDateISO. If none, return earliest.
   let candidate: EATrajectoryPoint | null = null;
   for (const p of trajectory) {
     if (p.date <= targetDateISO) candidate = p;
@@ -56,23 +56,68 @@ export function pointAt(
 }
 
 /**
- * Resolve the window-start ISO date for a given window mode.
- * For "2w" / "4w": today minus N days, but clamped to the earliest available
+ * Find an anchor point with a non-null `y` for arrows / KPI calculations.
+ *
+ * Strategy:
+ *   1. Latest non-null-y point with date <= target.
+ *   2. If none, fall *forward* to the earliest non-null-y point at/after target.
+ *      This rescues late-joining EAs whose alignment data only starts after
+ *      the requested window (otherwise their arrow would be dropped because
+ *      pass 1 returned a null-y point).
+ *
+ * Returns null only when the trajectory has no non-null-y points at all.
+ */
+export function alignmentAnchorAt(
+  trajectory: EATrajectoryPoint[],
+  targetDateISO: string
+): EATrajectoryPoint | null {
+  if (trajectory.length === 0) return null;
+  let beforeOrAt: EATrajectoryPoint | null = null;
+  for (const p of trajectory) {
+    if (p.date > targetDateISO) break;
+    if (p.y !== null) beforeOrAt = p;
+  }
+  if (beforeOrAt) return beforeOrAt;
+  for (const p of trajectory) {
+    if (p.y !== null) return p;
+  }
+  return null;
+}
+
+/**
+ * The anchor date for window math is the *latest snapshot date in `history`*,
+ * not wall-clock today. This makes "2w ago" / "4w ago" mean "2/4 weeks before
+ * our most recent data point", which is the correct comparison even when the
+ * cron lags or the local clock and snapshot timezone disagree. Returns null
+ * if the history has no dates.
+ */
+export function getAnchorDate(
+  history: EAPerformanceHistoryResponse
+): string | null {
+  if (history.dates.length === 0) return null;
+  return history.dates[history.dates.length - 1];
+}
+
+/**
+ * Resolve the window-start ISO date for a given window mode, anchored against
+ * the latest snapshot date in `history` (not wall-clock today).
+ *
+ * For "2w" / "4w": anchor minus N days, clamped to the earliest available
  * snapshot date (so "4w ago" never points to a date before backfill began).
  * For "term": the earliest available snapshot date.
  */
 export function resolveWindowStartDate(
   history: EAPerformanceHistoryResponse,
-  windowMode: WindowMode,
-  todayISO: string
+  windowMode: WindowMode
 ): string | null {
   if (history.dates.length === 0) return null;
   const earliest = history.dates[0];
 
   if (windowMode === "term") return earliest;
 
+  const anchor = history.dates[history.dates.length - 1];
   const days = WINDOW_DAYS[windowMode];
-  const target = new Date(todayISO);
+  const target = new Date(anchor);
   target.setUTCDate(target.getUTCDate() - days);
   const targetISO = target.toISOString().slice(0, 10);
 
@@ -80,26 +125,34 @@ export function resolveWindowStartDate(
 }
 
 /**
- * Count EAs whose movement vector classifies as 'improved' over the 4w window.
+ * Count EAs whose movement vector classifies as 'improved' over the window.
  *
  * Used server-side for the "Improving %" KPI on the EA Performance Map page.
- * EAs with no trajectory or no Y-axis data at either anchor are excluded.
+ * Uses alignmentAnchorAt so late-joining EAs with no alignment data at the
+ * window start are still counted from their first available data point.
  */
 export function countImproving(
   history: EAPerformanceHistoryResponse,
-  windowMode: WindowMode = "4w",
-  todayISO: string = new Date().toISOString().slice(0, 10)
+  windowMode: WindowMode = "4w"
 ): { improving: number; total: number } {
-  const startISO = resolveWindowStartDate(history, windowMode, todayISO);
+  if (history.dates.length === 0) return { improving: 0, total: 0 };
+  const startISO = resolveWindowStartDate(history, windowMode);
   if (!startISO) return { improving: 0, total: 0 };
 
   let improving = 0;
   let total = 0;
   for (const ea of history.eas) {
-    if (ea.trajectory.length === 0) continue;
-    const end = ea.trajectory[ea.trajectory.length - 1];
-    const start = pointAt(ea.trajectory, startISO);
-    if (!start || start.y === null || end.y === null) continue;
+    const start = alignmentAnchorAt(ea.trajectory, startISO);
+    // The "end" is the latest non-null-y point in the trajectory.
+    let end: EATrajectoryPoint | null = null;
+    for (let i = ea.trajectory.length - 1; i >= 0; i--) {
+      if (ea.trajectory[i].y !== null) {
+        end = ea.trajectory[i];
+        break;
+      }
+    }
+    if (!start || !end || start.y === null || end.y === null) continue;
+    if (start.date === end.date) continue; // single point — no motion to assess
     total += 1;
     if (classifyMovement(start, end) === "improved") improving += 1;
   }

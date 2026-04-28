@@ -20,6 +20,7 @@ import type {
 } from "@/lib/pm/types";
 import { Slider } from "@/components/ui/slider";
 import {
+  alignmentAnchorAt,
   classifyMovement,
   pointAt,
   resolveWindowStartDate,
@@ -140,8 +141,6 @@ function ArrowsOverlay(props: any) {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-const TODAY_ISO = new Date().toISOString().slice(0, 10);
-
 export function EAScatterChart({ eas, history }: EAScatterChartProps) {
   const [selectedEA, setSelectedEA] = useState<EAPerformanceItem | null>(null);
   const [windowMode, setWindowMode] = useState<WindowMode>("4w");
@@ -200,18 +199,25 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
   }, [plottable, history]);
 
   // ── Arrow anchors ──
+  // Anchored against latest snapshot date inside resolveWindowStartDate
+  // (NOT wall-clock today), so arrows stay correct under cron lag and
+  // UTC/local date-boundary edge cases.
   const arrowAnchors = useMemo<ArrowAnchor[]>(() => {
     if (!hasHistory) return [];
-    const startISO = resolveWindowStartDate(history, windowMode, TODAY_ISO);
+    const startISO = resolveWindowStartDate(history, windowMode);
     if (!startISO) return [];
     const anchors: ArrowAnchor[] = [];
     // Use plotted EAs as the anchor set so arrows align with visible dots.
     const plottedNames = new Set(plottable.map((p) => p.ea_name));
     for (const ea of history.eas) {
       if (!plottedNames.has(ea.ea_name)) continue;
-      const start = pointAt(ea.trajectory, startISO);
+      // alignmentAnchorAt falls forward to the first non-null-y point if no
+      // earlier non-null one exists — rescues late-joining EAs whose
+      // alignment data only starts after the requested window.
+      const start = alignmentAnchorAt(ea.trajectory, startISO);
       const end = ea.trajectory[ea.trajectory.length - 1];
       if (!start || !end || start.y === null || end.y === null) continue;
+      if (start.date === end.date) continue;
       const klass = classifyMovement(start, end);
       anchors.push({
         ea_name: ea.ea_name,
