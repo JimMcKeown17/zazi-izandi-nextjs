@@ -243,30 +243,37 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
   }, [sliderIdx, history.dates]);
 
   // ── Arrow anchors ──
-  // Anchored against the current viewing date (latest snapshot when the
-  // slider is at rest, or the slider's date when scrubbing). This keeps
-  // arrows visible and meaningful during animation.
+  // The arrow's END is pinned to the rendered dot's coordinates, NOT to
+  // alignmentAnchorAt(traj, viewingDate). The history and live endpoints
+  // can drift on X (different holiday-list import state on Render workers,
+  // for example), and arrows that end where snapshots say they should end
+  // — but where dots aren't — are confusing and meaningless. By anchoring
+  // to the dot we render, arrowheads are guaranteed to land on dots
+  // regardless of cross-endpoint inconsistency. The arrow's START still
+  // comes from history's trajectory (window-back from viewingDate).
   const arrowAnchors = useMemo<ArrowAnchor[]>(() => {
     if (!hasHistory || !viewingDateISO) return [];
     const startISO = resolveWindowStartDate(history, windowMode, viewingDateISO);
     if (!startISO) return [];
+    const histByName = new Map(history.eas.map((h) => [h.ea_name, h]));
     const anchors: ArrowAnchor[] = [];
-    // Use the visible dot set so arrows align with what's on the chart.
-    const visibleNames = new Set(dotsToShow.map((p) => p.ea_name));
-    for (const ea of history.eas) {
-      if (!visibleNames.has(ea.ea_name)) continue;
-      // alignmentAnchorAt falls forward to the first non-null-y point if no
-      // earlier non-null one exists — rescues late-joining EAs whose
-      // alignment data only starts after the requested window.
+    for (const dot of dotsToShow) {
+      if (dot.alignment_avg_score === null) continue; // placeholder, no dot
+      const ea = histByName.get(dot.ea_name);
+      if (!ea) continue;
       const start = alignmentAnchorAt(ea.trajectory, startISO);
-      const end = alignmentAnchorAt(ea.trajectory, viewingDateISO);
-      if (!start || !end || start.y === null || end.y === null) continue;
-      if (start.date === end.date) continue;
+      if (!start || start.y === null) continue;
+      const end = {
+        x: dot.sessions_per_programme_day,
+        y: dot.alignment_avg_score,
+      };
+      // Skip arrows of zero length (start == end coordinates).
+      if (start.x === end.x && start.y === end.y) continue;
       const klass = classifyMovement(start, end);
       anchors.push({
-        ea_name: ea.ea_name,
+        ea_name: dot.ea_name,
         start: { x: start.x, y: start.y },
-        end: { x: end.x, y: end.y },
+        end,
         klass,
       });
     }
