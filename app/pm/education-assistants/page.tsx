@@ -1,7 +1,8 @@
-import { getEAPerformance } from "@/lib/pm/api";
+import { getEAPerformance, getEAPerformanceHistory } from "@/lib/pm/api";
 import { parseCohort, getCohortLabel } from "@/lib/pm/cohorts";
 import { KPICard } from "@/components/pm/shared/kpi-card";
 import { EAScatterChart } from "@/components/pm/education-assistants/ea-scatter-chart";
+import { countImproving } from "@/lib/pm/ea-history-utils";
 import { AlertTriangle } from "lucide-react";
 
 interface Props {
@@ -15,8 +16,16 @@ export default async function EducationAssistantsPage({
   const cohort = parseCohort(params.cohort as string | undefined);
   const cohortLabel = getCohortLabel(cohort);
 
-  const { data, isLive } = await getEAPerformance(cohort);
+  const [{ data, isLive }, { data: history }] = await Promise.all([
+    getEAPerformance(cohort),
+    getEAPerformanceHistory(cohort),
+  ]);
   const { summary } = data;
+  const { improving, total: improvingDenominator } = countImproving(history, "4w");
+  const improvingPct =
+    improvingDenominator > 0
+      ? Math.round((improving / improvingDenominator) * 100)
+      : null;
 
   return (
     <div className="max-w-7xl mx-auto space-y-4">
@@ -44,7 +53,7 @@ export default async function EducationAssistantsPage({
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <KPICard
           label="EAs Plotted"
           value={summary.total_eas}
@@ -64,6 +73,16 @@ export default async function EducationAssistantsPage({
           borderColor="border-l-green-500"
         />
         <KPICard
+          label="Improving"
+          value={improvingPct !== null ? `${improvingPct}%` : "—"}
+          subtitle={
+            improvingDenominator > 0
+              ? `${improving} of ${improvingDenominator} trending up over 4w`
+              : "no history yet"
+          }
+          borderColor="border-l-emerald-500"
+        />
+        <KPICard
           label="Avg Sessions/Day"
           value={summary.avg_sessions_per_programme_day}
           subtitle="programme average"
@@ -78,7 +97,7 @@ export default async function EducationAssistantsPage({
       </div>
 
       {/* Scatter chart + detail panel */}
-      <EAScatterChart eas={data.eas} />
+      <EAScatterChart eas={data.eas} history={history} />
     </div>
   );
 }
