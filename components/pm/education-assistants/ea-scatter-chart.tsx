@@ -143,7 +143,7 @@ function ArrowsOverlay({ anchors }: { anchors: ArrowAnchor[] }) {
 export function EAScatterChart({ eas, history }: EAScatterChartProps) {
   const [selectedEA, setSelectedEA] = useState<EAPerformanceItem | null>(null);
   const [windowMode, setWindowMode] = useState<WindowMode>("4w");
-  const [arrowsVisible, setArrowsVisible] = useState(true);
+  const [arrowsVisible, setArrowsVisible] = useState(false);
   const [sliderIdx, setSliderIdx] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const playIntervalRef = useRef<number | null>(null);
