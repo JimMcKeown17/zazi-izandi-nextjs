@@ -53,8 +53,14 @@ export default async function EducationAssistantsPage({
         />
         <KPICard
           label="Top Right"
-          value={summary.quadrant_counts.top_right}
-          subtitle="high dosage + quality"
+          value={
+            summary.total_eas > 0
+              ? `${Math.round(
+                  (summary.quadrant_counts.top_right / summary.total_eas) * 100
+                )}%`
+              : "—"
+          }
+          subtitle={`${summary.quadrant_counts.top_right} of ${summary.total_eas} high quality + dosage`}
           borderColor="border-l-green-500"
         />
         <KPICard
