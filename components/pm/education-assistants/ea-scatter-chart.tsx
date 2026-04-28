@@ -243,14 +243,10 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
   }, [sliderIdx, history.dates]);
 
   // ── Arrow anchors ──
-  // The arrow's END is pinned to the rendered dot's coordinates, NOT to
-  // alignmentAnchorAt(traj, viewingDate). The history and live endpoints
-  // can drift on X (different holiday-list import state on Render workers,
-  // for example), and arrows that end where snapshots say they should end
-  // — but where dots aren't — are confusing and meaningless. By anchoring
-  // to the dot we render, arrowheads are guaranteed to land on dots
-  // regardless of cross-endpoint inconsistency. The arrow's START still
-  // comes from history's trajectory (window-back from viewingDate).
+  // Both endpoints (live + history) are anchored to the same snapshot date
+  // server-side, so arrow-end (history's trajectory at viewingDate) and the
+  // rendered dot's coordinates now match. The arrow vector is pure-history:
+  // start = window-back from viewingDate, end = at viewingDate.
   const arrowAnchors = useMemo<ArrowAnchor[]>(() => {
     if (!hasHistory || !viewingDateISO) return [];
     const startISO = resolveWindowStartDate(history, windowMode, viewingDateISO);
@@ -262,18 +258,14 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
       const ea = histByName.get(dot.ea_name);
       if (!ea) continue;
       const start = alignmentAnchorAt(ea.trajectory, startISO);
-      if (!start || start.y === null) continue;
-      const end = {
-        x: dot.sessions_per_programme_day,
-        y: dot.alignment_avg_score,
-      };
-      // Skip arrows of zero length (start == end coordinates).
-      if (start.x === end.x && start.y === end.y) continue;
+      const end = alignmentAnchorAt(ea.trajectory, viewingDateISO);
+      if (!start || !end || start.y === null || end.y === null) continue;
+      if (start.date === end.date) continue;
       const klass = classifyMovement(start, end);
       anchors.push({
         ea_name: dot.ea_name,
         start: { x: start.x, y: start.y },
-        end,
+        end: { x: end.x, y: end.y },
         klass,
       });
     }
