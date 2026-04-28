@@ -99,8 +99,12 @@ export function getAnchorDate(
 }
 
 /**
- * Resolve the window-start ISO date for a given window mode, anchored against
- * the latest snapshot date in `history` (not wall-clock today).
+ * Resolve the window-start ISO date for a given window mode.
+ *
+ * `anchorISO` is the date the window measures back from. By default it's the
+ * latest snapshot date — which is the right anchor for the resting chart and
+ * for the Improving% KPI. The slider passes its current date instead, so
+ * arrows re-anchor as the user scrubs.
  *
  * For "2w" / "4w": anchor minus N days, clamped to the earliest available
  * snapshot date (so "4w ago" never points to a date before backfill began).
@@ -108,14 +112,15 @@ export function getAnchorDate(
  */
 export function resolveWindowStartDate(
   history: EAPerformanceHistoryResponse,
-  windowMode: WindowMode
+  windowMode: WindowMode,
+  anchorISO?: string
 ): string | null {
   if (history.dates.length === 0) return null;
   const earliest = history.dates[0];
 
   if (windowMode === "term") return earliest;
 
-  const anchor = history.dates[history.dates.length - 1];
+  const anchor = anchorISO ?? history.dates[history.dates.length - 1];
   const days = WINDOW_DAYS[windowMode];
   const target = new Date(anchor);
   target.setUTCDate(target.getUTCDate() - days);

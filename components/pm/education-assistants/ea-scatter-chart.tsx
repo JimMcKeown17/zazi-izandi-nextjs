@@ -189,33 +189,42 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
 
   const dotsToShow = sliderDots ?? plottable;
 
-  // ── Axis domain: include both today's data and full history ──
+  // ── Axis domain: hard floor of 5 (matches the existing site's range);
+  // expands only if today's plottable EAs actually exceed 5 (rare).
+  // History points above 5 may clip during slider scrub — that's an
+  // acceptable trade for keeping the resting axis tight.
   const maxX = useMemo(() => {
-    const allX: number[] = [];
-    for (const e of plottable) allX.push(e.sessions_per_programme_day);
-    for (const ea of history.eas)
-      for (const pt of ea.trajectory) allX.push(pt.x);
-    return Math.max(4, Math.ceil(Math.max(...allX, 4)));
-  }, [plottable, history]);
+    const todays = plottable.map((e) => e.sessions_per_programme_day);
+    return Math.max(5, Math.ceil(Math.max(...todays, 5)));
+  }, [plottable]);
+
+  // ── Current "viewing date": slider date when active, else latest snapshot.
+  // Arrows anchor their END to this date so they stay meaningful during scrub
+  // (arrow tail moves backward by the chosen window from wherever the slider
+  // currently sits). When sliderIdx is null, the END is today's data point.
+  const viewingDateISO = useMemo(() => {
+    if (sliderIdx !== null) return history.dates[sliderIdx] ?? null;
+    return history.dates[history.dates.length - 1] ?? null;
+  }, [sliderIdx, history.dates]);
 
   // ── Arrow anchors ──
-  // Anchored against latest snapshot date inside resolveWindowStartDate
-  // (NOT wall-clock today), so arrows stay correct under cron lag and
-  // UTC/local date-boundary edge cases.
+  // Anchored against the current viewing date (latest snapshot when the
+  // slider is at rest, or the slider's date when scrubbing). This keeps
+  // arrows visible and meaningful during animation.
   const arrowAnchors = useMemo<ArrowAnchor[]>(() => {
-    if (!hasHistory) return [];
-    const startISO = resolveWindowStartDate(history, windowMode);
+    if (!hasHistory || !viewingDateISO) return [];
+    const startISO = resolveWindowStartDate(history, windowMode, viewingDateISO);
     if (!startISO) return [];
     const anchors: ArrowAnchor[] = [];
-    // Use plotted EAs as the anchor set so arrows align with visible dots.
-    const plottedNames = new Set(plottable.map((p) => p.ea_name));
+    // Use the visible dot set so arrows align with what's on the chart.
+    const visibleNames = new Set(dotsToShow.map((p) => p.ea_name));
     for (const ea of history.eas) {
-      if (!plottedNames.has(ea.ea_name)) continue;
+      if (!visibleNames.has(ea.ea_name)) continue;
       // alignmentAnchorAt falls forward to the first non-null-y point if no
       // earlier non-null one exists — rescues late-joining EAs whose
       // alignment data only starts after the requested window.
       const start = alignmentAnchorAt(ea.trajectory, startISO);
-      const end = ea.trajectory[ea.trajectory.length - 1];
+      const end = alignmentAnchorAt(ea.trajectory, viewingDateISO);
       if (!start || !end || start.y === null || end.y === null) continue;
       if (start.date === end.date) continue;
       const klass = classifyMovement(start, end);
@@ -227,7 +236,7 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
       });
     }
     return anchors;
-  }, [hasHistory, history, windowMode, plottable]);
+  }, [hasHistory, history, windowMode, viewingDateISO, dotsToShow]);
 
   // ── Slider play loop ──
   // Gated on hasHistory so the interval cleans up automatically when a cohort
@@ -424,7 +433,7 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
             <Tooltip content={<CustomTooltip />} />
             <ReferenceLine x={X_MID} stroke="#cbd5e1" strokeDasharray="6 4" />
             <ReferenceLine y={Y_MID} stroke="#cbd5e1" strokeDasharray="6 4" />
-            {arrowsVisible && !sliderActive && (
+            {arrowsVisible && (
               <Customized
                 component={ArrowsOverlay as any /* eslint-disable-line @typescript-eslint/no-explicit-any */}
                 /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
