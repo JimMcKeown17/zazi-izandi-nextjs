@@ -26,12 +26,13 @@ export default function SchoolCardsGrid2026({
     );
 
     return sorted.filter((school) => {
-      // Search by school name or EA name
+      // Search by school name or EA name (active EAs only — searching for a
+      // resigned EA's name should not surface their school)
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const matchesName = school.school_name.toLowerCase().includes(q);
-        const matchesEA = school.eas.some((ea) =>
-          ea.name.toLowerCase().includes(q)
+        const matchesEA = school.eas.some(
+          (ea) => ea.is_active !== false && ea.name.toLowerCase().includes(q)
         );
         if (!matchesName && !matchesEA) return false;
       }

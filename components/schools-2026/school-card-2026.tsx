@@ -67,7 +67,11 @@ export default function SchoolCard2026({
   const [expanded, setExpanded] = useState(false);
   const level = getDosageLevel(data.avg_sessions_per_group_per_week, data.school_type);
 
-  const eaNames = data.eas.map((ea) => ea.name);
+  // Filter resigned EAs from anything visible. School-level aggregates
+  // (data.weighted_dosage, data.avg_per_day_worked, data.ea_count, etc.) are
+  // computed upstream over the FULL EA set and stay unchanged.
+  const visibleEAs = data.eas.filter((ea) => ea.is_active !== false);
+  const eaNames = visibleEAs.map((ea) => ea.name);
   const eaLine =
     eaNames.length > 0
       ? eaNames.join(", ")
@@ -137,7 +141,7 @@ export default function SchoolCard2026({
         <div className="flex-1" />
 
         {/* Expand toggle — subtle ghost text */}
-        {groupsAvailable && data.eas.length > 0 && (
+        {groupsAvailable && visibleEAs.length > 0 && (
           <button
             onClick={() => setExpanded((v) => !v)}
             aria-expanded={expanded}
@@ -159,9 +163,9 @@ export default function SchoolCard2026({
       {/* ── Expanded Section ──────────────────────────── */}
       {expanded && (
         <div className="bg-gray-50 border-t border-gray-200 px-6 py-5 space-y-3">
-          {data.eas.map((ea) => (
+          {visibleEAs.map((ea) => (
             <EADetailRow
-              key={ea.name}
+              key={ea.user_id ?? ea.name}
               ea={ea}
               schoolType={data.school_type}
             />

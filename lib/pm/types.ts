@@ -118,6 +118,7 @@ export interface SessionsActivityResponse {
 
 export interface EAHeatmapRow {
   ea_name: string;
+  user_id?: number | null;
   school: string;
   cells: number[];
   total_sessions?: number;
@@ -158,6 +159,8 @@ export interface GroupSummary {
   program_name: string;
   class_name: string;
   ea_name: string;
+  ea_user_id?: number | null;
+  ea_resigned?: boolean;
   language: string;
   grade: string;
   phase: "letters" | "blending";
