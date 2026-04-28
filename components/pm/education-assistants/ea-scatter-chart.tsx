@@ -151,29 +151,69 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
   const hasHistory = history.dates.length > 0;
   const sliderActive = sliderIdx !== null;
 
-  // ── Plottable EAs (today's mode) ──
-  const plottable = useMemo(
-    () => eas.filter((e) => e.alignment_avg_score !== null),
-    [eas]
+  // Stable EA roster — every dot array uses this ordering so Recharts animates
+  // by *identity* (always-same index per EA) instead of mis-mapping when an
+  // EA enters or leaves the visible set between dates. EAs without data at a
+  // given date keep their array slot with alignment_avg_score=null; Recharts
+  // skips rendering null-y dots but the index stays put.
+  const stableEAOrder = useMemo(() => {
+    const names = history.eas.map((e) => e.ea_name).sort();
+    return names;
+  }, [history.eas]);
+
+  const placeholderItem = useCallback(
+    (
+      ea_name: string,
+      ea_user_id: number | null,
+      school: string
+    ): EAPerformanceItem => ({
+      ea_name,
+      ea_user_id,
+      school,
+      sessions_per_programme_day: 0,
+      alignment_avg_score: null,
+      total_sessions: 0,
+      groups_count: 0,
+      letters_groups_count: 0,
+      blending_groups_count: 0,
+      children_count: 0,
+      active_flags_count: 0,
+      groups: [],
+    }),
+    []
   );
 
-  // ── Slider-mode dot projection ──
+  // ── Plottable EAs (today's mode) — padded to the stable roster ──
+  const plottable = useMemo(() => {
+    const liveByName = new Map(eas.map((e) => [e.ea_name, e]));
+    const histByName = new Map(history.eas.map((h) => [h.ea_name, h]));
+    return stableEAOrder.map((name) => {
+      const live = liveByName.get(name);
+      if (live) return live;
+      const hist = histByName.get(name);
+      return placeholderItem(name, hist?.ea_user_id ?? null, hist?.school ?? "");
+    });
+  }, [eas, history.eas, stableEAOrder, placeholderItem]);
+
+  // ── Slider-mode dot projection — padded to the stable roster ──
   const sliderDots = useMemo<EAPerformanceItem[] | null>(() => {
     if (sliderIdx === null) return null;
     const targetDate = history.dates[sliderIdx];
     if (!targetDate) return null;
-    const result: EAPerformanceItem[] = [];
-    for (const ea of history.eas) {
+    const histByName = new Map(history.eas.map((h) => [h.ea_name, h]));
+    return stableEAOrder.map((name) => {
+      const ea = histByName.get(name);
+      if (!ea) return placeholderItem(name, null, "");
       const pt = pointAt(ea.trajectory, targetDate);
-      if (!pt || pt.y === null) continue;
-      result.push({
+      if (!pt || pt.y === null) {
+        return placeholderItem(name, ea.ea_user_id, ea.school);
+      }
+      return {
         ea_name: ea.ea_name,
         ea_user_id: ea.ea_user_id,
         school: ea.school,
         sessions_per_programme_day: pt.x,
         alignment_avg_score: pt.y,
-        // Fields below are not meaningful for historical projections; the
-        // detail panel is disabled in slider mode so they're never read.
         total_sessions: 0,
         groups_count: 0,
         letters_groups_count: 0,
@@ -181,10 +221,9 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
         children_count: 0,
         active_flags_count: 0,
         groups: [],
-      });
-    }
-    return result;
-  }, [sliderIdx, history]);
+      };
+    });
+  }, [sliderIdx, history, stableEAOrder, placeholderItem]);
 
   const dotsToShow = sliderDots ?? plottable;
 
@@ -263,7 +302,12 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
       // Click-to-select disabled in slider mode (historical projections lack
       // the full EAPerformanceItem shape needed by the detail panel).
       if (sliderActive) return;
-      setSelectedEA(plottable[index]);
+      const ea = plottable[index];
+      // Placeholders (null-y) hold an array slot for animation stability but
+      // don't render — they shouldn't normally be clickable, but guard in
+      // case Recharts ever passes one through.
+      if (!ea || ea.alignment_avg_score === null) return;
+      setSelectedEA(ea);
     },
     [plottable, sliderActive]
   );
@@ -441,26 +485,31 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
               isAnimationActive={sliderActive}
               animationDuration={600}
             >
-              {dotsToShow.map((ea) => (
-                <Cell
-                  key={`${ea.ea_name}-${ea.school}`}
-                  fill={getQuadrantColor(
-                    ea.sessions_per_programme_day,
-                    ea.alignment_avg_score!
-                  )}
-                  stroke={
-                    !sliderActive && selectedEA?.ea_name === ea.ea_name
-                      ? "#1e293b"
-                      : "white"
-                  }
-                  strokeWidth={
-                    !sliderActive && selectedEA?.ea_name === ea.ea_name ? 2 : 1
-                  }
-                  r={
-                    !sliderActive && selectedEA?.ea_name === ea.ea_name ? 7 : 5
-                  }
-                />
-              ))}
+              {dotsToShow.map((ea) => {
+                // Placeholder rows (null-y) keep the array length stable
+                // across dates so Recharts animates by EA identity. They
+                // don't render to the SVG (Recharts skips null-y points)
+                // — Cell colour is irrelevant but needs to be a string.
+                const isPlaceholder = ea.alignment_avg_score === null;
+                const isSelected =
+                  !sliderActive && selectedEA?.ea_name === ea.ea_name;
+                return (
+                  <Cell
+                    key={ea.ea_name}
+                    fill={
+                      isPlaceholder
+                        ? "transparent"
+                        : getQuadrantColor(
+                            ea.sessions_per_programme_day,
+                            ea.alignment_avg_score!
+                          )
+                    }
+                    stroke={isSelected ? "#1e293b" : "white"}
+                    strokeWidth={isSelected ? 2 : 1}
+                    r={isSelected ? 7 : 5}
+                  />
+                );
+              })}
             </Scatter>
           </ScatterChart>
         </ResponsiveContainer>
