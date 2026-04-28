@@ -11,7 +11,8 @@ import {
   ReferenceLine,
   ResponsiveContainer,
   Cell,
-  Customized,
+  useXAxisScale,
+  useYAxisScale,
 } from "recharts";
 import { Pause, Play } from "lucide-react";
 import type {
@@ -85,29 +86,28 @@ interface ArrowAnchor {
 }
 
 /**
- * Recharts <Customized /> overlay: draws a line + arrowhead from each EA's
- * window-start position to today's position. Read-only — no interaction.
+ * Draws a line + arrowhead from each EA's window-start position to its
+ * current position. Renders as a child of <ScatterChart /> so the Recharts
+ * 3.x `useXAxisScale` / `useYAxisScale` hooks return live scale functions.
+ * Read-only — no interaction.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-function ArrowsOverlay(props: any) {
-  const { xAxisMap, yAxisMap, anchors } = props;
-  if (!xAxisMap || !yAxisMap || !anchors) return null;
-  const xAxis: any = Object.values(xAxisMap)[0];
-  const yAxis: any = Object.values(yAxisMap)[0];
-  if (!xAxis || !yAxis) return null;
-  const xScale = xAxis.scale;
-  const yScale = yAxis.scale;
+function ArrowsOverlay({ anchors }: { anchors: ArrowAnchor[] }) {
+  const xScale = useXAxisScale();
+  const yScale = useYAxisScale();
+  if (!xScale || !yScale) return null;
 
   return (
-    <g>
-      {(anchors as ArrowAnchor[]).map((a) => {
+    <g pointerEvents="none">
+      {anchors.map((a) => {
         const x1 = xScale(a.start.x);
         const y1 = yScale(a.start.y);
         const x2 = xScale(a.end.x);
         const y2 = yScale(a.end.y);
-        if ([x1, y1, x2, y2].some((v) => Number.isNaN(v))) return null;
+        if (
+          x1 === undefined || y1 === undefined ||
+          x2 === undefined || y2 === undefined
+        ) return null;
 
-        // Arrowhead geometry
         const angle = Math.atan2(y2 - y1, x2 - x1);
         const headLen = 6;
         const headAngle = Math.PI / 6;
@@ -118,7 +118,7 @@ function ArrowsOverlay(props: any) {
 
         const color = ARROW_COLORS[a.klass];
         return (
-          <g key={a.ea_name} pointerEvents="none">
+          <g key={a.ea_name}>
             <line
               x1={x1}
               y1={y1}
@@ -139,7 +139,6 @@ function ArrowsOverlay(props: any) {
     </g>
   );
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export function EAScatterChart({ eas, history }: EAScatterChartProps) {
   const [selectedEA, setSelectedEA] = useState<EAPerformanceItem | null>(null);
@@ -189,14 +188,11 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
 
   const dotsToShow = sliderDots ?? plottable;
 
-  // ── Axis domain: hard floor of 5 (matches the existing site's range);
-  // expands only if today's plottable EAs actually exceed 5 (rare).
-  // History points above 5 may clip during slider scrub — that's an
-  // acceptable trade for keeping the resting axis tight.
-  const maxX = useMemo(() => {
-    const todays = plottable.map((e) => e.sessions_per_programme_day);
-    return Math.max(5, Math.ceil(Math.max(...todays, 5)));
-  }, [plottable]);
+  // ── Axis domain: hard cap at 5 (matches the existing site's range, per
+  // user preference). Outliers above 5 (rare, often data-quality artefacts)
+  // are clipped — the user explicitly accepted this trade for the tighter,
+  // more readable resting axis.
+  const maxX = 5;
 
   // ── Current "viewing date": slider date when active, else latest snapshot.
   // Arrows anchor their END to this date so they stay meaningful during scrub
@@ -433,13 +429,7 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
             <Tooltip content={<CustomTooltip />} />
             <ReferenceLine x={X_MID} stroke="#cbd5e1" strokeDasharray="6 4" />
             <ReferenceLine y={Y_MID} stroke="#cbd5e1" strokeDasharray="6 4" />
-            {arrowsVisible && (
-              <Customized
-                component={ArrowsOverlay as any /* eslint-disable-line @typescript-eslint/no-explicit-any */}
-                /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-                {...({ anchors: arrowAnchors } as any)}
-              />
-            )}
+            {arrowsVisible && <ArrowsOverlay anchors={arrowAnchors} />}
             <Scatter
               data={dotsToShow}
               onClick={handleClick}
