@@ -47,3 +47,6 @@ next-env.d.ts
 
 # Visual brainstorming companion
 .superpowers/
+
+# Seed-script output reports
+scripts/seed-reports/
