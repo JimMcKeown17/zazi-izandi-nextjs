@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Users, Baby, Layers, Activity } from "lucide-react";
 import type { SchoolPerformanceRow } from "@/lib/pm/types";
+import type { Cohort } from "@/lib/pm/cohorts";
 import { getDosageLevel } from "@/lib/pm/constants";
 import { DosageBadge } from "@/components/pm/shared/dosage-badge";
 import { SchoolFilters } from "@/components/pm/schools/school-filters";
@@ -11,6 +12,7 @@ import { SchoolFilters } from "@/components/pm/schools/school-filters";
 interface SchoolsClientProps {
   schools: SchoolPerformanceRow[];
   cohortLabel?: string;
+  cohort?: Cohort;
   totalSchools?: number;
 }
 
@@ -23,7 +25,7 @@ function getUniqueTypes(schools: SchoolPerformanceRow[]): string[] {
   return Array.from(types).sort();
 }
 
-export function SchoolsClient({ schools, cohortLabel = "Treatment", totalSchools }: SchoolsClientProps) {
+export function SchoolsClient({ schools, cohortLabel = "Treatment", cohort, totalSchools }: SchoolsClientProps) {
   const [search, setSearch] = useState("");
   const [selectedType, setSelectedType] = useState("");
   const [selectedDosage, setSelectedDosage] = useState("");
@@ -60,6 +62,13 @@ export function SchoolsClient({ schools, cohortLabel = "Treatment", totalSchools
     });
   }, [filtered, selectedSort]);
 
+  function schoolHref(schoolName: string): string {
+    const basePath = `/pm/schools/${toSlug(schoolName)}`;
+    return cohort && cohort !== "treatment"
+      ? `${basePath}?cohort=${encodeURIComponent(cohort)}`
+      : basePath;
+  }
+
   return (
     <div className="max-w-7xl mx-auto space-y-4">
       {/* Page header */}
@@ -90,7 +99,7 @@ export function SchoolsClient({ schools, cohortLabel = "Treatment", totalSchools
         {sorted.map((school) => (
           <Link
             key={school.school_name}
-            href={`/pm/schools/${toSlug(school.school_name)}`}
+            href={schoolHref(school.school_name)}
             className="block bg-white rounded-lg border border-slate-200 shadow-sm hover:shadow-md hover:border-primary/30 transition-all duration-150"
           >
             {/* Card header */}

@@ -14,7 +14,7 @@ export default function MissionSection() {
               </span>
             </div>
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
-              The Crisis We're Addressing
+              The Crisis We&apos;re Addressing
             </h2>
           </div>
 

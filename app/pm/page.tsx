@@ -1,5 +1,5 @@
 import { getProgrammeOverview, getSchoolPerformanceRows } from "@/lib/pm/api";
-import { parseCohort, filterSchoolsByCohort, getCohortLabel } from "@/lib/pm/cohorts";
+import { parseCohort, filterSchoolsByCohort } from "@/lib/pm/cohorts";
 import type { ProgrammeKPIs } from "@/lib/pm/types";
 import type { SchoolPerformanceRow } from "@/lib/pm/types";
 import { ProgrammeContextBar } from "@/components/pm/layout/programme-context-bar";
@@ -104,7 +104,7 @@ export default async function PMOverviewPage({ searchParams }: Props) {
       )}
 
       {/* Layer 0: Programme context bar */}
-      <ProgrammeContextBar data={overview} cohort={cohort} />
+      <ProgrammeContextBar data={overview} />
 
       {/* Layer 1: KPI cards */}
       <OverviewKPIs data={filteredOverview} />
@@ -120,7 +120,7 @@ export default async function PMOverviewPage({ searchParams }: Props) {
       </div>
 
       {/* Layer 3: School performance table */}
-      <SchoolTable schools={filteredSchools} />
+      <SchoolTable schools={filteredSchools} cohort={cohort} />
 
       {/* Layer 4: Data health panel */}
       <details className="bg-white rounded-lg shadow-sm text-xs">

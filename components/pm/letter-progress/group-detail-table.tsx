@@ -16,6 +16,11 @@ type SortKey =
   | "avg_sessions_per_week"
   | "total_sessions";
 
+function SortIndicator({ active, sortAsc }: { active: boolean; sortAsc: boolean }) {
+  if (!active) return <span className="text-slate-300 ml-0.5">↕</span>;
+  return <span className="ml-0.5">{sortAsc ? "↑" : "↓"}</span>;
+}
+
 export function GroupDetailTable({ groups }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("progress_pct");
   const [sortAsc, setSortAsc] = useState(false);
@@ -49,11 +54,6 @@ export function GroupDetailTable({ groups }: Props) {
     }
   }
 
-  function SortIcon({ col }: { col: SortKey }) {
-    if (sortKey !== col) return <span className="text-slate-300 ml-0.5">↕</span>;
-    return <span className="ml-0.5">{sortAsc ? "↑" : "↓"}</span>;
-  }
-
   const flagCount = (g: GroupSummary) =>
     [g.flags.same_letter_group, g.flags.moving_too_fast, g.flags.ghost_group, g.flags.stagnation, g.flags.curriculum_gaps].filter(Boolean).length;
 
@@ -82,26 +82,26 @@ export function GroupDetailTable({ groups }: Props) {
           <thead>
             <tr className="text-slate-500 border-b border-slate-100">
               <th className="text-left py-2 cursor-pointer select-none" onClick={() => toggleSort("program_name")}>
-                School <SortIcon col="program_name" />
+                School <SortIndicator active={sortKey === "program_name"} sortAsc={sortAsc} />
               </th>
               <th className="text-left py-2 cursor-pointer select-none" onClick={() => toggleSort("ea_name")}>
-                EA <SortIcon col="ea_name" />
+                EA <SortIndicator active={sortKey === "ea_name"} sortAsc={sortAsc} />
               </th>
               <th className="text-left py-2 cursor-pointer select-none" onClick={() => toggleSort("class_name")}>
-                Group <SortIcon col="class_name" />
+                Group <SortIndicator active={sortKey === "class_name"} sortAsc={sortAsc} />
               </th>
               <th className="text-left py-2 cursor-pointer select-none" onClick={() => toggleSort("grade")}>
-                Grade <SortIcon col="grade" />
+                Grade <SortIndicator active={sortKey === "grade"} sortAsc={sortAsc} />
               </th>
               <th className="text-center py-2">Letter</th>
               <th className="text-right py-2 cursor-pointer select-none" onClick={() => toggleSort("progress_pct")}>
-                Progress <SortIcon col="progress_pct" />
+                Progress <SortIndicator active={sortKey === "progress_pct"} sortAsc={sortAsc} />
               </th>
               <th className="text-right py-2 cursor-pointer select-none" onClick={() => toggleSort("avg_sessions_per_week")}>
-                Sess/Wk <SortIcon col="avg_sessions_per_week" />
+                Sess/Wk <SortIndicator active={sortKey === "avg_sessions_per_week"} sortAsc={sortAsc} />
               </th>
               <th className="text-right py-2 cursor-pointer select-none" onClick={() => toggleSort("total_sessions")}>
-                Total <SortIcon col="total_sessions" />
+                Total <SortIndicator active={sortKey === "total_sessions"} sortAsc={sortAsc} />
               </th>
               <th className="text-center py-2">Flags</th>
             </tr>

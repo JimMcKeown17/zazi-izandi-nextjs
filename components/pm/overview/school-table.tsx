@@ -5,10 +5,12 @@ import Link from "next/link";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SchoolPerformanceRow } from "@/lib/pm/types";
+import type { Cohort } from "@/lib/pm/cohorts";
 import { DosageBadge } from "@/components/pm/shared/dosage-badge";
 
 interface SchoolTableProps {
   schools: SchoolPerformanceRow[];
+  cohort?: Cohort;
 }
 
 type SortKey =
@@ -32,7 +34,7 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
     : <ChevronDown className="w-3 h-3 text-primary" />;
 }
 
-export function SchoolTable({ schools }: SchoolTableProps) {
+export function SchoolTable({ schools, cohort }: SchoolTableProps) {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("avg_sessions_per_group_per_week");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -44,6 +46,13 @@ export function SchoolTable({ schools }: SchoolTableProps) {
       setSortKey(key);
       setSortDir("desc");
     }
+  }
+
+  function schoolHref(schoolName: string): string {
+    const basePath = `/pm/schools/${toSlug(schoolName)}`;
+    return cohort && cohort !== "treatment"
+      ? `${basePath}?cohort=${encodeURIComponent(cohort)}`
+      : basePath;
   }
 
   const filtered = useMemo(() => {
@@ -120,7 +129,7 @@ export function SchoolTable({ schools }: SchoolTableProps) {
               >
                 <td className="px-4 py-2.5">
                   <Link
-                    href={`/pm/schools/${toSlug(school.school_name)}`}
+                    href={schoolHref(school.school_name)}
                     className="text-primary font-medium hover:underline"
                   >
                     {school.school_name}

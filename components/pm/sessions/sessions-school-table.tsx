@@ -9,6 +9,11 @@ interface Props {
 
 type SortKey = "school_name" | "total_sessions" | "sessions_this_week" | "active_eas" | "avg_sessions_per_day_per_ea";
 
+function SortIndicator({ active, sortAsc }: { active: boolean; sortAsc: boolean }) {
+  if (!active) return <span className="text-slate-300 ml-0.5">↕</span>;
+  return <span className="ml-0.5">{sortAsc ? "↑" : "↓"}</span>;
+}
+
 export function SessionsSchoolTable({ schools }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("total_sessions");
   const [sortAsc, setSortAsc] = useState(false);
@@ -37,11 +42,6 @@ export function SessionsSchoolTable({ schools }: Props) {
     }
   }
 
-  function SortIcon({ col }: { col: SortKey }) {
-    if (sortKey !== col) return <span className="text-slate-300 ml-0.5">↕</span>;
-    return <span className="ml-0.5">{sortAsc ? "↑" : "↓"}</span>;
-  }
-
   return (
     <div className="bg-white rounded-lg shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
@@ -66,32 +66,32 @@ export function SessionsSchoolTable({ schools }: Props) {
                 className="text-left py-2 cursor-pointer select-none"
                 onClick={() => toggleSort("school_name")}
               >
-                School <SortIcon col="school_name" />
+                School <SortIndicator active={sortKey === "school_name"} sortAsc={sortAsc} />
               </th>
               <th className="text-center py-2">Type</th>
               <th
                 className="text-right py-2 cursor-pointer select-none"
                 onClick={() => toggleSort("active_eas")}
               >
-                Active EAs <SortIcon col="active_eas" />
+                Active EAs <SortIndicator active={sortKey === "active_eas"} sortAsc={sortAsc} />
               </th>
               <th
                 className="text-right py-2 cursor-pointer select-none"
                 onClick={() => toggleSort("total_sessions")}
               >
-                Total <SortIcon col="total_sessions" />
+                Total <SortIndicator active={sortKey === "total_sessions"} sortAsc={sortAsc} />
               </th>
               <th
                 className="text-right py-2 cursor-pointer select-none"
                 onClick={() => toggleSort("sessions_this_week")}
               >
-                This Week <SortIcon col="sessions_this_week" />
+                This Week <SortIndicator active={sortKey === "sessions_this_week"} sortAsc={sortAsc} />
               </th>
               <th
                 className="text-right py-2 cursor-pointer select-none"
                 onClick={() => toggleSort("avg_sessions_per_day_per_ea")}
               >
-                Avg/Day/EA <SortIcon col="avg_sessions_per_day_per_ea" />
+                Avg/Day/EA <SortIndicator active={sortKey === "avg_sessions_per_day_per_ea"} sortAsc={sortAsc} />
               </th>
             </tr>
           </thead>

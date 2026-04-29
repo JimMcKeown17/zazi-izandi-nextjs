@@ -1,11 +1,8 @@
 import type { ProgrammeOverviewResponse } from "@/lib/pm/types";
-import type { Cohort } from "@/lib/pm/cohorts";
 import { HealthBadge } from "@/components/pm/shared/health-badge";
-import { CohortSelector } from "./cohort-selector";
 
 interface ProgrammeContextBarProps {
   data: ProgrammeOverviewResponse;
-  cohort: Cohort;
 }
 
 function formatRelativeTime(hours: number): string {
@@ -24,7 +21,7 @@ function formatDate(iso: string): string {
   });
 }
 
-export function ProgrammeContextBar({ data, cohort }: ProgrammeContextBarProps) {
+export function ProgrammeContextBar({ data }: ProgrammeContextBarProps) {
   const { programme, data_health, health } = data;
   const weekProgress = programme.teaching_total_weeks > 0
     ? Math.min((programme.teaching_week / programme.teaching_total_weeks) * 100, 100)
@@ -32,14 +29,11 @@ export function ProgrammeContextBar({ data, cohort }: ProgrammeContextBarProps) 
 
   return (
     <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-lg px-4 py-3 flex items-center justify-between gap-4">
-      {/* Left: programme year + cohort selector + week progress */}
+      {/* Left: programme year + week progress */}
       <div className="flex items-center gap-4 min-w-0">
         <span className="text-accent-yellow font-bold text-sm shrink-0">
           {programme.year} Programme
         </span>
-
-        {/* Cohort dropdown */}
-        <CohortSelector currentCohort={cohort} />
 
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-slate-300 text-xs whitespace-nowrap">

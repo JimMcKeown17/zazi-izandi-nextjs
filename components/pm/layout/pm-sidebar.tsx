@@ -13,11 +13,14 @@ import {
   ClipboardCheck,
   Eye,
   ArrowLeft,
+  Filter,
   GraduationCap,
   Grid3X3,
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { parseCohort } from "@/lib/pm/cohorts";
+import { CohortSelector } from "@/components/pm/layout/cohort-selector";
 
 interface NavItem {
   name: string;
@@ -62,6 +65,7 @@ interface PMSidebarProps {
 export function PMSidebar({ flagCount }: PMSidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const currentCohort = parseCohort(searchParams.get("cohort"));
 
   function buildHref(basePath: string): string {
     const cohort = searchParams.get("cohort");
@@ -91,9 +95,9 @@ export function PMSidebar({ flagCount }: PMSidebarProps) {
         )}
       >
         <item.icon className="w-4 h-4 shrink-0" />
-        <span className="hidden lg:inline truncate">{item.name}</span>
+        <span className="truncate">{item.name}</span>
         {isFlags && flagCount !== undefined && flagCount > 0 && (
-          <span className="hidden lg:inline ml-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+          <span className="ml-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
             {flagCount}
           </span>
         )}
@@ -103,15 +107,23 @@ export function PMSidebar({ flagCount }: PMSidebarProps) {
 
   return (
     <>
-      <aside className="hidden md:flex print:!hidden flex-col w-12 lg:w-52 bg-slate-900 sticky top-0 h-screen shrink-0">
+      <aside className="hidden md:flex print:!hidden flex-col w-52 bg-slate-900 sticky top-0 h-screen shrink-0">
         {/* Brand */}
         <div className="px-3 py-4 border-b border-slate-700/50">
-          <span className="hidden lg:block text-accent-yellow font-bold text-sm leading-tight">
+          <span className="block text-accent-yellow font-bold text-sm leading-tight">
             Zazi iZandi PM
           </span>
-          <span className="lg:hidden text-accent-yellow font-bold text-sm">
-            ZI
-          </span>
+        </div>
+
+        <div className="px-3 py-3 border-b border-slate-700/50">
+          <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            <Filter className="h-3.5 w-3.5" aria-hidden="true" />
+            Cohort
+          </div>
+          <CohortSelector
+            currentCohort={currentCohort}
+            className="w-full rounded-md border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-white outline-none cursor-pointer focus:border-accent-yellow focus:ring-1 focus:ring-accent-yellow/60"
+          />
         </div>
 
         {/* Primary nav */}
@@ -129,11 +141,11 @@ export function PMSidebar({ flagCount }: PMSidebarProps) {
             className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
           >
             <ArrowLeft className="w-4 h-4 shrink-0" />
-            <span className="hidden lg:inline truncate">Back to site</span>
+            <span className="truncate">Back to site</span>
           </Link>
           <div className="flex items-center gap-3 px-3">
             <UserButton afterSignOutUrl="/" />
-            <span className="hidden lg:inline text-slate-400 text-xs truncate">
+            <span className="text-slate-400 text-xs truncate">
               Account
             </span>
           </div>

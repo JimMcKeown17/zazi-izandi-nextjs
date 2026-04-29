@@ -18,6 +18,7 @@ export default async function PMSchoolsPage({ searchParams }: Props) {
     <SchoolsClient
       schools={filteredSchools}
       cohortLabel={cohortLabel}
+      cohort={cohort}
       totalSchools={allSchools.length}
     />
   );

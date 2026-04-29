@@ -76,7 +76,7 @@ export default function AboutPage() {
                 3 Years of Growth
               </h2>
               <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-                From pilot launch to nationwide scale—see how we've evolved, tested, and
+                From pilot launch to nationwide scale—see how we&apos;ve evolved, tested, and
                 improved our approach to early literacy intervention.
               </p>
             </div>
