@@ -1,7 +1,11 @@
-import { getProgrammeOverview, getSchoolPerformanceRows } from "@/lib/pm/api";
-import { parseCohort, filterSchoolsByCohort } from "@/lib/pm/cohorts";
-import type { ProgrammeKPIs } from "@/lib/pm/types";
-import type { SchoolPerformanceRow } from "@/lib/pm/types";
+import { getProgrammeOverview, getSchoolPerformanceRows, getGroups2026 } from "@/lib/pm/api";
+import {
+  parseCohort,
+  filterSchoolsByCohort,
+  filterGroupsByCohort,
+  getCohortDosageTarget,
+} from "@/lib/pm/cohorts";
+import type { ProgrammeKPIs, SchoolPerformanceRow, GroupSummary } from "@/lib/pm/types";
 import { ProgrammeContextBar } from "@/components/pm/layout/programme-context-bar";
 import { OverviewKPIs } from "@/components/pm/overview/overview-kpis";
 import { SessionsChart } from "@/components/pm/overview/sessions-chart";
@@ -15,7 +19,9 @@ interface Props {
 
 function recomputeKPIs(
   baseKPIs: ProgrammeKPIs,
-  filteredSchools: SchoolPerformanceRow[]
+  filteredSchools: SchoolPerformanceRow[],
+  dosageTarget: number,
+  filteredGroups: GroupSummary[] | null
 ): ProgrammeKPIs {
   const totalSchools = filteredSchools.length;
   const totalSchoolsPrimary = filteredSchools.filter(
@@ -39,6 +45,14 @@ function recomputeKPIs(
           0
         ) / totalGroups
       : 0;
+  const onTrackGroupRate =
+    filteredGroups !== null
+      ? filteredGroups.length > 0
+        ? (filteredGroups.filter((g) => g.avg_sessions_per_week >= dosageTarget).length /
+            filteredGroups.length) *
+          100
+        : 0
+      : baseKPIs.on_track_group_rate;
 
   return {
     ...baseKPIs,
@@ -52,6 +66,7 @@ function recomputeKPIs(
     total_sessions_all_time: totalSessionsAllTime,
     active_flags: activeFlags,
     weighted_dosage: Math.round(weightedDosage * 10) / 10,
+    on_track_group_rate: Math.round(onTrackGroupRate * 10) / 10,
   };
 }
 
@@ -59,21 +74,37 @@ export default async function PMOverviewPage({ searchParams }: Props) {
   const params = await searchParams;
   const cohort = parseCohort(params.cohort as string | undefined);
 
-  const [overviewResult, schoolsResult] = await Promise.all([
+  const dosageTarget = getCohortDosageTarget(cohort);
+
+  const [overviewResult, schoolsResult, groupsResult] = await Promise.all([
     getProgrammeOverview(cohort),
     getSchoolPerformanceRows(),
+    getGroups2026(),
   ]);
 
   const overview = overviewResult.data;
   const allSchools = schoolsResult.data;
   const filteredSchools = filterSchoolsByCohort(allSchools, cohort);
-  const filteredKPIs = recomputeKPIs(overview.kpis, filteredSchools);
-  const filteredOverview = { ...overview, kpis: filteredKPIs };
+  const filteredGroups = groupsResult.isLive
+    ? filterGroupsByCohort(groupsResult.data.groups, cohort)
+    : null;
+  const filteredKPIs = recomputeKPIs(
+    overview.kpis,
+    filteredSchools,
+    dosageTarget,
+    filteredGroups
+  );
+  const filteredOverview = {
+    ...overview,
+    targets: { ...overview.targets, dosage: dosageTarget },
+    kpis: filteredKPIs,
+  };
 
   // Determine data source status
   const overviewIsLive = overviewResult.isLive;
   const schoolsIsLive = schoolsResult.isLive;
-  const hasMockData = !overviewIsLive || !schoolsIsLive;
+  const groupsIsLive = groupsResult.isLive;
+  const hasMockData = !overviewIsLive || !schoolsIsLive || !groupsIsLive;
 
   const { data_health } = overview;
   const lastSyncDate = data_health.last_sync
@@ -98,7 +129,9 @@ export default async function PMOverviewPage({ searchParams }: Props) {
               ? "The API is unavailable — data shown below may be empty or incomplete."
               : !overviewIsLive
                 ? "Programme overview API unavailable — KPI targets, health signal, and charts may be empty. School table data is live."
-                : "School data API unavailable — school table may be empty."}
+                : !schoolsIsLive
+                  ? "School data API unavailable — school table may be empty."
+                  : "Group data API unavailable — on-track group rate may use the backend fallback."}
           </div>
         </div>
       )}

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSyncExternalStore } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import {
@@ -57,6 +58,17 @@ const MOBILE_NAV_ITEMS: NavItem[] = MOBILE_NAV_HREFS
   .map((href) => NAV_ITEMS.find((item) => item.href === href))
   .filter((item): item is NavItem => item !== undefined);
 
+function subscribeToHydration() {
+  return () => {};
+}
+
+function getClientSnapshot() {
+  return true;
+}
+
+function getServerSnapshot() {
+  return false;
+}
 
 interface PMSidebarProps {
   flagCount?: number;
@@ -65,6 +77,11 @@ interface PMSidebarProps {
 export function PMSidebar({ flagCount }: PMSidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const isHydrated = useSyncExternalStore(
+    subscribeToHydration,
+    getClientSnapshot,
+    getServerSnapshot
+  );
   const currentCohort = parseCohort(searchParams.get("cohort"));
 
   function buildHref(basePath: string): string {
@@ -144,7 +161,14 @@ export function PMSidebar({ flagCount }: PMSidebarProps) {
             <span className="truncate">Back to site</span>
           </Link>
           <div className="flex items-center gap-3 px-3">
-            <UserButton afterSignOutUrl="/" />
+            {isHydrated ? (
+              <UserButton afterSignOutUrl="/" />
+            ) : (
+              <div
+                className="h-7 w-7 shrink-0 rounded-full bg-slate-700"
+                aria-hidden="true"
+              />
+            )}
             <span className="text-slate-400 text-xs truncate">
               Account
             </span>

@@ -9,6 +9,13 @@ export const COHORT_OPTIONS: { value: Cohort; label: string; description: string
 
 export const DEFAULT_COHORT: Cohort = "treatment";
 
+export const COHORT_DOSAGE_TARGETS: Record<Cohort, number> = {
+  treatment: 2.5,
+  sef: 2.5,
+  all: 2.5,
+  ecd: 3.5,
+};
+
 // ─── Treatment Schools (51) ──────────────────────────────────────
 // Stored in UPPERCASE for fast comparison
 
@@ -128,6 +135,10 @@ export function filterGroupsByCohort<T extends { program_name: string }>(
 
 export function getCohortLabel(cohort: Cohort): string {
   return COHORT_OPTIONS.find((o) => o.value === cohort)?.label ?? "Treatment";
+}
+
+export function getCohortDosageTarget(cohort: Cohort): number {
+  return COHORT_DOSAGE_TARGETS[cohort];
 }
 
 export function parseCohort(value: string | undefined | null): Cohort {

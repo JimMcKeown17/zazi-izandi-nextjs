@@ -1,14 +1,17 @@
 import type { ProgrammeOverviewResponse } from "@/lib/pm/types";
-import { getDosageLevel, DOSAGE_COLORS } from "@/lib/pm/constants";
+import { DOSAGE_COLORS } from "@/lib/pm/constants";
 import { KPICard } from "@/components/pm/shared/kpi-card";
 
 interface OverviewKPIsProps {
   data: ProgrammeOverviewResponse;
 }
 
-function getDosageBorderColor(avg: number): string {
-  const level = getDosageLevel(avg);
-  return DOSAGE_COLORS[level].border.replace("border-", "border-l-");
+function getDosageBorderColor(avg: number, target: number): string {
+  if (avg >= target) return DOSAGE_COLORS.on_track.border.replace("border-", "border-l-");
+  if (avg >= target * (2 / 3)) {
+    return DOSAGE_COLORS.needs_attention.border.replace("border-", "border-l-");
+  }
+  return DOSAGE_COLORS.low.border.replace("border-", "border-l-");
 }
 
 function getRateBorderColor(rate: number): string {
@@ -68,7 +71,7 @@ export function OverviewKPIs({ data }: OverviewKPIsProps) {
           label="Weighted Dosage"
           value={kpis.weighted_dosage.toFixed(1)}
           subtitle="sessions / group / week"
-          borderColor={getDosageBorderColor(kpis.weighted_dosage)}
+          borderColor={getDosageBorderColor(kpis.weighted_dosage, targets.dosage)}
           target={{
             value: targets.dosage,
             actual: kpis.weighted_dosage,
