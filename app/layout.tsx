@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Roboto, Open_Sans } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const roboto = Roboto({
@@ -40,6 +41,7 @@ export default function RootLayout({
       <html lang="en" className={`${roboto.variable} ${openSans.variable}`}>
         <body className={`${openSans.className} antialiased`}>
           {children}
+          <Analytics />
         </body>
       </html>
     </ClerkProvider>
