@@ -114,68 +114,33 @@ Whichever script you use, the input CSV should have these columns (header row re
 
 `teampact_user_id` is the scoping key that the `/api/ea/<user_id>/` endpoint uses. `teampact_user_name` is what renders in the top bar. The `first_name` and `last_name` are Clerk's own user profile fields (shown in `<UserButton>`, sign-in flows, etc.) and are nice-to-have but not load-bearing for our data scoping.
 
-### Generating the CSV from TeamPact
+### Use the seed script
 
-A Django management command **could** be added to the 2025 backend repo that queries `GroupSummary2026` for distinct `(ea_user_id, ea_name)` pairs with sessions in 2026, then fetches each user's email from the TeamPact `/users` endpoint, and writes a Clerk-ready CSV to stdout:
+A working passwordless seed script lives at [`scripts/seed-clerk-eas.ts`](../scripts/seed-clerk-eas.ts) — see [`scripts/README.md`](../scripts/README.md) for full usage. Quick reference:
 
 ```bash
-# Django repo: /Users/jimmckeown/Development/Zazi_iZandi_Website_2025
-cd /Users/jimmckeown/Development/Zazi_iZandi_Website_2025
-source venv/bin/activate
-DJANGO_ENV=production python manage.py export_ea_clerk_csv > ea_users.csv
+# In this Next.js repo, with .env.local set up:
+
+# Preview only (no writes)
+npm run seed:eas -- --dry-run --limit 5
+
+# Real run, sourced from Django roster
+npm run seed:eas
+
+# Or bypass Django and feed a CSV directly
+npm run seed:eas -- --input-csv path/to/eas.csv
 ```
 
-**Status:** This command does not exist yet. It can be added when bulk import is actually needed — it reuses the `_fetch_all_users()` helper already written for `validate_ea_data_2026.py` (api/management/commands/), plus a straightforward join against `GroupSummary2026.ea_user_id`. Estimated effort: ~1 hour.
+The script creates Clerk users with `skipPasswordRequirement: true` so EAs sign in passwordless via the **Email verification code** strategy — no credentials to distribute. It's idempotent (re-running skips users that already exist), rate-limited, and writes a report CSV per run to `scripts/seed-reports/`.
 
-### Seeding Clerk from the CSV — Node.js example
-
-Once you have the CSV, here's the rough shape of a seed script. It uses Clerk's invitation flow (gentler than direct `POST /v1/users` — the EA clicks an emailed link, sets their own password):
-
-```typescript
-// scripts/seed-clerk-eas.ts (would live in the Next.js repo)
-import fs from 'node:fs'
-import { parse } from 'csv-parse/sync'
-import { createClerkClient } from '@clerk/backend'
-
-const clerkClient = createClerkClient({
-  secretKey: process.env.CLERK_SECRET_KEY!,
-})
-
-const csv = fs.readFileSync('ea_users.csv', 'utf-8')
-const rows = parse(csv, { columns: true, skip_empty_lines: true })
-
-for (const row of rows) {
-  try {
-    await clerkClient.invitations.createInvitation({
-      emailAddress: row.email_address,
-      publicMetadata: {
-        role: 'ea',
-        teampact_user_id: Number(row.teampact_user_id),
-        teampact_user_name: row.teampact_user_name,
-      },
-    })
-    console.log('Invited', row.email_address)
-  } catch (err) {
-    console.error('Failed', row.email_address, err)
-  }
-
-  // Clerk bulk invitation rate limit: 25/hour in production.
-  // For > 25 EAs, run in batches across multiple hours, or throttle heavily.
-  await new Promise((resolve) => setTimeout(resolve, 150))
-}
-```
-
-**Status:** This script does not exist yet either. It's one file to add when we're ready for real rollout.
+For the script to find emails when sourcing from Django, the EA roster on the Django side first needs `import_teampact_users` to have been run with the TeamPact dashboard's user export CSV. The script will print a friendly nudge if the roster comes back without emails.
 
 ### Rate limits to be aware of
 
 From Clerk's documented limits:
 
-- **Bulk invitations:** 25 / hour (production). For a 100-EA cohort, plan to split across 4+ hours or request a limit increase.
-- **Single user creation:** 1000 requests / 10 seconds (effectively unlimited for our scale).
-- **Metadata updates:** same as the general API limit.
-
-Invitations are the right default because they let the EA set their own password and verify their email. Direct `POST /v1/users` is faster but requires generating and securely distributing passwords — more friction for EAs on mobile.
+- **Direct user creation (what we use):** 1000 requests / 10 seconds — effectively unlimited at our scale.
+- **Bulk invitations** (not used by this script): 25 / hour. We chose direct creation specifically to avoid this bottleneck.
 
 ---
 
