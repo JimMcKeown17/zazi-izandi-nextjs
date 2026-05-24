@@ -1,8 +1,16 @@
 import { auth } from "@clerk/nextjs/server";
-import { BellOff } from "lucide-react";
+import { AlertTriangle, BellOff } from "lucide-react";
 import { NotificationsClient } from "./notifications-client";
 import { canSendNotifications } from "@/lib/pm/notification-roles";
-import { getNotificationAudiences } from "@/lib/pm/notifications";
+import {
+  getNotificationAudiences,
+  type NotificationAudiences,
+} from "@/lib/pm/notifications";
+
+const emptyAudiences: NotificationAudiences = {
+  schools: [],
+  eas: [],
+};
 
 export default async function PMNotificationsPage() {
   const { sessionClaims } = await auth();
@@ -28,10 +36,32 @@ export default async function PMNotificationsPage() {
     );
   }
 
-  const audiences = await getNotificationAudiences();
+  let audiences = emptyAudiences;
+  let audienceError = "";
+  try {
+    audiences = await getNotificationAudiences();
+  } catch (error) {
+    audienceError =
+      error instanceof Error ? error.message : "Notification audience API is unavailable.";
+    console.error("[pm/notifications] Unable to load notification audiences", error);
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
+      {audienceError && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+            <div>
+              <span className="font-semibold">Notification API unavailable.</span>{" "}
+              Start the Django backend configured by <code>DJANGO_API_URL</code>, then
+              refresh this page. The form is shown with empty audience lists until the
+              API is reachable.
+            </div>
+          </div>
+        </div>
+      )}
+
       <div>
         <h1 className="text-xl font-bold text-slate-900">Notifications</h1>
         <p className="text-sm text-slate-500">
