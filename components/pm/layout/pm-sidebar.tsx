@@ -12,6 +12,7 @@ import {
   BookOpen,
   AlertTriangle,
   ClipboardCheck,
+  Bell,
   Eye,
   ArrowLeft,
   Filter,
@@ -38,6 +39,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: "Letter Alignment", href: "/pm/letter-alignment", icon: Grid3X3 },
   { name: "Schools", href: "/pm/schools", icon: School },
   { name: "Assessments", href: "/pm/assessments", icon: ClipboardCheck },
+  { name: "Notifications", href: "/pm/notifications", icon: Bell },
   { name: "Mentor Visits", href: "/pm/mentor-visits", icon: Eye },
   { name: "Letter Progress", href: "/pm/letter-progress", icon: BookOpen },
   { name: "EA Mobile View", href: "/pm/ea-mobile-view", icon: Smartphone },
@@ -72,9 +74,10 @@ function getServerSnapshot() {
 
 interface PMSidebarProps {
   flagCount?: number;
+  canSendNotifications?: boolean;
 }
 
-export function PMSidebar({ flagCount }: PMSidebarProps) {
+export function PMSidebar({ flagCount, canSendNotifications = false }: PMSidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const isHydrated = useSyncExternalStore(
@@ -145,7 +148,9 @@ export function PMSidebar({ flagCount }: PMSidebarProps) {
 
         {/* Primary nav */}
         <nav className="flex-1 px-2 py-3 flex flex-col gap-0.5 overflow-y-auto">
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.filter((item) => (
+            item.href !== "/pm/notifications" || canSendNotifications
+          )).map((item) => (
             <NavLink key={item.href} item={item} />
           ))}
 
