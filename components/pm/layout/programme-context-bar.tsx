@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 import type { ProgrammeOverviewResponse } from "@/lib/pm/types";
 import { HealthBadge } from "@/components/pm/shared/health-badge";
 
@@ -57,6 +59,16 @@ export function ProgrammeContextBar({ data }: ProgrammeContextBarProps) {
             ? <>Data as of {formatDate(data_health.last_sync)} &middot; {formatRelativeTime(data_health.freshness_hours)}</>
             : "No data available"}
         </span>
+
+        {!data_health.closure_calendar_ok && (
+          <Link
+            href="/pm/data-quality"
+            className="flex items-center gap-1.5 rounded-md bg-amber-50 border border-amber-200 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
+          >
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+            Calendar stale
+          </Link>
+        )}
 
         <HealthBadge health={health} />
       </div>

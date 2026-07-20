@@ -38,21 +38,33 @@ function recomputeKPIs(
   const activeFlags = filteredSchools.reduce((sum, s) => sum + s.flags_count, 0);
 
   const totalGroups = filteredSchools.reduce((sum, s) => sum + s.groups_count, 0);
+  const cohortSchoolNames = new Set(
+    filteredSchools.map((s) => s.school_name.toUpperCase())
+  );
+  const cohortGroups =
+    filteredGroups === null
+      ? null
+      : filteredGroups.filter((g) =>
+          cohortSchoolNames.has(g.program_name.toUpperCase())
+        );
+  // Group-weighted dosage — mean of each group's own calendar-scoped dosage,
+  // matching Django. null = groups feed down (keep backend value); [] = zero.
   const weightedDosage =
-    totalGroups > 0
-      ? filteredSchools.reduce(
-          (sum, s) => sum + s.avg_sessions_per_group_per_week * s.groups_count,
-          0
-        ) / totalGroups
-      : 0;
+    cohortGroups === null
+      ? baseKPIs.weighted_dosage
+      : cohortGroups.length > 0
+        ? cohortGroups.reduce((sum, g) => sum + g.avg_sessions_per_week, 0) /
+          cohortGroups.length
+        : 0;
   const onTrackGroupRate =
-    filteredGroups !== null
-      ? filteredGroups.length > 0
-        ? (filteredGroups.filter((g) => g.avg_sessions_per_week >= dosageTarget).length /
-            filteredGroups.length) *
+    cohortGroups === null
+      ? baseKPIs.on_track_group_rate
+      : cohortGroups.length > 0
+        ? (cohortGroups.filter((g) => g.avg_sessions_per_week >= dosageTarget)
+            .length /
+            cohortGroups.length) *
           100
-        : 0
-      : baseKPIs.on_track_group_rate;
+        : 0;
 
   return {
     ...baseKPIs,

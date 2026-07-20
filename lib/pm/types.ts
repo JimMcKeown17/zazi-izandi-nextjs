@@ -68,6 +68,7 @@ export interface DataHealth {
   freshness_hours: number;
   last_sync: string;
   join_match_rate: number;
+  closure_calendar_ok: boolean;
 }
 
 export interface SessionTimeSeriesPoint {

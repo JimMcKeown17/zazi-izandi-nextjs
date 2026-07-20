@@ -71,7 +71,10 @@ function transformOverviewResponse(raw: any): ProgrammeOverviewResponse {
         resolution: h.resolution_score ?? h.resolution ?? 0,
       },
     },
-    data_health: raw.data_health,
+    data_health: {
+      ...raw.data_health,
+      closure_calendar_ok: raw.data_health?.closure_calendar_ok ?? false,
+    },
     sessions_time_series: raw.sessions_time_series ?? [],
     dosage_distribution: (raw.dosage_distribution ?? []).map(
       (b: any) => ({ range: b.range, count: b.count ?? b.schools ?? 0 })
@@ -466,6 +469,7 @@ const EMPTY_PROGRAMME_OVERVIEW: ProgrammeOverviewResponse = {
     freshness_hours: 0,
     last_sync: "",
     join_match_rate: 0,
+    closure_calendar_ok: false,
   },
   sessions_time_series: [],
   dosage_distribution: [],
