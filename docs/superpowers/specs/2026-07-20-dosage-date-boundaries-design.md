@@ -92,9 +92,11 @@ A single class that dies while its school keeps teaching still runs to `today` a
 
 Two distinct signals, so no failure is silent:
 
-**(a) Cache staleness banner.** The programme-overview payload gains a `closure_calendar_ok` signal, false when `SchoolClosureCache` has no rows spanning the current programme window, **or** the newest `masi_updated_at` is older than `STALE_AFTER_DAYS` (default 3). `/pm` renders an amber data-quality banner when false ("Closure calendar stale — dosage may be understated"), reusing the existing `isLive` / mock-data-transparency pattern. Log/alert server-side on the same condition.
+**(a) Cache staleness signal.** The programme-overview payload gains a `closure_calendar_ok` signal, false when `SchoolClosureCache` has no rows spanning the current programme window, **or** the newest `masi_updated_at` is older than `STALE_AFTER_DAYS` (default 3). Log/alert server-side on the same condition.
 
-**(b) Unexplained-silence alert (the single-EA safety valve).** Whenever the school-level clamp freezes a school because it went quiet, check whether a calendar closure explains that silence. If none does, the freeze is either a break the calendar is missing *or* a real problem (e.g. the sole EA at a single-EA school stopped) — and we cannot tell them apart automatically, so a human must. Surface it as one clear, actionable data-quality item per school ("School X silent since D, no closure on record — break or problem?") rather than only as scattered per-group ghost flags. Resolution is binary and self-correcting: if it's a break, author the closure in Masi and the next sync makes the calendar handle it (clamp no longer needed there); if it's a problem, the field team intervenes. This is the lightweight reconciliation piece, scoped to exactly the moments the clamp is load-bearing.
+**(b) Unexplained-silence signal (the single-EA safety valve).** Whenever the school-level clamp freezes a school because it went quiet, check whether a calendar closure explains that silence. If none does, the freeze is either a break the calendar is missing *or* a real problem (e.g. the sole EA at a single-EA school stopped) — and we cannot tell them apart automatically, so a human must. Emit one clear, actionable item per school ("School X silent since D, no closure on record — break or problem?") rather than scattered per-group ghost flags. Resolution is binary and self-correcting: if it's a break, author the closure in Masi and the next sync makes the calendar handle it (clamp no longer needed there); if it's a problem, the field team intervenes.
+
+**Surfacing — a dedicated Data Quality / Alerts tab.** Both signals (plus, later, the unmatched-children / coverage lists already planned for `/pm/data-quality`) surface on a **new PM sidebar tab**, not as ad-hoc banners. The Overview shows only a lightweight badge/count that links to the tab when anything is outstanding. This gives one place for the field team to work data-quality issues and keeps the Overview clean. The tab is the product home for this family of signals going forward.
 
 The clamp still floors the number underneath both; the signals ensure a human is told.
 
@@ -105,7 +107,7 @@ Fix all work-day-denominator metrics coherently in one pass (group + school dosa
 ## Out of scope (parked)
 
 - **Year-end programme end / "assessment start as final session date."** A genuine future concern (post-assessment, attendance gets messy), but it is a year-end question and we are mid-year. Assessments are not present in `sessions_2026` (they live in the separate EGRA dataset), so this needs a different data source. When we reach it, drive it off `ProgrammeTargets.programme_end_date` and/or the EGRA assessment timeline, not the session stream.
-- **Reconciliation report** (session-derived active weeks vs calendar work weeks per group, feeding a `/pm/data-quality` page). Valuable and complementary to the staleness alert, but a separate build.
+- **Full reconciliation report** (per-group session-derived active weeks vs calendar work weeks, plus unmatched-children / coverage exports). The unexplained-silence signal (§5b) is a targeted slice of this that ships now on the new Data Quality tab; the broader per-group report and exports are a later build on the same tab.
 - **Teaching-week counter ("Week 20 of 38").** Pure calendar division; cosmetic. Optionally make holiday-aware later.
 
 ## Affected code (for the implementation plan)
@@ -118,13 +120,14 @@ Django (`Zazi_iZandi_Website_2025`):
 - Render cron — add `sync_masi_calendar` to the nightly sequence (after `sync_teampact_sessions_2026`, before the compute steps), and verify it succeeds.
 
 Next.js (`zazi-izandi-nextjs`):
-- `app/pm/page.tsx` / overview components — render the staleness banner from `closure_calendar_ok`.
+- **New PM sidebar tab (Data Quality / Alerts)** — lists the cache-staleness and unexplained-silence items; the Overview shows only a linking badge/count. Home for `/pm/data-quality`'s planned exports later.
+- `app/pm/page.tsx` / overview components — render the linking badge from `closure_calendar_ok` and the outstanding-alert count.
 - `lib/schools-2026/constants.ts` + `lib/schools-2026/enrich.ts` — retire/repoint the stale hardcoded holiday copy so `/pm/schools/[name]` matches `/pm`.
 
 ## Rollout / operational dependencies
 
 1. **✅ DONE (2026-07-20).** `sync_masi_calendar` run in prod (384 closures, 1,340 absences synced; cache verified non-zero and spanning 2026-01-01…2026-12-26) and added to the Render cron.
-2. **Author the missing ECD term-break closures in Masi.** This is a *data-authoring* task, not a code change — the model, admin, bulk endpoint and `/operations/closures` UI already support `type:ecd` (10 such rows already exist for 3–16 Jun). The gap is specific: `type:ecd` closures currently stop at **16 Jun**, while the July term break (`type:primary` covers 22 Jun – 17 Jul) is **not authored for ECD** — so ECD groups' July break is invisible to the calendar and the school clamp is currently load-bearing for them. Author it via the UI (scope "By school type" → ECD → the ECD break date range), or via a small idempotent management command in the Masi repo if repeatability is wanted. Blocker is a domain input: the *actual ECD break dates* (ECDs follow a distinct calendar from primaries, so do not assume ECD dates == primary dates).
+2. **ECD closures — rely on the real calendar + clamp; do not author blanket `type:ecd` breaks (decided).** ECD centres are not public institutions; whether one closes for a term break is up to its leadership, and some daycares stay open year-round. A blanket `type:ecd` break would therefore be *wrong* — it would exclude days some centres were genuinely open. Instead we rely on the actual per-centre closures that exist in Masi, and let the **school-level clamp** self-adjust: an ECD that closed goes silent and the clamp catches it; an ECD that stayed open keeps logging sessions and needs no closure. No authoring action required for this fix.
 3. **✅ RESOLVED.** 2026-02-23 confirmed as the correct session cutoff (see consistency bug above); align the live endpoint to it.
 
 ## Verification plan
@@ -132,9 +135,9 @@ Next.js (`zazi-izandi-nextjs`):
 - **Reproduce the current wrong number** end-to-end (done: 1.19 all-groups matches the 1.1 cohort figure).
 - After the fix, confirm on production data that weighted dosage lands ~2.1–2.4, on-track-groups rises correspondingly, and active-flag count drops sharply once the ghost flag is calendar-aware.
 - Assert the 244 "died mid-programme" groups still read **low** dosage (clamp did not mask them).
-- Force an empty/stale cache in a test and confirm the amber banner appears and the clamp still floors the number.
+- Force an empty/stale cache in a test and confirm the staleness item appears on the Data Quality tab (with a linking badge on Overview) and the clamp still floors the number.
 - Confirm `/pm` and `/pm/schools/[name]` agree on programme-day denominators after the frontend holiday copy is repointed.
 
 ## Expected outcome
 
-Weighted Dosage moves from **1.1 → ~2.4**; on-track groups and the dosage distribution shift up in step; active Quality Flags fall as break-driven ghost flags clear; and any future cache staleness raises a visible banner instead of silently deflating the programme's numbers.
+Weighted Dosage moves from **1.1 → ~2.4**; on-track groups and the dosage distribution shift up in step; active Quality Flags fall as break-driven ghost flags clear; and any future cache staleness or unexplained school-wide silence surfaces on the Data Quality tab instead of silently deflating the programme's numbers.
