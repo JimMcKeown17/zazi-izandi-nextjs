@@ -105,6 +105,20 @@ class MasiSyncRunLoggingTest(TestCase):
         self.assertEqual(MasiSyncRun.objects.filter(ok=False).count(), 1)
 
     @patch("api.management.commands.sync_masi_calendar.requests.get")
+    def test_empty_absences_do_not_wipe_populated_cache(self, mock_get):
+        from datetime import date
+        from api.models import StaffAbsenceCache
+        StaffAbsenceCache.objects.create(masi_id=1, youth_uid="YTH-1", date=date(2026, 6, 22))
+        closures = [{"id": 1, "date": "2026-06-22", "scope_key": "type:primary",
+                     "scope_type": "type", "scope_school_type": "primary",
+                     "is_open": False, "updated_at": "2026-06-01T00:00:00Z"}]
+        mock_get.side_effect = [_resp(closures), _resp([])]  # closures OK, absences empty
+        with self.assertRaises(Exception):
+            call_command("sync_masi_calendar", "--date-from", "2026-01-01", "--date-to", "2026-12-31")
+        self.assertEqual(StaffAbsenceCache.objects.count(), 1)  # absence cache intact
+        self.assertIsNone(MasiSyncRun.latest_ok())
+
+    @patch("api.management.commands.sync_masi_calendar.requests.get")
     def test_empty_closures_allowed_with_flag(self, mock_get):
         from datetime import date
         SchoolClosureCache.objects.create(masi_id=1, date=date(2026, 6, 22),
@@ -163,73 +177,85 @@ Then, in `api/management/commands/sync_masi_calendar.py`, replace the body of `h
 ```python
         from api.models import MasiSyncRun  # local import to avoid circulars
         from datetime import date as _date
-        started = timezone.now()
 
         def _d(s):
             return _date.fromisoformat(s)
 
-        def _fail(msg):
-            MasiSyncRun.objects.create(
-                command="sync_masi_calendar", started_at=started, finished_at=timezone.now(),
-                ok=False, date_from=_d(date_from), date_to=_d(date_to), error=msg,
-            )
-            raise CommandError(msg)
-
+        # Record the attempt up front, so a failure ANYWHERE below -- network,
+        # validation, or a mid-transaction bulk_create error -- leaves a durable
+        # failed run. calendar_health judges the latest attempt, so a silent
+        # failure can never masquerade as healthy.
+        run = MasiSyncRun.objects.create(
+            command="sync_masi_calendar", started_at=timezone.now(), ok=False,
+            date_from=_d(date_from), date_to=_d(date_to),
+        )
         try:
             closures = self._get(f'{base}/closures/export/', params, headers)
             absences = self._get(f'{base}/absences/export/', params, headers)
-        except requests.RequestException as exc:
-            _fail(f'Masi calendar sync failed (cache left intact): {exc}')
 
-        # Validate before the destructive replace. A malformed payload (not a list,
-        # or closures missing required keys) or an empty full-window payload while a
-        # populated cache exists is almost certainly an upstream failure, not a real
-        # "everything is open" state. Refuse to wipe; record a failed run.
-        if not isinstance(closures, list) or not isinstance(absences, list):
-            _fail('Masi returned a non-list payload; cache left intact.')
-        _required = {'id', 'date', 'scope_key', 'scope_type', 'is_open'}
-        for r in closures:
-            missing = _required - set(r)
-            if missing:
-                _fail(f'Closure row missing keys {sorted(missing)}; cache left intact.')
-        existing = SchoolClosureCache.objects.filter(date__gte=date_from, date__lte=date_to).count()
-        if not closures and existing and not options.get('allow_empty'):
-            _fail(f'Masi returned 0 closures for {date_from}..{date_to} but cache has '
-                  f'{existing}; cache left intact. Use --allow-empty if intentional.')
+            # Validate BOTH feeds' shape before the destructive replace.
+            if not isinstance(closures, list) or not isinstance(absences, list):
+                raise CommandError('Masi returned a non-list payload.')
+            for r in closures:
+                if {'id', 'date', 'scope_key', 'scope_type', 'is_open'} - set(r):
+                    raise CommandError('A closure row is missing required keys.')
+            for r in absences:
+                if {'id', 'date', 'youth_uid'} - set(r):
+                    raise CommandError('An absence row is missing required keys.')
 
-        with transaction.atomic():
-            SchoolClosureCache.objects.filter(date__gte=date_from, date__lte=date_to).delete()
-            SchoolClosureCache.objects.bulk_create([
-                SchoolClosureCache(
-                    masi_id=r['id'], date=r['date'], scope_key=r['scope_key'],
-                    scope_type=r['scope_type'], canonical_type=r.get('scope_school_type'),
-                    scope_region=r.get('scope_region'), school_uid=r.get('school_uid'),
-                    is_open=r['is_open'], source=r.get('source', ''), reason=r.get('reason', ''),
-                    masi_updated_at=r.get('updated_at'),
-                ) for r in closures
-            ])
-            StaffAbsenceCache.objects.filter(date__gte=date_from, date__lte=date_to).delete()
-            StaffAbsenceCache.objects.bulk_create([
-                StaffAbsenceCache(
-                    masi_id=r['id'], date=r['date'], youth_uid=r['youth_uid'],
-                    reason=r.get('reason', ''), masi_updated_at=r.get('updated_at'),
-                ) for r in absences
-            ])
-            MasiSyncRun.objects.create(
-                command="sync_masi_calendar", started_at=started, finished_at=timezone.now(),
-                ok=True, date_from=_d(date_from), date_to=_d(date_to),
-                closures_count=len(closures), absences_count=len(absences),
-            )
+            # A full-window sync returning nothing while a populated cache exists
+            # is almost certainly an upstream failure, not a real "everything
+            # open" state. Guard BOTH feeds (an empty absence feed would otherwise
+            # silently wipe every StaffAbsenceCache row and inflate EA denominators).
+            if not options.get('allow_empty'):
+                if not closures and SchoolClosureCache.objects.filter(
+                        date__gte=date_from, date__lte=date_to).exists():
+                    raise CommandError('0 closures returned but cache is populated; use --allow-empty to override.')
+                if not absences and StaffAbsenceCache.objects.filter(
+                        date__gte=date_from, date__lte=date_to).exists():
+                    raise CommandError('0 absences returned but cache is populated; use --allow-empty to override.')
+
+            with transaction.atomic():
+                SchoolClosureCache.objects.filter(date__gte=date_from, date__lte=date_to).delete()
+                SchoolClosureCache.objects.bulk_create([
+                    SchoolClosureCache(
+                        masi_id=r['id'], date=r['date'], scope_key=r['scope_key'],
+                        scope_type=r['scope_type'], canonical_type=r.get('scope_school_type'),
+                        scope_region=r.get('scope_region'), school_uid=r.get('school_uid'),
+                        is_open=r['is_open'], source=r.get('source', ''), reason=r.get('reason', ''),
+                        masi_updated_at=r.get('updated_at'),
+                    ) for r in closures
+                ])
+                StaffAbsenceCache.objects.filter(date__gte=date_from, date__lte=date_to).delete()
+                StaffAbsenceCache.objects.bulk_create([
+                    StaffAbsenceCache(
+                        masi_id=r['id'], date=r['date'], youth_uid=r['youth_uid'],
+                        reason=r.get('reason', ''), masi_updated_at=r.get('updated_at'),
+                    ) for r in absences
+                ])
+        except Exception as exc:
+            run.ok = False
+            run.finished_at = timezone.now()
+            run.error = str(exc)
+            run.save(update_fields=['ok', 'finished_at', 'error'])
+            raise CommandError(f'Masi calendar sync failed (cache left intact): {exc}')
+
+        run.ok = True
+        run.finished_at = timezone.now()
+        run.closures_count = len(closures)
+        run.absences_count = len(absences)
+        run.save(update_fields=['ok', 'finished_at', 'closures_count', 'absences_count'])
 
         self.stdout.write(self.style.SUCCESS(
             f'Synced {len(closures)} closures, {len(absences)} absences for {date_from}..{date_to}.'
         ))
 ```
+> Detecting a *non-empty but truncated* payload (e.g. 200 of 384 rows) would need authoritative count/checksum metadata from the Masi export, which it does not currently provide — that guard is deferred (see Deferred).
 
 - [ ] **Step 6: Run tests to verify they pass**
 
 Run: `source venv/bin/activate && python manage.py test api.tests_masi_sync_run --settings=config.settings.dev`
-Expected: PASS (4 tests).
+Expected: PASS (5 tests).
 
 - [ ] **Step 7: Commit**
 
@@ -397,7 +423,7 @@ class GhostFlagCalendarTest(TestCase):
              patch("api.management.commands.compute_group_summaries_2026.timezone.now", return_value=FIXED_NOW):
             call_command("compute_school_summaries_2026")
             call_command("compute_group_summaries_2026")
-        self.assertFalse(GroupSummary2026.objects.get(school_name="Break School").flag_ghost)
+        self.assertFalse(GroupSummary2026.objects.get(program_name="Break School").flag_ghost)
 
     def test_real_silence_still_ghost_flags(self):
         # Same last session 03-06, but NO closure -> genuinely abandoned -> flag.
@@ -409,7 +435,7 @@ class GhostFlagCalendarTest(TestCase):
              patch("api.management.commands.compute_group_summaries_2026.timezone.now", return_value=FIXED_NOW):
             call_command("compute_school_summaries_2026")
             call_command("compute_group_summaries_2026")
-        self.assertTrue(GroupSummary2026.objects.get(school_name="Dead School").flag_ghost)
+        self.assertTrue(GroupSummary2026.objects.get(program_name="Dead School").flag_ghost)
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -547,10 +573,10 @@ class WeightedDosageGroupWeightedTest(TestCase):
         SchoolSummary2026.objects.create(school_name="Astra Primary School",
             school_type="Primary School", children_count=50,
             groups_count=2, avg_sessions_per_group_per_week=1.0)
-        GroupSummary2026.objects.create(school_name="Astra Primary School",
+        GroupSummary2026.objects.create(
             program_name="Astra Primary School", class_name="G1", ea_name="EA One",
             avg_sessions_per_week=1.5)
-        GroupSummary2026.objects.create(school_name="Astra Primary School",
+        GroupSummary2026.objects.create(
             program_name="Astra Primary School", class_name="G2", ea_name="EA Two",
             avg_sessions_per_week=3.0)
 
@@ -558,7 +584,7 @@ class WeightedDosageGroupWeightedTest(TestCase):
         resp = self.client.get("/api/programme-overview/?cohort=all", **AUTH)
         self.assertEqual(resp.json()["kpis"]["weighted_dosage"], 2.25)
 ```
-> If `GroupSummary2026.objects.create(...)` raises for a missing required field, add it (the error names it) — the model has many defaulted fields; `program_name`, `class_name`, `school_name`, `ea_name`, `avg_sessions_per_week` are the load-bearing ones here.
+> `GroupSummary2026`'s school key is `program_name` (there is NO `school_name` field). If a create raises for another missing required field, add it (the error names it); `program_name`, `class_name`, `ea_name`, `avg_sessions_per_week` are the load-bearing ones here.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -903,7 +929,7 @@ to:
 ```python
                 work_days = count_work_days(first_date, d, program_name=_modal, youth_uid=_youth_uid)
 ```
-> This makes the trajectory use the same whole-period modal school + absences as the scatter, so the final trajectory x equals the scatter x (the parity test). Per-date modal (so a mid-year school transfer doesn't retro-change older points) is a deferred refinement — see Deferred.
+> This gives the scatter and trajectory the **same denominator** (modal school + absences), which is the correctness win. Their x-values match exactly when no session post-dates the latest alignment snapshot and the EA isn't renamed across the window (the parity test covers that common case). Full parity under snapshot-lag / renamed-EA / cohort-lag needs a shared-aggregation refactor (bound the scatter numerator to the anchor date; key both endpoints by `user_id`; derive the cohort anchor after filtering) — that is a **pre-existing** divergence, not introduced here, and is deferred (see Deferred). Per-date modal is likewise deferred.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -1134,17 +1160,41 @@ In `EMPTY_PROGRAMME_OVERVIEW` (lines 465-469), add `closure_calendar_ok: false,`
   )}
 ```
 
-- [ ] **Step 4: Make the frontend `recomputeKPIs` weighted dosage group-weighted**
+- [ ] **Step 4: Make the frontend `recomputeKPIs` weighted dosage group-weighted (and Django-consistent for every cohort)**
 
-`app/pm/page.tsx` recomputes `weightedDosage` from school rows for cohort filtering (lines ~40-47), which reproduces the school-formula staggered-start bias the Django change (Task 4) just removed. It already derives `filteredGroups` (used for on-track). Change the weighted-dosage computation to the group-weighted mean, matching Django:
+`app/pm/page.tsx recomputeKPIs` recomputes `weightedDosage` from school rows (lines ~40-47), reproducing the school-formula staggered-start bias the Django change (Task 4) removed. It also derives on-track from `filteredGroups`, which for the **ECD cohort** was pre-filtered by `filterGroupsByCohort`'s *negative-set* rule (NOT treatment AND NOT SEF) — a set that differs from Django's ECD (`school_type == "ECD"`). Fix both by deriving the cohort's group set from `filteredSchools` (whose ECD *is* `school_type`-based, matching Django), and distinguish an unavailable groups feed (null → keep the backend value) from a genuinely empty one (→ 0).
+
+Replace the `weightedDosage` block (lines ~40-47) **and** the `onTrackGroupRate` block (lines ~48-55) with:
 ```tsx
+  const cohortSchoolNames = new Set(
+    filteredSchools.map((s) => s.school_name.toUpperCase())
+  );
+  const cohortGroups =
+    filteredGroups === null
+      ? null
+      : filteredGroups.filter((g) =>
+          cohortSchoolNames.has(g.program_name.toUpperCase())
+        );
+  // Group-weighted dosage — mean of each group's own calendar-scoped dosage,
+  // matching Django. null = groups feed down (keep backend value); [] = zero.
   const weightedDosage =
-    filteredGroups !== null && filteredGroups.length > 0
-      ? filteredGroups.reduce((sum, g) => sum + g.avg_sessions_per_week, 0) /
-        filteredGroups.length
-      : baseKPIs.weighted_dosage;
+    cohortGroups === null
+      ? baseKPIs.weighted_dosage
+      : cohortGroups.length > 0
+        ? cohortGroups.reduce((sum, g) => sum + g.avg_sessions_per_week, 0) /
+          cohortGroups.length
+        : 0;
+  const onTrackGroupRate =
+    cohortGroups === null
+      ? baseKPIs.on_track_group_rate
+      : cohortGroups.length > 0
+        ? (cohortGroups.filter((g) => g.avg_sessions_per_week >= dosageTarget)
+            .length /
+            cohortGroups.length) *
+          100
+        : 0;
 ```
-(Replace the existing `totalGroups`/`weightedDosage` block. `totalGroups` may still be used elsewhere in `recomputeKPIs` — keep its declaration if so; only the dosage computation changes. `filteredGroups` and `g.avg_sessions_per_week` are the same values the on-track recompute already uses.)
+(`totalGroups` is still used for `total_groups` elsewhere if present — keep its declaration; only the dosage + on-track computations change here. This makes frontend and Django agree on group membership and dosage for all four cohorts.)
 
 - [ ] **Step 5: Verify build**
 
@@ -1380,7 +1430,9 @@ git commit -m "Docs: correct sessions_this_week/month labels and dosage denomina
 ## Deferred (explicitly out of scope — the last 5%)
 
 - **Task 9 — `/pm/schools/[name]` per-EA programme-day denominator.** Retire the stale frontend `SCHOOL_HOLIDAYS_2026`/`TEACHING_START_DATE` by exposing calendar-aware `programme_work_days` on the Django `groups-2026` payload (`views.groups_2026_summary`) and consuming it in `lib/schools-2026/enrich.ts`. Drill-down only; needs a Django endpoint change. (Overview + EA scatter are already correct.)
-- **Per-date modal school for the EA trajectory.** Task 5 uses one whole-period modal school for all trajectory points (required for scatter parity). If an EA transfers schools mid-year, older points use the later school's calendar. A per-date modal (from sessions on-or-before each date) would fix this but breaks the simple scatter-parity invariant; revisit if multi-school EAs prove common.
+- **Scatter/history structural parity (pre-existing).** Beyond the shared denominator this plan adds, exact x-parity between `ea_performance` (scatter) and `ea_performance_history` (trajectory) also requires: bounding the scatter *numerator* to the snapshot anchor date (today it counts all post-cutoff sessions while the denominator ends at the latest snapshot — divergent under snapshot lag); keying both endpoints by `user_id` (scatter) vs `user_name` (history) so a renamed EA can't split; and deriving the cohort anchor date *after* cohort filtering. Best done as a shared EA-aggregation+anchor resolver used by both.
+- **Per-date modal school for the EA trajectory.** Task 5 uses one whole-period modal school for all trajectory points. If an EA transfers schools mid-year, older points use the later school's calendar. A per-date modal (from sessions on-or-before each date) would fix this.
+- **Truncated-payload detection in the calendar sync.** The Task 1 guard catches empty/malformed payloads but not a non-empty-but-truncated one (e.g. 200 of 384 rows). Detecting it needs authoritative count/checksum metadata from the Masi export endpoints, which they don't currently provide.
 - **Authenticated-render E2E for `/pm/data-quality`.** The e2e harness has no signed-in-session support (all specs are unauthenticated redirect checks). Building a PM-role signed-in fixture (test-user creds + session) would let an E2E assert the page actually renders content, not just that middleware redirects.
 - Interval-exact closure semantics (a closure explains only the dates it covers) and failure-to-resume timers for the unexplained-silence signal.
 - A labelled validation study (confusion matrix of break vs abandonment vs outage) and threshold sensitivity analysis for `SILENCE_THRESHOLD_DAYS`.
