@@ -280,8 +280,8 @@ Next.js Frontend (ISR, revalidate: 300s)
 | `current_letter` | str, nullable | Rightmost letter in the sequence from latest session's `letters_taught`. Null for blending groups |
 | `progress_index` | int | Position (0-25) in the letter sequence. -1 or null for blending groups |
 | `progress_pct` | float | `(progress_index + 1) / 26 * 100`. 0 for blending groups |
-| `sessions_this_week` | int | Distinct sessions in current ISO week |
-| `sessions_this_month` | int | Distinct sessions in current calendar month |
+| `sessions_this_week` | int | Distinct sessions in the rolling last 7 days (anchored to nightly compute run) |
+| `sessions_this_month` | int | Distinct sessions in the rolling last 30 days (anchored to nightly compute run) |
 | `total_sessions` | int | Total distinct sessions since programme start |
 | `avg_sessions_per_week` | float | `total_sessions / weeks_since_programme_start` |
 | `last_session_date` | date, nullable | Most recent session date |
@@ -349,9 +349,9 @@ How to join data across tables:
 | Metric | Formula | Aggregation | Purpose |
 |--------|---------|-------------|---------|
 | **Sessions per day** | Count distinct `session_id` for a given date | School, EA | Daily activity monitoring |
-| **Sessions this week** | Count distinct `session_id` where `session_started_at` is in current ISO week | School, EA, Group | Weekly dosage tracking |
-| **Sessions this month** | Count distinct `session_id` where `session_started_at` is in current calendar month | School, EA | Monthly dosage tracking |
-| **Avg sessions per group per week** | `total_sessions / (groups_count * weeks_since_programme_start)` | School | **Primary dosage KPI.** Target: 3+ sessions/group/week |
+| **Sessions this week** | Count distinct `session_id` where `session_started_at` is in rolling last 7 days (anchored to nightly compute run) | School, EA, Group | Weekly dosage tracking |
+| **Sessions this month** | Count distinct `session_id` where `session_started_at` is in rolling last 30 days (anchored to nightly compute run) | School, EA | Monthly dosage tracking |
+| **Avg sessions per group per week** | `total_sessions / (groups_count * work-weeks)`, where work-weeks = expected teaching days (weekdays minus resolved closures) / 5 | School | **Primary dosage KPI.** Target: 3+ sessions/group/week |
 | **Days active** | Count distinct dates with at least 1 session | EA | EA engagement metric |
 | **Sessions per EA per day** | `daily_sessions / active_eas_that_day` | School | Workload balance |
 
