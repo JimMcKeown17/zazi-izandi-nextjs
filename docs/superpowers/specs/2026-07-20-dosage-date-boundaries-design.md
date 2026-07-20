@@ -27,7 +27,7 @@ Session activity confirms the shape: full teaching through the week of 15 Jun (~
 
 The Masi master calendar **is** populated (384 closures + 1,340 staff absences for 2026), and Zazi's identity caches **are** synced (92 schools with canonical types, 156 youth). Yet none of the closure data reaches the dosage math, for three stacked reasons — each of which alone would mask the others, which is why it survived code review:
 
-1. **Zazi's production `SchoolClosureCache` is empty (0 rows).** `sync_masi_calendar` is not populating it. The identity sync (`sync_masi_identity`) clearly runs in prod, so `MASI_API_BASE_URL` and the shared secret are set correctly — the calendar sync was simply never added to the Render cron (it appears in no orchestration script in the repo). Result: `count_work_days` currently excludes **only weekends**.
+1. **Zazi's production `SchoolClosureCache` was empty (0 rows).** `sync_masi_calendar` was not populating it — the calendar sync was never added to the Render cron (the identity sync `sync_masi_identity` did run, confirming `MASI_API_BASE_URL` and the secret are set). **RESOLVED 2026-07-20:** the command was run manually (384 closures + 1,340 absences synced, verified in prod) and added to the Render cron. `count_work_days` was excluding only weekends until this point.
 
 2. **Every `count_work_days` call site passes no `program_name` / `youth_uid`.** The signature is `count_work_days(start, end, *, program_name=None, youth_uid=None)`. With `program_name=None`, the resolver (`api/utils/work_days.py`) honours only `scope_key='global'` closures. So even once the cache is populated, per-school / per-type / per-region breaks and per-EA absences are ignored.
 
@@ -37,7 +37,7 @@ The Masi master calendar **is** populated (384 closures + 1,340 staff absences f
 
 ### Secondary consistency bugs found during investigation
 
-- **Two programme-start sources.** Nightly compute jobs hardcode `PROGRAMME_START_DATE = 2026-02-23`; the live `programme_overview` endpoint filters sessions by `ProgrammeTargets.programme_start_date`, which in production is **2026-02-02**. The live endpoint therefore includes ~3 extra weeks of pre-programme training/demo sessions.
+- **Two programme-start sources.** Nightly compute jobs hardcode `PROGRAMME_START_DATE = 2026-02-23`; the live `programme_overview` endpoint filters sessions by `ProgrammeTargets.programme_start_date`, which in production is **2026-02-02**. The live endpoint therefore includes ~3 extra weeks of pre-programme training/demo sessions. **Resolution (confirmed with Jim):** 2026-02-23 is the correct session-inclusion cutoff. Align the live endpoint to filter from 2026-02-23 (matching the nightly), keeping a single source of truth for the teaching/demo cutoff. `ProgrammeTargets.programme_start_date` (2026-02-02) may legitimately remain distinct as the calendar programme-start that feeds the "Week N of M" counter — to confirm during the plan, and if so name the two concepts separately rather than overloading one field.
 - **Hardcoded on-track threshold.** `programme_overview` counts on-track groups against a literal `2.5` rather than `ProgrammeTargets.target_dosage`. (The frontend separately overrides both with per-cohort targets in `lib/pm/cohorts.ts`.)
 - **Stale frontend holiday copy.** `zazi-izandi-nextjs/lib/schools-2026/constants.ts` still carries a hardcoded `SCHOOL_HOLIDAYS_2026` (one Easter entry) with a docstring claiming it is "kept in sync with Django `api/views.py`" — a constant Django retired. It feeds `/pm/schools/[name]`'s per-EA programme-day denominator, so that page diverges from `/pm`.
 - **Rolling-window mislabel.** `sessions_this_week` / `sessions_this_month` are rolling 7/30 **calendar-day** windows anchored to cron run time, but `documentation/data-metrics-reference.md` documents them as current-ISO-week / current-calendar-month.
@@ -78,6 +78,8 @@ A single class that dies while its school keeps teaching still runs to `today` a
 
 **Parameters (tunable; defaults for the plan to validate):** `MIN_DAILY_SESSIONS = 3` (ignore stragglers), `BREAK_THRESHOLD = 10` working days (~2 weeks; only sustained school-wide gaps freeze).
 
+**Single-EA-school caveat (important).** 28 of 95 schools (29%) have exactly one EA. At those schools "school-level" collapses to "EA-level": if the sole EA quits or is absent mid-term (not a break), the whole school goes silent and the clamp freezes the denominator — masking the problem *on the dosage metric*. This is acceptable **only because the calendar-aware ghost flag (§4) catches it**: an EA-quit produces idle days that are *not* calendar closures, so the flag fires; a break produces idle days that *are* closures, so it does not. The clamp and the flag are complementary — dosage measures quality-while-active, the flag measures still-active — and for single-EA schools you must read the attendance/ghost signal, never dosage alone. To make the discrepancy unmissable rather than buried in per-group flags, §5 adds an explicit school-level "unexplained silence" alert whenever the clamp fires without a matching closure.
+
 **EA-subject metrics** (`avg_sessions_per_programme_day`, EA scatter/history) are not tied to one school, so their session-derived floor is **programme-level** (freeze when the whole programme is quiet), combined with calendar resolution (`youth_uid` for personal absences) and the existing manual `last_working_day` clamp for resigned EAs. Never per-EA in a way that masks an EA who stopped.
 
 **Principle for the plan:** calendar is primary; the session-derived clamp floors at the coarsest aggregate that stays unambiguous (school for group/school dosage, programme for EA metrics); never freeze at a grain fine enough to erase a genuine drop-off signal.
@@ -88,13 +90,13 @@ A single class that dies while its school keeps teaching still runs to `today` a
 
 ### 5. Staleness alert — make silent failure loud
 
-Add a check so an empty or stale closure cache surfaces instead of quietly deflating metrics:
+Two distinct signals, so no failure is silent:
 
-- The programme-overview payload gains a `closure_calendar_ok` signal, false when `SchoolClosureCache` has no rows spanning the current programme window, **or** the newest `masi_updated_at` is older than `STALE_AFTER_DAYS` (default 3).
-- `/pm` renders an amber data-quality banner when false ("Closure calendar stale — dosage may be understated"), reusing the existing `isLive` / mock-data-transparency banner pattern.
-- Log/alert server-side on the same condition.
+**(a) Cache staleness banner.** The programme-overview payload gains a `closure_calendar_ok` signal, false when `SchoolClosureCache` has no rows spanning the current programme window, **or** the newest `masi_updated_at` is older than `STALE_AFTER_DAYS` (default 3). `/pm` renders an amber data-quality banner when false ("Closure calendar stale — dosage may be understated"), reusing the existing `isLive` / mock-data-transparency pattern. Log/alert server-side on the same condition.
 
-The clamp still floors the number underneath; the banner ensures a human is told.
+**(b) Unexplained-silence alert (the single-EA safety valve).** Whenever the school-level clamp freezes a school because it went quiet, check whether a calendar closure explains that silence. If none does, the freeze is either a break the calendar is missing *or* a real problem (e.g. the sole EA at a single-EA school stopped) — and we cannot tell them apart automatically, so a human must. Surface it as one clear, actionable data-quality item per school ("School X silent since D, no closure on record — break or problem?") rather than only as scattered per-group ghost flags. Resolution is binary and self-correcting: if it's a break, author the closure in Masi and the next sync makes the calendar handle it (clamp no longer needed there); if it's a problem, the field team intervenes. This is the lightweight reconciliation piece, scoped to exactly the moments the clamp is load-bearing.
+
+The clamp still floors the number underneath both; the signals ensure a human is told.
 
 ### 6. Scope — comprehensive backend pass
 
@@ -121,9 +123,9 @@ Next.js (`zazi-izandi-nextjs`):
 
 ## Rollout / operational dependencies
 
-1. **Add `sync_masi_calendar` to the Render cron** and confirm it populates `SchoolClosureCache` (this is inert-blocking: nothing else matters until the cache fills). Verify the closure count is non-zero and spans the programme window after the first run.
-2. Author the **missing ECD term-break closures** in Masi (`/operations/closures`) as `type:ecd` (or per-school) so calendar-only accuracy improves and the school clamp becomes a true backstop rather than load-bearing for ECD.
-3. Confirm/settle the **`ProgrammeTargets` values** in production (`programme_start_date` currently 2026-02-02 vs the intended training/demo cutoff of 2026-02-23) before making it the single source of truth.
+1. **✅ DONE (2026-07-20).** `sync_masi_calendar` run in prod (384 closures, 1,340 absences synced; cache verified non-zero and spanning 2026-01-01…2026-12-26) and added to the Render cron.
+2. **Author the missing ECD term-break closures in Masi.** This is a *data-authoring* task, not a code change — the model, admin, bulk endpoint and `/operations/closures` UI already support `type:ecd` (10 such rows already exist for 3–16 Jun). The gap is specific: `type:ecd` closures currently stop at **16 Jun**, while the July term break (`type:primary` covers 22 Jun – 17 Jul) is **not authored for ECD** — so ECD groups' July break is invisible to the calendar and the school clamp is currently load-bearing for them. Author it via the UI (scope "By school type" → ECD → the ECD break date range), or via a small idempotent management command in the Masi repo if repeatability is wanted. Blocker is a domain input: the *actual ECD break dates* (ECDs follow a distinct calendar from primaries, so do not assume ECD dates == primary dates).
+3. **✅ RESOLVED.** 2026-02-23 confirmed as the correct session cutoff (see consistency bug above); align the live endpoint to it.
 
 ## Verification plan
 
