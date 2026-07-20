@@ -71,6 +71,25 @@ export interface DataHealth {
   closure_calendar_ok: boolean;
 }
 
+export interface SilentSchool {
+  school: string;
+  last_session_date: string;
+  expected_open_days: number;
+}
+
+export interface DataQuality {
+  closure_calendar: {
+    ok: boolean;
+    last_ok_at: string | null;
+    date_from: string | null;
+    date_to: string | null;
+    closures_count: number;
+    latest_attempt_failed?: boolean;
+  };
+  unmapped_schools: string[];
+  silent_schools: SilentSchool[];
+}
+
 export interface SessionTimeSeriesPoint {
   date: string;
   primary: number;

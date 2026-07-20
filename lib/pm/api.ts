@@ -10,6 +10,7 @@ import type {
   EAPerformanceResponse,
   EAPerformanceHistoryResponse,
   EAPerformanceHistoryResult,
+  DataQuality,
 } from "./types";
 import type { School2026Data } from "@/lib/schools-2026/school2026-data";
 import type { EnrichedSchool2026 } from "@/lib/schools-2026/types";
@@ -101,6 +102,28 @@ export async function getProgrammeOverview(
   } catch (error) {
     console.error("[pm/api] Failed to fetch programme overview:", error);
     return { data: EMPTY_PROGRAMME_OVERVIEW, isLive: false };
+  }
+}
+
+export interface DataQualityResult { data: DataQuality; isLive: boolean; }
+
+const EMPTY_DATA_QUALITY: DataQuality = {
+  closure_calendar: { ok: false, last_ok_at: null, date_from: null, date_to: null, closures_count: 0 },
+  unmapped_schools: [],
+  silent_schools: [],
+};
+
+export async function getDataQuality(): Promise<DataQualityResult> {
+  try {
+    const res = await djangoFetch(`/api/data-quality/`, { next: { revalidate: 300 } });
+    if (!res.ok) {
+      console.error(`[pm/api] data-quality returned ${res.status}`);
+      return { data: EMPTY_DATA_QUALITY, isLive: false };
+    }
+    return { data: await res.json(), isLive: true };
+  } catch (error) {
+    console.error("[pm/api] Failed to fetch data-quality:", error);
+    return { data: EMPTY_DATA_QUALITY, isLive: false };
   }
 }
 

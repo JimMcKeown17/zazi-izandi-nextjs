@@ -19,6 +19,7 @@ import {
   GraduationCap,
   Grid3X3,
   Users,
+  ShieldAlert,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { parseCohort } from "@/lib/pm/cohorts";
@@ -38,6 +39,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: "Quality Flags", href: "/pm/quality-flags", icon: AlertTriangle },
   { name: "Letter Alignment", href: "/pm/letter-alignment", icon: Grid3X3 },
   { name: "Schools", href: "/pm/schools", icon: School },
+  { name: "Data Quality", href: "/pm/data-quality", icon: ShieldAlert },
   { name: "Assessments", href: "/pm/assessments", icon: ClipboardCheck },
   { name: "Notifications", href: "/pm/notifications", icon: Bell },
   { name: "Mentor Visits", href: "/pm/mentor-visits", icon: Eye },
