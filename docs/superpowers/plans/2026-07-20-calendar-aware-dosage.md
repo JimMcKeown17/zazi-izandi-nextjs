@@ -91,6 +91,29 @@ class MasiSyncRunLoggingTest(TestCase):
             call_command("sync_masi_calendar", "--date-from", "2026-01-01", "--date-to", "2026-12-31")
         self.assertIsNone(MasiSyncRun.latest_ok())
         self.assertEqual(MasiSyncRun.objects.filter(ok=False).count(), 1)
+
+    @patch("api.management.commands.sync_masi_calendar.requests.get")
+    def test_empty_closures_do_not_wipe_populated_cache(self, mock_get):
+        from datetime import date
+        SchoolClosureCache.objects.create(masi_id=1, date=date(2026, 6, 22),
+            scope_key="type:primary", scope_type="type", canonical_type="primary", is_open=False)
+        mock_get.side_effect = [_resp([]), _resp([])]  # upstream returns nothing
+        with self.assertRaises(Exception):
+            call_command("sync_masi_calendar", "--date-from", "2026-01-01", "--date-to", "2026-12-31")
+        self.assertEqual(SchoolClosureCache.objects.count(), 1)  # cache intact
+        self.assertIsNone(MasiSyncRun.latest_ok())
+        self.assertEqual(MasiSyncRun.objects.filter(ok=False).count(), 1)
+
+    @patch("api.management.commands.sync_masi_calendar.requests.get")
+    def test_empty_closures_allowed_with_flag(self, mock_get):
+        from datetime import date
+        SchoolClosureCache.objects.create(masi_id=1, date=date(2026, 6, 22),
+            scope_key="type:primary", scope_type="type", canonical_type="primary", is_open=False)
+        mock_get.side_effect = [_resp([]), _resp([])]
+        call_command("sync_masi_calendar", "--date-from", "2026-01-01", "--date-to", "2026-12-31",
+                     "--allow-empty")
+        self.assertEqual(SchoolClosureCache.objects.count(), 0)  # deliberately cleared
+        self.assertIsNotNone(MasiSyncRun.latest_ok())
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -129,9 +152,14 @@ class MasiSyncRun(models.Model):
 Run: `source venv/bin/activate && python manage.py makemigrations api --settings=config.settings.dev`
 Expected: creates `api/migrations/00NN_masisyncrun.py`.
 
-- [ ] **Step 5: Write the run log into the command**
+- [ ] **Step 5: Write the run log + validate-then-replace guard into the command**
 
-In `api/management/commands/sync_masi_calendar.py`, replace the body of `handle` from the `try:` (line 39) through the final `self.stdout.write(...)` (line 66) with:
+First add an `--allow-empty` flag in `add_arguments` (alongside `--date-from`/`--date-to`):
+```python
+        parser.add_argument('--allow-empty', action='store_true',
+                            help='Permit replacing a populated cache with an empty payload.')
+```
+Then, in `api/management/commands/sync_masi_calendar.py`, replace the body of `handle` from the `try:` (line 39) through the final `self.stdout.write(...)` (line 66) with:
 ```python
         from api.models import MasiSyncRun  # local import to avoid circulars
         from datetime import date as _date
@@ -140,15 +168,34 @@ In `api/management/commands/sync_masi_calendar.py`, replace the body of `handle`
         def _d(s):
             return _date.fromisoformat(s)
 
+        def _fail(msg):
+            MasiSyncRun.objects.create(
+                command="sync_masi_calendar", started_at=started, finished_at=timezone.now(),
+                ok=False, date_from=_d(date_from), date_to=_d(date_to), error=msg,
+            )
+            raise CommandError(msg)
+
         try:
             closures = self._get(f'{base}/closures/export/', params, headers)
             absences = self._get(f'{base}/absences/export/', params, headers)
         except requests.RequestException as exc:
-            MasiSyncRun.objects.create(
-                command="sync_masi_calendar", started_at=started, finished_at=timezone.now(),
-                ok=False, date_from=_d(date_from), date_to=_d(date_to), error=str(exc),
-            )
-            raise CommandError(f'Masi calendar sync failed (cache left intact): {exc}')
+            _fail(f'Masi calendar sync failed (cache left intact): {exc}')
+
+        # Validate before the destructive replace. A malformed payload (not a list,
+        # or closures missing required keys) or an empty full-window payload while a
+        # populated cache exists is almost certainly an upstream failure, not a real
+        # "everything is open" state. Refuse to wipe; record a failed run.
+        if not isinstance(closures, list) or not isinstance(absences, list):
+            _fail('Masi returned a non-list payload; cache left intact.')
+        _required = {'id', 'date', 'scope_key', 'scope_type', 'is_open'}
+        for r in closures:
+            missing = _required - set(r)
+            if missing:
+                _fail(f'Closure row missing keys {sorted(missing)}; cache left intact.')
+        existing = SchoolClosureCache.objects.filter(date__gte=date_from, date__lte=date_to).count()
+        if not closures and existing and not options.get('allow_empty'):
+            _fail(f'Masi returned 0 closures for {date_from}..{date_to} but cache has '
+                  f'{existing}; cache left intact. Use --allow-empty if intentional.')
 
         with transaction.atomic():
             SchoolClosureCache.objects.filter(date__gte=date_from, date__lte=date_to).delete()
@@ -182,13 +229,13 @@ In `api/management/commands/sync_masi_calendar.py`, replace the body of `handle`
 - [ ] **Step 6: Run tests to verify they pass**
 
 Run: `source venv/bin/activate && python manage.py test api.tests_masi_sync_run --settings=config.settings.dev`
-Expected: PASS (2 tests).
+Expected: PASS (4 tests).
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add api/models.py api/migrations/ api/management/commands/sync_masi_calendar.py api/tests_masi_sync_run.py
-git commit -m "Add MasiSyncRun log; record success/failure of Masi calendar sync"
+git commit -m "Add MasiSyncRun log + validate-then-replace guard for Masi calendar sync"
 ```
 
 ---
@@ -421,65 +468,109 @@ git commit -m "Make ghost-group flag calendar-aware (breaks no longer mass-flag)
 ### Task 4: `programme_overview` — session cutoff, on-track target, calendar-aware EA metrics, `closure_calendar_ok`
 
 **Files:**
-- Create: `api/constants_2026.py` (shared `SESSION_INCLUSION_CUTOFF`)
-- Modify: `api/views.py` — session filter (line 606), on-track literal (line 572), EA metrics block (lines 650-651, 661), the `data_health` dict (lines 792-796)
+- Create: `api/constants_2026.py` (shared `SESSION_INCLUSION_CUTOFF`, `CLOSURE_STALE_AFTER_DAYS`), `api/utils/calendar_health.py` (shared health evaluator)
+- Modify: `api/utils/work_days.py` (add `modal_school`), `api/views.py` (session cutoff, on-track target, **weighted_dosage → group-weighted**, EA modal denominators, `closure_calendar_ok`)
 - Test: `api/tests_programme_overview_calendar.py` (new)
 
 **Interfaces:**
-- Consumes: `MasiSyncRun.latest_ok()` (Task 1); `count_work_days(..., program_name=, youth_uid=)`, `youth_uid_for_ea` (work_days.py).
-- Produces: `programme-overview` JSON gains `data_health.closure_calendar_ok` (bool); on-track uses `targets.target_dosage`; EA programme-day denominators are calendar/absence aware.
+- Consumes: `MasiSyncRun` (Task 1); `count_work_days(..., program_name=, youth_uid=)`, `youth_uid_for_ea`, `modal_school` (work_days.py).
+- Produces: `weighted_dosage` is now the group-weighted mean of `GroupSummary2026.avg_sessions_per_week` (kills the school-formula staggered-start bias); `data_health.closure_calendar_ok` (bool) from the shared `calendar_health()`; on-track uses `targets.target_dosage`; EA programme-day denominators are calendar/absence aware with a session-deduped modal school. Shared helpers: `calendar_health(today) -> dict`, `modal_school({session_id: program}) -> str|None`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
 Create `api/tests_programme_overview_calendar.py`:
 ```python
-from datetime import date, datetime, timezone as tz
+from datetime import date, timedelta
 from django.test import TestCase, override_settings
-from api.models import ProgrammeTargets, SchoolSummary2026, MasiSyncRun
+from django.utils import timezone
+from api.models import ProgrammeTargets, SchoolSummary2026, GroupSummary2026, MasiSyncRun
 
 AUTH = {"HTTP_X_INTERNAL_AUTH": "test-secret-123"}
 
 
+def _targets():
+    ProgrammeTargets.objects.create(
+        year=2026, programme_start_date=date(2026, 2, 2),
+        programme_end_date=date(2026, 11, 30), teaching_start_date=date(2026, 3, 9),
+        target_dosage=2.5, target_on_track_pct=80.0, target_flag_resolution_pct=70.0,
+        target_assessment_coverage_pct=95.0, target_mentor_coverage_days=30,
+    )
+
+
+def _ok_sync(**kw):
+    now = timezone.now()
+    d = dict(command="sync_masi_calendar", started_at=now, finished_at=now, ok=True,
+             date_from=date(2026, 1, 1), date_to=date(2026, 12, 31),
+             closures_count=384, absences_count=1340)
+    d.update(kw)
+    return MasiSyncRun.objects.create(**d)
+
+
 @override_settings(INTERNAL_API_SECRET="test-secret-123")
 class ClosureCalendarOkTest(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        ProgrammeTargets.objects.create(
-            year=2026, programme_start_date=date(2026, 2, 2),
-            programme_end_date=date(2026, 11, 30), teaching_start_date=date(2026, 3, 9),
-            target_dosage=2.5, target_on_track_pct=80.0, target_flag_resolution_pct=70.0,
-            target_assessment_coverage_pct=95.0, target_mentor_coverage_days=30,
-        )
+    def setUp(self):
+        _targets()
         SchoolSummary2026.objects.create(school_name="Astra Primary School",
                                          school_type="Primary School", children_count=50)
 
-    def test_calendar_ok_false_when_no_successful_sync(self):
-        resp = self.client.get("/api/programme-overview/?cohort=all", **AUTH)
-        self.assertEqual(resp.status_code, 200)
-        self.assertFalse(resp.json()["data_health"]["closure_calendar_ok"])
+    def _ok(self):
+        return self.client.get("/api/programme-overview/?cohort=all", **AUTH).json()["data_health"]["closure_calendar_ok"]
 
-    def test_calendar_ok_true_with_recent_full_window_sync(self):
-        MasiSyncRun.objects.create(
-            command="sync_masi_calendar", started_at=datetime.now(tz.utc),
-            finished_at=datetime.now(tz.utc), ok=True,
-            date_from=date(2026, 1, 1), date_to=date(2026, 12, 31),
-            closures_count=384, absences_count=1340,
-        )
+    def test_false_when_no_sync(self):
+        self.assertFalse(self._ok())
+
+    def test_true_with_recent_full_window_sync(self):
+        _ok_sync()
+        self.assertTrue(self._ok())
+
+    def test_false_when_latest_attempt_failed_after_success(self):
+        _ok_sync()
+        MasiSyncRun.objects.create(command="sync_masi_calendar", started_at=timezone.now(),
+            finished_at=timezone.now(), ok=False, date_from=date(2026, 1, 1),
+            date_to=date(2026, 12, 31), error="boom")
+        self.assertFalse(self._ok())
+
+    def test_false_when_window_misses_cutoff(self):
+        _ok_sync(date_from=date(2026, 6, 1))  # starts after the 2026-02-23 cutoff
+        self.assertFalse(self._ok())
+
+    def test_false_when_stale(self):
+        _ok_sync(finished_at=timezone.now() - timedelta(days=5))
+        self.assertFalse(self._ok())
+
+
+@override_settings(INTERNAL_API_SECRET="test-secret-123")
+class WeightedDosageGroupWeightedTest(TestCase):
+    def setUp(self):
+        _targets()
+        # School-formula would give a different number; group-weighted mean = 2.25.
+        SchoolSummary2026.objects.create(school_name="Astra Primary School",
+            school_type="Primary School", children_count=50,
+            groups_count=2, avg_sessions_per_group_per_week=1.0)
+        GroupSummary2026.objects.create(school_name="Astra Primary School",
+            program_name="Astra Primary School", class_name="G1", ea_name="EA One",
+            avg_sessions_per_week=1.5)
+        GroupSummary2026.objects.create(school_name="Astra Primary School",
+            program_name="Astra Primary School", class_name="G2", ea_name="EA Two",
+            avg_sessions_per_week=3.0)
+
+    def test_weighted_dosage_is_group_weighted_mean(self):
         resp = self.client.get("/api/programme-overview/?cohort=all", **AUTH)
-        self.assertTrue(resp.json()["data_health"]["closure_calendar_ok"])
+        self.assertEqual(resp.json()["kpis"]["weighted_dosage"], 2.25)
 ```
+> If `GroupSummary2026.objects.create(...)` raises for a missing required field, add it (the error names it) — the model has many defaulted fields; `program_name`, `class_name`, `school_name`, `ea_name`, `avg_sessions_per_week` are the load-bearing ones here.
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `source venv/bin/activate && python manage.py test api.tests_programme_overview_calendar --settings=config.settings.dev`
 Expected: FAIL — `KeyError: 'closure_calendar_ok'`.
 
-- [ ] **Step 3: Add the shared cutoff constant**
+- [ ] **Step 3: Add the shared constant + `modal_school` + `calendar_health` helpers**
 
 Create `api/constants_2026.py`:
 ```python
 """Shared 2026 programme constants (single source of truth for cross-module values)."""
-from datetime import date, timezone as _tz
+from datetime import timezone as _tz
 from datetime import datetime as _dt
 
 # Sessions before this date are training/demos and excluded from all metrics.
@@ -491,17 +582,60 @@ SESSION_INCLUSION_CUTOFF = _dt(2026, 2, 23, tzinfo=_tz.utc)
 CLOSURE_STALE_AFTER_DAYS = 2
 ```
 
-- [ ] **Step 4: Fix the session cutoff, on-track target, and add `closure_calendar_ok`**
+Add `modal_school` to `api/utils/work_days.py` (deterministic so the scatter and its trajectory always pick the same school):
+```python
+def modal_school(session_program_map):
+    """The school an EA logged the most DISTINCT sessions at, given a
+    {session_id: program_name} map. Ties broken alphabetically so the result is
+    stable across endpoints. Returns None for an empty map."""
+    from collections import Counter
+    if not session_program_map:
+        return None
+    counts = Counter(session_program_map.values())
+    return min(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0]
+```
+
+Create `api/utils/calendar_health.py` — the single evaluator both endpoints share, so the Overview badge and the Data Quality tab can never disagree:
+```python
+"""Is the closure calendar healthy as of `today`? Used by programme_overview
+(the badge) and data_quality (the tab). Judges the most recent sync ATTEMPT."""
+from datetime import timedelta
+from django.utils import timezone
+from api.models import MasiSyncRun
+from api.constants_2026 import SESSION_INCLUSION_CUTOFF, CLOSURE_STALE_AFTER_DAYS
+
+
+def calendar_health(today):
+    latest = (MasiSyncRun.objects.filter(command="sync_masi_calendar")
+              .order_by("-started_at").first())
+    last_ok = MasiSyncRun.latest_ok()
+    cutoff_date = SESSION_INCLUSION_CUTOFF.date()
+    fresh = bool(latest and latest.ok and latest.finished_at
+                 and (timezone.now() - latest.finished_at) <= timedelta(days=CLOSURE_STALE_AFTER_DAYS))
+    covers = bool(latest and latest.ok and latest.date_from and latest.date_to
+                  and latest.date_from <= cutoff_date and latest.date_to >= today)
+    ok = bool(latest and latest.ok and fresh and covers)
+    return {
+        "ok": ok,
+        "last_ok_at": last_ok.finished_at.isoformat() if last_ok and last_ok.finished_at else None,
+        "date_from": last_ok.date_from.isoformat() if last_ok and last_ok.date_from else None,
+        "date_to": last_ok.date_to.isoformat() if last_ok and last_ok.date_to else None,
+        "closures_count": last_ok.closures_count if last_ok else 0,
+        "latest_attempt_failed": bool(latest and not latest.ok),
+    }
+```
+
+- [ ] **Step 4: Session cutoff, group-weighted dosage, on-track target, `closure_calendar_ok`**
 
 In `api/views.py`:
 
 Add to the imports near line 17:
 ```python
-from api.constants_2026 import SESSION_INCLUSION_CUTOFF, CLOSURE_STALE_AFTER_DAYS
-from api.models import MasiSyncRun
+from api.constants_2026 import SESSION_INCLUSION_CUTOFF
+from api.utils.calendar_health import calendar_health
 ```
 
-Line 606 — change the EA session filter start:
+**(a) Session cutoff.** Line 606 — change the EA session filter start:
 ```python
         .filter(session_started_at__gte=start_date)
 ```
@@ -510,7 +644,27 @@ to:
         .filter(session_started_at__gte=SESSION_INCLUSION_CUTOFF)
 ```
 
-Line 572 — change the on-track literal to the configured target:
+**(b) Group-weighted dosage.** The current school-formula weighted dosage (lines 556-558) has a staggered-start bias (it divides late-starting groups by the whole school's window). Replace lines 556-558:
+```python
+    # --- Weighted dosage (from school-level data, which uses per-school first_session_date) ---
+    total_weighted = sum(s.avg_sessions_per_group_per_week * s.groups_count for s in schools)
+    weighted_dosage = round(total_weighted / max(total_groups, 1), 2)
+```
+with a comment placeholder (the real computation moves below, after `groups_qs` exists):
+```python
+    # weighted_dosage is computed below from GroupSummary2026 (group-weighted) --
+    # see just after groups_qs is finalized.
+```
+Then, immediately after `groups_qs` is finalized (right after line 570 `groups_qs = [g for g in groups_qs if not is_excluded_program(g.program_name)]`, before the `on_track =` line), insert:
+```python
+    # Group-weighted dosage: mean of each group's own calendar-scoped dosage.
+    # This is the one shared dosage implementation; the school formula is not used
+    # for the headline anymore (it understated staggered-start schools).
+    _group_dosages = [g.avg_sessions_per_week for g in groups_qs]
+    weighted_dosage = round(sum(_group_dosages) / max(len(_group_dosages), 1), 2)
+```
+
+**(c) On-track targets.** Line 572 (now shifted down by the insert) — change the on-track literal:
 ```python
     on_track = sum(1 for g in groups_qs if g.avg_sessions_per_week >= 2.5)
 ```
@@ -518,8 +672,7 @@ to:
 ```python
     on_track = sum(1 for g in groups_qs if g.avg_sessions_per_week >= targets.target_dosage)
 ```
-
-Line 661 — change the EA on-track literal likewise:
+And the EA on-track literal (line 661):
 ```python
         sum(1 for r in sessions_per_day_worked_values if r >= 2.5) / max(total_active_eas, 1) * 100, 1
 ```
@@ -528,18 +681,10 @@ to:
         sum(1 for r in sessions_per_day_worked_values if r >= targets.target_dosage) / max(total_active_eas, 1) * 100, 1
 ```
 
-Immediately before the `return JsonResponse({` at line 745, add the health computation:
+**(d) `closure_calendar_ok`.** Immediately before the `return JsonResponse({` at line 745, add:
 ```python
-    _last_ok = MasiSyncRun.latest_ok()
-    closure_calendar_ok = bool(
-        _last_ok
-        and _last_ok.finished_at is not None
-        and (timezone.now() - _last_ok.finished_at).days <= CLOSURE_STALE_AFTER_DAYS
-        and _last_ok.date_from is not None and _last_ok.date_to is not None
-        and _last_ok.date_from <= today <= _last_ok.date_to
-    )
+    closure_calendar_ok = calendar_health(today)["ok"]
 ```
-
 In the `"data_health"` dict (lines 792-796) add the field:
 ```python
         "data_health": {
@@ -552,7 +697,7 @@ In the `"data_health"` dict (lines 792-796) add the field:
 
 - [ ] **Step 5: Make EA programme-day denominators calendar/absence aware**
 
-First extend the existing `ea_data` aggregation. In `api/views.py` (~lines 622-633) it currently reads:
+`sessions_2026` is attendance-grain (multiple rows per `session_id`), so the modal school must be counted over **distinct sessions**, not raw rows. Extend the `ea_data` aggregation. In `api/views.py` (~lines 622-633) it currently reads:
 ```python
     ea_data = defaultdict(lambda: {'session_ids': set(), 'dates': set()})
     for row in ea_sessions_qs:
@@ -564,9 +709,10 @@ First extend the existing `ea_data` aggregation. In `api/views.py` (~lines 622-6
         ea_data[ea_key]['session_ids'].add(row['session_id'])
         ea_data[ea_key]['dates'].add(row['session_started_at'].date())
 ```
-Change it to also retain each EA's schools and name:
+Change it to keep a `{session_id: program_name}` map (deduping by session) and the name:
 ```python
-    ea_data = defaultdict(lambda: {'session_ids': set(), 'dates': set(), 'programs': [], 'user_name': None})
+    ea_data = defaultdict(lambda: {'session_ids': set(), 'dates': set(),
+                                   'session_school': {}, 'user_name': None})
     for row in ea_sessions_qs:
         eid = row.get('user_id')
         ename = row.get('user_name')
@@ -575,7 +721,7 @@ Change it to also retain each EA's schools and name:
         ea_key = eid if eid is not None else f"name:{ename}"
         ea_data[ea_key]['session_ids'].add(row['session_id'])
         ea_data[ea_key]['dates'].add(row['session_started_at'].date())
-        ea_data[ea_key]['programs'].append(row['program_name'])
+        ea_data[ea_key]['session_school'][row['session_id']] = row['program_name']
         ea_data[ea_key]['user_name'] = ename
 ```
 Then in the metrics loop change lines 650-651:
@@ -586,29 +732,29 @@ Then in the metrics loop change lines 650-651:
 to:
 ```python
         first_date = min(stats['dates'])
-        # EA's modal school resolves their school-type break; youth_uid subtracts their absences.
-        modal_school = max(set(stats['programs']), key=stats['programs'].count) if stats['programs'] else None
+        # Modal school (over distinct sessions, deterministic) resolves the EA's
+        # school-type break; youth_uid subtracts their personal absences.
         work_days = count_work_days(
             first_date, today,
-            program_name=modal_school,
+            program_name=modal_school(stats['session_school']),
             youth_uid=youth_uid_for_ea(stats['user_name']),
         )
 ```
-Extend the resolver import near line 17 to include `youth_uid_for_ea`:
+Extend the resolver import near line 17 to include `youth_uid_for_ea` and `modal_school`:
 ```python
-from .utils.work_days import count_work_days, closed_dates, youth_uid_for_ea
+from .utils.work_days import count_work_days, closed_dates, youth_uid_for_ea, modal_school
 ```
 
 - [ ] **Step 6: Run tests to verify they pass**
 
 Run: `source venv/bin/activate && python manage.py test api.tests_programme_overview_calendar --settings=config.settings.dev`
-Expected: PASS (2 tests). Also run the existing overview test to confirm no regression: `python manage.py test api.tests_ea_roster --settings=config.settings.dev`.
+Expected: PASS (6 tests). Also run the existing overview test to confirm no regression: `python manage.py test api.tests_ea_roster --settings=config.settings.dev`.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add api/constants_2026.py api/views.py api/tests_programme_overview_calendar.py
-git commit -m "programme_overview: 2026-02-23 cutoff, target_dosage on-track, calendar-aware EA metrics, closure_calendar_ok"
+git add api/constants_2026.py api/utils/calendar_health.py api/utils/work_days.py api/views.py api/tests_programme_overview_calendar.py
+git commit -m "programme_overview: group-weighted dosage, 2026-02-23 cutoff, target_dosage, calendar-aware EA metrics, closure_calendar_ok"
 ```
 
 ---
@@ -632,11 +778,19 @@ Create `api/tests_ea_performance_calendar.py`:
 from datetime import date, datetime, timezone as tz
 from django.test import TestCase, override_settings
 from api.models import (
-    ProgrammeTargets, TeampactSession2026, SchoolClosureCache,
-    SchoolIdentity2026, GroupAlignmentSnapshot2026,
+    ProgrammeTargets, TeampactSession2026, SchoolClosureCache, StaffAbsenceCache,
+    SchoolIdentity2026, YouthIdentity2026, GroupAlignmentSnapshot2026,
 )
 
 AUTH = {"HTTP_X_INTERNAL_AUTH": "test-secret-123"}
+
+
+def _targets():
+    ProgrammeTargets.objects.create(
+        year=2026, programme_start_date=date(2026, 2, 2),
+        programme_end_date=date(2026, 11, 30), teaching_start_date=date(2026, 3, 9),
+        target_dosage=2.5, target_on_track_pct=80.0, target_flag_resolution_pct=70.0,
+        target_assessment_coverage_pct=95.0, target_mentor_coverage_days=30)
 
 
 def _session(sid, day, school="Astra Primary School", group="G1", user="EA One", uid=1):
@@ -647,42 +801,53 @@ def _session(sid, day, school="Astra Primary School", group="G1", user="EA One",
 
 
 @override_settings(INTERNAL_API_SECRET="test-secret-123")
-class EAPerformanceCalendarTest(TestCase):
+class EAScatterHistoryParityTest(TestCase):
     @classmethod
     def setUpTestData(cls):
-        ProgrammeTargets.objects.create(
-            year=2026, programme_start_date=date(2026, 2, 2),
-            programme_end_date=date(2026, 11, 30), teaching_start_date=date(2026, 3, 9),
-            target_dosage=2.5, target_on_track_pct=80.0, target_flag_resolution_pct=70.0,
-            target_assessment_coverage_pct=95.0, target_mentor_coverage_days=30,
-        )
+        _targets()
         SchoolIdentity2026.objects.create(program_name="Astra Primary School", school_uid="SCH-A",
                                           canonical_type="primary", suburb="A")
         for d in [date(2026, 3, 9), date(2026, 3, 10), date(2026, 3, 11), date(2026, 3, 12), date(2026, 3, 13)]:
             SchoolClosureCache.objects.create(masi_id=hash(str(d)) % 100000, date=d,
                 scope_key="type:primary", scope_type="type", canonical_type="primary", is_open=False)
         _session(1, date(2026, 3, 2)); _session(2, date(2026, 3, 3)); _session(3, date(2026, 3, 4))
-        # Anchor ea_performance's "today" to 2026-03-20 via the latest snapshot.
+        # Anchor both endpoints' end date to 2026-03-20 via the latest snapshot.
         GroupAlignmentSnapshot2026.objects.create(
             snapshot_date=date(2026, 3, 20), program_name="Astra Primary School",
-            class_name="G1", ea_name="EA One",
-        )
+            class_name="G1", ea_name="EA One")
 
     def test_scatter_x_excludes_type_scoped_closure(self):
         # weekdays 03-02..03-20 = 15; minus 5 type:primary closed = 10 work-days.
         # 3 sessions / 10 = 0.3  (was 3/15 = 0.2 without program_name)
-        resp = self.client.get("/api/ea-performance/?cohort=all", **AUTH)
-        self.assertEqual(resp.status_code, 200)
-        eas = {e["ea_name"]: e for e in resp.json()["eas"]}
-        self.assertIn("EA One", eas)
+        eas = {e["ea_name"]: e for e in self.client.get("/api/ea-performance/?cohort=all", **AUTH).json()["eas"]}
         self.assertEqual(eas["EA One"]["sessions_per_programme_day"], 0.3)
 
-    def test_history_endpoint_ok(self):
-        # Smoke: the trajectory endpoint responds; its denominator uses the same
-        # modal-school + absence resolution as the scatter (parity by construction).
-        resp = self.client.get("/api/ea-performance-history/?cohort=all", **AUTH)
-        self.assertEqual(resp.status_code, 200)
+    def test_history_last_point_equals_scatter(self):
+        # Parity: the trajectory's final x at the anchor date must equal the scatter x.
+        eas = {e["ea_name"]: e for e in self.client.get("/api/ea-performance-history/?cohort=all", **AUTH).json()["eas"]}
+        self.assertEqual(eas["EA One"]["trajectory"][-1]["x"], 0.3)
+
+
+@override_settings(INTERNAL_API_SECRET="test-secret-123")
+class EAScatterAbsenceTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        _targets()
+        SchoolIdentity2026.objects.create(program_name="Astra Primary School", school_uid="SCH-A",
+                                          canonical_type="primary", suburb="A")
+        YouthIdentity2026.objects.create(ea_name="EA One", youth_uid="YTH-1")
+        StaffAbsenceCache.objects.create(masi_id=1, youth_uid="YTH-1", date=date(2026, 3, 5))
+        _session(1, date(2026, 3, 2)); _session(2, date(2026, 3, 3)); _session(3, date(2026, 3, 4))
+        GroupAlignmentSnapshot2026.objects.create(
+            snapshot_date=date(2026, 3, 20), program_name="Astra Primary School",
+            class_name="G1", ea_name="EA One")
+
+    def test_scatter_x_excludes_personal_absence(self):
+        # 15 weekdays - 0 closures - 1 absence (03-05) = 14 work-days; 3/14 = 0.21
+        eas = {e["ea_name"]: e for e in self.client.get("/api/ea-performance/?cohort=all", **AUTH).json()["eas"]}
+        self.assertEqual(eas["EA One"]["sessions_per_programme_day"], 0.21)
 ```
+> If `YouthIdentity2026`/`StaffAbsenceCache.objects.create(...)` raises for a missing required field, add it (the error names it). The load-bearing fields are `ea_name`+`youth_uid` (identity) and `youth_uid`+`date` (absence).
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -695,6 +860,10 @@ Expected: FAIL — `test_scatter_x_excludes_type_scoped_closure` asserts 0.3 but
 ```python
     start_date = SESSION_INCLUSION_CUTOFF
 ```
+The scatter's `ea_session_data` build (~lines 1476-1490) currently keeps only attendance-weighted `school_counts`. Add a session-deduped `{session_id: program}` map. Change the defaultdict factory to include `'session_school': {}`, and inside the row loop add:
+```python
+        ea_session_data[ea_key]['session_school'][row['session_id']] = row['program_name']
+```
 `api/views.py:1570-1575` — the block currently reads:
 ```python
             work_days = count_work_days(first_date, end_date)
@@ -704,18 +873,15 @@ Expected: FAIL — `test_scatter_x_excludes_type_scoped_closure` asserts 0.3 but
                 key=session_info['school_counts'].get
             ) if session_info['school_counts'] else ''
 ```
-Reorder so `school` is known before the denominator, and pass it plus the EA's absences:
+Use the shared deterministic modal school (over distinct sessions) plus the EA's absences:
 ```python
-            school = max(
-                session_info['school_counts'],
-                key=session_info['school_counts'].get
-            ) if session_info['school_counts'] else ''
             work_days = count_work_days(
                 first_date, end_date,
-                program_name=school or None,
+                program_name=modal_school(session_info['session_school']),
                 youth_uid=youth_uid_for_ea(ea_name),
             )
             sessions_per_programme_day = round(total_sessions / max(work_days, 1), 2)
+            school = modal_school(session_info['session_school']) or ''
 ```
 
 - [ ] **Step 4: Fix `ea_performance_history` (trajectory) cutoff + denominator**
@@ -724,10 +890,9 @@ Reorder so `school` is known before the denominator, and pass it plus the EA's a
 ```python
         start_date = SESSION_INCLUSION_CUTOFF
 ```
-In the per-EA loop, just after `for ea_name in sorted(all_ea_names):` and `sess_list = ea_sessions.get(ea_name, [])` (~line 1808), derive the EA's modal school (the 3rd element of each `(date, sid, program_name)` tuple) and youth_uid once:
+In the per-EA loop, just after `for ea_name in sorted(all_ea_names):` and `sess_list = ea_sessions.get(ea_name, [])` (~line 1808), derive the same deterministic modal school (deduped by session id — `sess_list` entries are `(date, session_id, program_name)`) and youth_uid once:
 ```python
-        _programs = [t[2] for t in sess_list]
-        modal_program = max(set(_programs), key=_programs.count) if _programs else None
+        _modal = modal_school({sid: prog for _, sid, prog in sess_list})
         _youth_uid = youth_uid_for_ea(ea_name)
 ```
 `api/views.py:1826` — change:
@@ -736,13 +901,14 @@ In the per-EA loop, just after `for ea_name in sorted(all_ea_names):` and `sess_
 ```
 to:
 ```python
-                work_days = count_work_days(first_date, d, program_name=modal_program, youth_uid=_youth_uid)
+                work_days = count_work_days(first_date, d, program_name=_modal, youth_uid=_youth_uid)
 ```
+> This makes the trajectory use the same whole-period modal school + absences as the scatter, so the final trajectory x equals the scatter x (the parity test). Per-date modal (so a mid-year school transfer doesn't retro-change older points) is a deferred refinement — see Deferred.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `source venv/bin/activate && python manage.py test api.tests_ea_performance_calendar --settings=config.settings.dev`
-Expected: PASS (2 tests).
+Expected: PASS (3 tests).
 
 - [ ] **Step 6: Commit**
 
@@ -761,7 +927,7 @@ git commit -m "Scope EA scatter + trajectory denominators to closures + absences
 
 **Interfaces:**
 - Consumes: `SESSION_INCLUSION_CUTOFF`, `closed_dates`, `MasiSyncRun.latest_ok()`, `SchoolIdentity2026`, `TeampactSession2026`, `exclude_excluded_programs`.
-- Produces: `GET /api/data-quality/` → JSON `{ closure_calendar: {ok, last_ok_at, date_from, date_to, closures_count}, unmapped_schools: [name...], silent_schools: [{school, last_session_date, expected_open_days}] }`. Constant `SILENCE_THRESHOLD_DAYS = 10`.
+- Produces: `GET /api/data-quality/` → JSON `{ closure_calendar: calendar_health(today), unmapped_schools: [name...], silent_schools: [{school, last_session_date, expected_open_days}] }` — `closure_calendar` is the shared evaluator's dict `{ok, last_ok_at, date_from, date_to, closures_count, latest_attempt_failed}`. Constant `SILENCE_THRESHOLD_DAYS = 10`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -868,21 +1034,14 @@ def data_quality(request):
     unmapped = sorted(n for n in active_names if n not in mapped)
     silent.sort(key=lambda s: -s["expected_open_days"])
 
-    last_ok = MasiSyncRun.latest_ok()
     return JsonResponse({
-        "closure_calendar": {
-            "ok": bool(last_ok and last_ok.date_from and last_ok.date_to
-                       and last_ok.date_from <= today <= last_ok.date_to),
-            "last_ok_at": last_ok.finished_at.isoformat() if last_ok and last_ok.finished_at else None,
-            "date_from": last_ok.date_from.isoformat() if last_ok and last_ok.date_from else None,
-            "date_to": last_ok.date_to.isoformat() if last_ok and last_ok.date_to else None,
-            "closures_count": last_ok.closures_count if last_ok else 0,
-        },
+        # Same evaluator the Overview badge uses, so the two never disagree.
+        "closure_calendar": calendar_health(today),
         "unmapped_schools": unmapped,
         "silent_schools": silent,
     })
 ```
-Note: `programme_overview` carries only `@csrf_exempt`; `X-Internal-Auth` is enforced globally by middleware, so `data_quality` needs no extra guard. `exclude_excluded_programs`, `closed_dates`, `SESSION_INCLUSION_CUTOFF`, `MasiSyncRun`, and `SchoolIdentity2026` are all already imported/available in `views.py` after Task 4.
+Note: `programme_overview` carries only `@csrf_exempt`; `X-Internal-Auth` is enforced globally by middleware, so `data_quality` needs no extra guard. `exclude_excluded_programs`, `closed_dates`, `SESSION_INCLUSION_CUTOFF`, `calendar_health`, and `SchoolIdentity2026` are all imported/available in `views.py` after Task 4. (`calendar_health` is imported there in Task 4 Step 4.)
 
 - [ ] **Step 4: Add the route**
 
@@ -975,16 +1134,28 @@ In `EMPTY_PROGRAMME_OVERVIEW` (lines 465-469), add `closure_calendar_ok: false,`
   )}
 ```
 
-- [ ] **Step 4: Verify build**
+- [ ] **Step 4: Make the frontend `recomputeKPIs` weighted dosage group-weighted**
+
+`app/pm/page.tsx` recomputes `weightedDosage` from school rows for cohort filtering (lines ~40-47), which reproduces the school-formula staggered-start bias the Django change (Task 4) just removed. It already derives `filteredGroups` (used for on-track). Change the weighted-dosage computation to the group-weighted mean, matching Django:
+```tsx
+  const weightedDosage =
+    filteredGroups !== null && filteredGroups.length > 0
+      ? filteredGroups.reduce((sum, g) => sum + g.avg_sessions_per_week, 0) /
+        filteredGroups.length
+      : baseKPIs.weighted_dosage;
+```
+(Replace the existing `totalGroups`/`weightedDosage` block. `totalGroups` may still be used elsewhere in `recomputeKPIs` — keep its declaration if so; only the dosage computation changes. `filteredGroups` and `g.avg_sessions_per_week` are the same values the on-track recompute already uses.)
+
+- [ ] **Step 5: Verify build**
 
 Run: `npm run build`
 Expected: compiles with no type errors (the new required `closure_calendar_ok` field is satisfied by the transform + fallback).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add lib/pm/types.ts lib/pm/api.ts components/pm/layout/programme-context-bar.tsx
-git commit -m "Surface closure_calendar_ok as a linking staleness badge on the PM overview"
+git add lib/pm/types.ts lib/pm/api.ts components/pm/layout/programme-context-bar.tsx app/pm/page.tsx
+git commit -m "Group-weighted dosage in recomputeKPIs; closure-stale linking badge on PM overview"
 ```
 
 ---
@@ -1001,14 +1172,14 @@ git commit -m "Surface closure_calendar_ok as a linking staleness badge on the P
 - Consumes: `GET /api/data-quality/` (Task 6); `djangoFetch`.
 - Produces: `getDataQuality()` → `{ data: DataQuality, isLive }`.
 
-- [ ] **Step 1: Write the failing e2e test**
+- [ ] **Step 1: Write the middleware-coverage e2e test (supplemental)**
 
-Create `e2e/pm-data-quality.spec.ts` (mirrors `e2e/my-kids-auth.spec.ts:50-74`):
+Create `e2e/pm-data-quality.spec.ts` (mirrors `e2e/my-kids-auth.spec.ts:50-74`). **Note:** `middleware.ts` protects `/pm(.*)` *before* route resolution, so this redirect happens whether or not the page exists — it verifies middleware coverage, NOT that the page renders. Page render is checked by build + manual smoke below (the e2e harness has no signed-in-session support, so an authenticated render test is deferred — see Deferred).
 ```tsx
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { test, expect } from "@playwright/test";
 
-test.describe("/pm/data-quality auth", () => {
+test.describe("/pm/data-quality auth (middleware coverage)", () => {
   test("unauthenticated visit redirects to login with redirect_url preserved", async ({ page }) => {
     await setupClerkTestingToken({ page });
     await page.goto("/pm/data-quality");
@@ -1019,10 +1190,10 @@ test.describe("/pm/data-quality auth", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run the e2e test**
 
 Run: `npx playwright test e2e/pm-data-quality.spec.ts`
-Expected: FAIL — `/pm/data-quality` 404s (route not created), so no redirect to `/login`.
+Expected: PASS (middleware protects the prefix). This is the supplemental check; the load-bearing page-render verification is Step 6 (build + manual smoke).
 
 - [ ] **Step 3: Add types + fetcher**
 
@@ -1040,6 +1211,7 @@ export interface DataQuality {
     date_from: string | null;
     date_to: string | null;
     closures_count: number;
+    latest_attempt_failed?: boolean;
   };
   unmapped_schools: string[];
   silent_schools: SilentSchool[];
@@ -1163,10 +1335,9 @@ export default async function DataQualityPage() {
   { name: "Data Quality", href: "/pm/data-quality", icon: ShieldAlert },
 ```
 
-- [ ] **Step 6: Run the e2e test + build**
+- [ ] **Step 6: Build + manual render smoke (load-bearing page check)**
 
-Run: `npm run build` (expect clean) then `npx playwright test e2e/pm-data-quality.spec.ts`
-Expected: PASS (redirect to `/login` with the preserved `redirect_url`).
+Run: `npm run build` — expect clean (proves the new route + page compile with no type errors). Then start the dev server and, signed in as a PM-role user, open `/pm/data-quality` and confirm: the three sections render, the calendar-health line reflects the Django `closure_calendar` payload, and (against prod-like data) the 2 known unmapped schools and any silent schools appear. Also confirm the middleware-coverage e2e still passes: `npx playwright test e2e/pm-data-quality.spec.ts`.
 
 - [ ] **Step 7: Commit**
 
@@ -1209,6 +1380,8 @@ git commit -m "Docs: correct sessions_this_week/month labels and dosage denomina
 ## Deferred (explicitly out of scope — the last 5%)
 
 - **Task 9 — `/pm/schools/[name]` per-EA programme-day denominator.** Retire the stale frontend `SCHOOL_HOLIDAYS_2026`/`TEACHING_START_DATE` by exposing calendar-aware `programme_work_days` on the Django `groups-2026` payload (`views.groups_2026_summary`) and consuming it in `lib/schools-2026/enrich.ts`. Drill-down only; needs a Django endpoint change. (Overview + EA scatter are already correct.)
+- **Per-date modal school for the EA trajectory.** Task 5 uses one whole-period modal school for all trajectory points (required for scatter parity). If an EA transfers schools mid-year, older points use the later school's calendar. A per-date modal (from sessions on-or-before each date) would fix this but breaks the simple scatter-parity invariant; revisit if multi-school EAs prove common.
+- **Authenticated-render E2E for `/pm/data-quality`.** The e2e harness has no signed-in-session support (all specs are unauthenticated redirect checks). Building a PM-role signed-in fixture (test-user creds + session) would let an E2E assert the page actually renders content, not just that middleware redirects.
 - Interval-exact closure semantics (a closure explains only the dates it covers) and failure-to-resume timers for the unexplained-silence signal.
 - A labelled validation study (confusion matrix of break vs abandonment vs outage) and threshold sensitivity analysis for `SILENCE_THRESHOLD_DAYS`.
 - Consolidating the 4 duplicated `PROGRAMME_START_DATE` copies into `api/constants_2026.py` (this plan only fixes the live-endpoint cutoff; the nightly already uses 2026-02-23).
@@ -1217,7 +1390,7 @@ git commit -m "Docs: correct sessions_this_week/month labels and dosage denomina
 
 ## Verification (production, after deploy)
 
-1. On the Django branch, run the computes against a prod-like DB (or verify post-deploy nightly): confirm cohort-filtered weighted dosage lands **~2.1** (not ~1.1, not the clamped ~2.4), on-track-groups rises in step, and the active-flag count drops as break-driven ghost flags clear.
+1. On the Django branch, run the computes against a prod-like DB (or verify post-deploy nightly): confirm cohort-filtered weighted dosage lands **~2.1** (group-weighted; verified in analysis as calendar-only school-formula = 1.75, group-weighted = 2.12 — this plan ships the group-weighted number). Confirm it is *not* ~1.1 (current) and *not* a clamped-up value; on-track-groups rises in step; the active-flag count drops as break-driven ghost flags clear.
 2. Confirm `/pm` shows no "Calendar stale" badge once a `MasiSyncRun` `ok` row exists (it does — synced 2026-07-20), despite `masi_updated_at` being weeks old.
 3. Confirm `/pm/data-quality` lists the 2 known unmapped schools (`Malukhanye ECD`, `Witterkleibosch`) until identities are added, and lists any school silent >10 expected-open days with no closure.
 4. Confirm a school that stopped mid-programme still reads **low** dosage (no clamp masking).
