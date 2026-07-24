@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Mail, Phone, MapPin, Facebook, Twitter, Linkedin } from "lucide-react";
+import { Mail, MapPin } from "lucide-react";
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
@@ -24,7 +24,7 @@ export default function Footer() {
               <div className="flex items-start">
                 <Mail className="h-5 w-5 mr-3 mt-0.5 flex-shrink-0" />
                 <a
-                  href="mailto:zama@masinyusane.org"
+                  href="mailto:joy@bindingconstraintslab.org"
                   className="hover:text-white transition-colors"
                 >
                   joy@bindingconstraintslab.org
@@ -65,6 +65,30 @@ export default function Footer() {
                   Data Portal
                 </a>
               </li>
+              <li>
+                <Link
+                  href="/support"
+                  className="hover:text-white transition-colors"
+                >
+                  App Support
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/privacy"
+                  className="hover:text-white transition-colors"
+                >
+                  Privacy
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/terms"
+                  className="hover:text-white transition-colors"
+                >
+                  Terms
+                </Link>
+              </li>
             </ul>
 
             {/* Social Media Links */}
@@ -75,7 +99,11 @@ export default function Footer() {
         {/* Copyright */}
         <div className="border-t border-gray-800 mt-8 pt-8 text-center text-sm">
           <p>
-            © {currentYear} Zazi iZandi. All rights reserved. | Website by AI5 Labs.
+            © {currentYear} Zazi iZandi. All rights reserved.
+            <span className="mx-2" aria-hidden="true">
+              |
+            </span>
+            Website by AI5 Labs.
           </p>
         </div>
       </div>
