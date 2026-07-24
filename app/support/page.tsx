@@ -48,8 +48,8 @@ export default function SupportPage() {
             />
             <div>
               <p className="font-bold text-slate-950">Email app support</p>
-              <a href="mailto:info@zaziizandi.org">
-                info@zaziizandi.org
+              <a href="mailto:zama@masinyusane.org">
+                zama@masinyusane.org
               </a>
             </div>
           </div>
@@ -233,7 +233,7 @@ export default function SupportPage() {
           The <Link href="/privacy">Zazi iZandi Privacy Notice</Link> explains
           what information the app processes and how to request access,
           correction, objection, or deletion. Privacy requests can be sent to{" "}
-          <a href="mailto:info@masinyusane.org">info@masinyusane.org</a>.
+          <a href="mailto:zama@masinyusane.org">zama@masinyusane.org</a>.
         </p>
         <p>
           The rules for authorised app use are in the{" "}

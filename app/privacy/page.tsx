@@ -45,12 +45,17 @@ export default function PrivacyPage() {
           iZandi literacy programme.
         </p>
         <p>
-          Masinyusane is the contact point for personal information processed
-          through the app. Zazi iZandi is delivered with programme partners and
-          participating schools. Where another organisation determines why and
-          how information is processed for a particular activity, that
-          organisation may also have responsibilities under the Protection of
-          Personal Information Act 4 of 2013 (POPIA).
+          For personal information processing that Masinyusane determines
+          through the app, Masinyusane is the responsible party under the
+          Protection of Personal Information Act 4 of 2013 (POPIA) and the
+          primary privacy contact.
+        </p>
+        <p>
+          Zazi iZandi is delivered with programme partners and participating
+          schools. A school or programme partner may be an independent or joint
+          responsible party when it determines why and how information is
+          processed for its own or a shared activity. We will direct a request
+          to the appropriate organisation where necessary.
         </p>
       </InformationSection>
 
@@ -328,12 +333,14 @@ export default function PrivacyPage() {
         <p>
           To request access, correction, deletion, objection, or another
           privacy review, email{" "}
-          <a href="mailto:info@masinyusane.org">info@masinyusane.org</a>. Do not
+          <a href="mailto:zama@masinyusane.org">zama@masinyusane.org</a>. Do not
           include a password or unnecessary learner information in the first
           message. We may need to verify identity and authority before acting.
         </p>
         <address className="not-italic">
           <strong>Masinyusane Development Organisation</strong>
+          <br />
+          Contact: Zama Zulu
           <br />
           NPO 074-244
           <br />

@@ -13,7 +13,7 @@ export function NotLinkedState() {
         Please contact your programme manager.
       </p>
       <a
-        href="mailto:info@zaziizandi.org"
+        href="mailto:zama@masinyusane.org"
         className="inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
       >
         Contact team

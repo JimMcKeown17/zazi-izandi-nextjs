@@ -24,10 +24,10 @@ export default function Footer() {
               <div className="flex items-start">
                 <Mail className="h-5 w-5 mr-3 mt-0.5 flex-shrink-0" />
                 <a
-                  href="mailto:joy@bindingconstraintslab.org"
+                  href="mailto:zama@masinyusane.org"
                   className="hover:text-white transition-colors"
                 >
-                  joy@bindingconstraintslab.org
+                  zama@masinyusane.org
                 </a>
               </div>
 

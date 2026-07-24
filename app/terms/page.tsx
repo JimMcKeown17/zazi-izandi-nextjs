@@ -262,7 +262,7 @@ export default function TermsPage() {
           For account access, incorrect records, suspected data exposure,
           device loss, or app support, visit the{" "}
           <Link href="/support">App Support page</Link> or email{" "}
-          <a href="mailto:info@zaziizandi.org">info@zaziizandi.org</a>.
+          <a href="mailto:zama@masinyusane.org">zama@masinyusane.org</a>.
         </p>
         <p>
           Include the app version and build number shown in Profile. Never send
@@ -272,6 +272,8 @@ export default function TermsPage() {
         </p>
         <address className="not-italic">
           <strong>Masinyusane Development Organisation</strong>
+          <br />
+          Contact: Zama Zulu
           <br />
           NPO 074-244
           <br />
