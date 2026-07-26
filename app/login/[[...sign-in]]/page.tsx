@@ -17,7 +17,7 @@ export default function LoginPage() {
       <p className="mt-6 text-sm text-gray-500">
         Need access?{" "}
         <a
-          href="mailto:info@zaziizandi.org"
+          href="mailto:info@masinyusane.org"
           className="text-primary hover:underline"
         >
           Contact the team
