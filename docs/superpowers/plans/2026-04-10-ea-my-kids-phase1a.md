@@ -494,7 +494,7 @@ export function NotLinkedState() {
         Please contact your programme manager.
       </p>
       <a
-        href="mailto:info@zaziizandi.org"
+        href="mailto:info@masinyusane.org"
         className="inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
       >
         Contact team
@@ -507,7 +507,7 @@ export function NotLinkedState() {
 **Copy notes:**
 
 - The heading and paragraph together are the exact copy from design spec § 7: *"Your account isn't linked to your teaching profile yet. Please contact your programme manager."* — split at the period so the state is the heading and the action is the body. No added or softened phrasing.
-- The contact link (`info@zaziizandi.org`) mirrors the one on `/login` so EAs have a consistent escalation path.
+- The contact link (`info@masinyusane.org`) mirrors the one on `/login` so EAs have a consistent escalation path.
 - `mailto:` is used because EAs read this on mobile and we want one-tap contact — a form would be more friction.
 
 - [ ] **Step 2: Type-check**
