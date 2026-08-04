@@ -5,7 +5,7 @@ import {
   PublicInformationPage,
 } from "@/components/layout/public-information-page";
 
-const LAST_UPDATED = "24 July 2026";
+const LAST_UPDATED = "3 August 2026";
 
 export const metadata: Metadata = {
   title: "App Privacy Notice | Zazi iZandi",
@@ -152,6 +152,20 @@ export default function PrivacyPage() {
           returns.
         </p>
 
+        <h3>Crash and error diagnostics</h3>
+        <p>
+          To keep the app stable and secure, the app uses Sentry to capture
+          crash reports, error events, and release-health information (such as
+          whether app sessions are crash-free). A diagnostic report can include
+          the app version, device and operating-system details, a technical
+          description of the error, and a breadcrumb trail of recent in-app
+          events leading up to it. So that we can locate and fix a fault for the
+          right user, a report may be linked to the signed-in staff
+          member&apos;s account identifier, role, and assigned school. We aim to
+          keep learner personal information out of diagnostic reports, and we do
+          not use this data for advertising or tracking.
+        </p>
+
         <h3>Technical support and website usage</h3>
         <p>
           The app keeps short-lived technical logs on the device for support.
@@ -227,7 +241,11 @@ export default function PrivacyPage() {
             services;
           </li>
           <li>
-            by Expo for app updates and push-notification delivery; and
+            by Expo for app updates and push-notification delivery;
+          </li>
+          <li>
+            by Sentry for crash, error, and release-health diagnostics used to
+            keep the app stable and secure; and
           </li>
           <li>
             by Apple, Google, and other approved providers where needed to
