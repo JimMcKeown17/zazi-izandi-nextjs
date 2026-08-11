@@ -36,12 +36,29 @@ worktree's implementation and evidence boundaries.
   domains, and environment; deploy Django first; deploy the frontend; prove a
   cookie-free login redirect and an authorized live success response.
 - [ ] Slice 2: Clock In/Out reporting and CSV.
+  - [x] Frontend contract and local UI: shift-level rows, bounded date/current-
+    school filters, reconciled summaries, open and automatic-clock-out states,
+    responsive table/cards, sanitized error state, and capability-restricted
+    same-origin CSV download.
+  - [ ] Upstream and live proof: implement/verify the service-role Supabase
+    reporting function and CSV query, Clerk-authorized Django endpoints, hosted
+    integration, populated browser semantics, and deployment.
+- [ ] User onboarding and health board.
+  - [x] Frontend contract and local UI: searchable UUID/name/email identity,
+    auth readiness and last-sign-in evidence, positive device registration,
+    seeded/self-setup data expectations, app activity, attention reasons, and
+    responsive row/card presentation.
+  - [ ] Upstream and live proof: implement and privilege-test the domain
+    aggregation, join it to auth-account evidence in Django, verify real
+    self-setup and seeded cohorts, and deploy.
 - [ ] Slice 3: Session CSV exports.
 - [ ] Slice 4: Add-school workflow and audit trail.
 - [ ] Slice 5: Add-user invite workflow and public set-password page.
 
-## Explicitly outside Slice 1
+## Explicitly outside the completed frontend work
 
-Attendance, CSV exports, school/user writes, and the public invite page remain
+Session CSV exports, school/user writes, and the public invite page remain
 unimplemented. Disabled sidebar labels are discovery-only and do not link to
-placeholder write or export routes.
+placeholder write routes. Actual app-store/download telemetry is also not
+available: a push-token registration is useful positive device evidence, but
+its absence cannot prove that the app was never installed.

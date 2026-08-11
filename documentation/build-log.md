@@ -1,5 +1,43 @@
 # Zazi iZandi Website Build Log
 
+## 2026-08-11 — Clock In/Out and user-health frontends implemented locally
+
+- Added a protected shift-level Clock In/Out report with 1–90 day and current-
+  school filters, reconciled open/completed/automatic totals, human-readable
+  durations, desktop/mobile results, and an explicit current-roster attribution
+  disclosure. Legitimate multiple shifts per EA/day remain separate records.
+- Added a same-origin CSV route which rechecks `mobile.csv.export`, accepts only
+  fixed bounded filters and a `text/csv` upstream response, and keeps Django,
+  Clerk, and internal-service credentials server-side. Coordinate-bearing CSV
+  is limited to senior staff, admin, and ZZ data manager; junior staff retain
+  read-only clock-report access.
+- Added a least-privilege User health board for senior staff, admin, and ZZ data
+  manager. It exposes UUID/name/email, auth readiness and last sign-in, positive
+  push-device evidence, seeded/self-setup data readiness, clock/session/app-
+  created assessment activity, and explicit attention reasons. Imported
+  TeamPact assessments are shown as data evidence and excluded from usage.
+- Preserved the evidence boundary: download/install is not directly observable;
+  no push token means unknown, and server-side ownership counts do not prove
+  what a physical signed-in device renders.
+- Local gates passed: 27/27 focused mobile contract tests, standalone
+  TypeScript, focused ESLint, and a Next.js 16 production build emitting
+  dynamic attendance, CSV-export, and user-health routes. Expected build-only
+  warnings came from existing static/PM pages calling the deliberately invalid
+  placeholder Django URL.
+- Repository-wide `npm run lint` remains non-green on the pre-existing
+  `react/no-unescaped-entities` error in `app/pm/data-quality/page.tsx`; the
+  changed TypeScript, React, and Playwright file set has no lint errors.
+- Fixture-backed browser QA passed at 1440px and 390px for both new reports.
+  User search reduced the healthboard to the matching UUID/name/email row. A
+  discovered mobile offscreen-render/accessibility defect was fixed by removing
+  `content-visibility`; all preview-only auth bypass and fixture route code was
+  removed before the production gates.
+- The 24-test Clerk route matrix is registered but all 24 cases were explicitly
+  skipped because this worktree has no Clerk keys or role identities. Django
+  endpoints, Supabase functions/ACL proof, a real cross-source response,
+  authenticated populated browser proof, deployment, and live semantics remain
+  unverified dependencies—not frontend claims.
+
 ## 2026-08-11 — Mobile sessions report deployed and verified in production
 
 - Published exact reporting SHA `c1cb9ec` as a three-commit fast-forward of
