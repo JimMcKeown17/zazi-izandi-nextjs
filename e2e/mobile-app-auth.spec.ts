@@ -51,8 +51,11 @@ test.describe("Mobile app route authorization", () => {
 
       if (roleCase.allowed) {
         await expect(
-          page.getByRole("heading", { name: "Sessions" })
+          page.getByTestId("mobile-sessions-report-success")
         ).toBeVisible();
+        await expect(
+          page.getByTestId("mobile-sessions-report-error")
+        ).toHaveCount(0);
       } else {
         await page.waitForURL(/\/login\?error=insufficient_role/);
         expect(page.url()).toContain("error=insufficient_role");

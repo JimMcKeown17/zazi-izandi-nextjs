@@ -8,12 +8,10 @@ import {
   buildSessionsActivityRequest,
   type MobileSessionsActivityFilters,
 } from "./request";
-import { mobileSessionsActivitySchema } from "./schema";
-import type { MobileSessionsActivityResponse } from "./types";
-
-export type MobileSessionsActivityResult =
-  | { ok: true; data: MobileSessionsActivityResponse }
-  | { ok: false; status: number; message: string };
+import {
+  decodeMobileSessionsActivityResponse,
+  type MobileSessionsActivityResult,
+} from "./response";
 
 export async function getMobileSessionsActivity(
   filters: MobileSessionsActivityFilters
@@ -37,29 +35,5 @@ export async function getMobileSessionsActivity(
 
   if (response.status === 401) redirect("/login?error=session_expired");
   if (response.status === 403) redirect("/login?error=insufficient_role");
-  if (!response.ok) {
-    return {
-      ok: false,
-      status: response.status,
-      message:
-        response.status === 400
-          ? "The selected report filters are invalid."
-          : "The mobile-app report service could not return session data.",
-    };
-  }
-
-  const parsed = mobileSessionsActivitySchema.safeParse(await response.json());
-  if (!parsed.success) {
-    console.error(
-      "[mobile/api] Django returned an invalid sessions report contract:",
-      parsed.error.issues.map(({ path, message }) => ({ path, message }))
-    );
-    return {
-      ok: false,
-      status: 502,
-      message: "The mobile-app report returned an unexpected data format.",
-    };
-  }
-
-  return { ok: true, data: parsed.data };
+  return decodeMobileSessionsActivityResponse(response);
 }

@@ -10,6 +10,33 @@ export interface SchoolTypeDisplay {
   kind: "ecd" | "primary" | "other" | "unknown";
 }
 
+export interface EmploymentStatusDisplay {
+  label: string;
+  kind: "active" | "inactive" | "resigned" | "other" | "unknown";
+}
+
+export function getEmploymentStatusDisplay(
+  employmentStatus: string | null | undefined
+): EmploymentStatusDisplay | null {
+  if (employmentStatus === undefined) return null;
+  if (employmentStatus === null) {
+    return { label: "Status unknown", kind: "unknown" };
+  }
+
+  const trimmed = employmentStatus.trim();
+  const normalized = trimmed.toLowerCase();
+  if (!normalized) return { label: "Status unknown", kind: "unknown" };
+  if (normalized === "active") return { label: "Active", kind: "active" };
+  if (normalized === "inactive") {
+    return { label: "Inactive", kind: "inactive" };
+  }
+  if (normalized === "resigned") {
+    return { label: "Resigned", kind: "resigned" };
+  }
+
+  return { label: trimmed, kind: "other" };
+}
+
 export function getSchoolTypeDisplay(
   schoolType: string | null
 ): SchoolTypeDisplay {
@@ -32,6 +59,7 @@ export function toHeatmapDisplayRows(
     row_id: row.user_id,
     ea_name: row.ea_name,
     school: row.current_school,
+    employment_status: row.employment_status,
     cells: row.cells,
     total_sessions: row.total_sessions,
   }));

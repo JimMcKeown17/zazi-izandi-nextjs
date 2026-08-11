@@ -15,6 +15,7 @@ export interface SessionHeatmapDisplayRow {
   row_id: string;
   ea_name: string;
   school: string;
+  employment_status: string | null;
   cells: number[];
   total_sessions: number;
 }

@@ -2,10 +2,27 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getEmploymentStatusDisplay,
   getSchoolTypeDisplay,
   shouldShowOtherTrend,
   toHeatmapDisplayRows,
 } from "./presentation";
+
+test("mobile employment status labels distinguish inactive, resigned, and missing roster status", () => {
+  assert.deepEqual(getEmploymentStatusDisplay("inactive"), {
+    label: "Inactive",
+    kind: "inactive",
+  });
+  assert.deepEqual(getEmploymentStatusDisplay("resigned"), {
+    label: "Resigned",
+    kind: "resigned",
+  });
+  assert.deepEqual(getEmploymentStatusDisplay(null), {
+    label: "Status unknown",
+    kind: "unknown",
+  });
+  assert.equal(getEmploymentStatusDisplay(undefined), null);
+});
 
 test("mobile heatmap rows retain the Supabase actor UUID as their render identity", () => {
   const rows = toHeatmapDisplayRows([
@@ -28,6 +45,7 @@ test("mobile heatmap rows retain the Supabase actor UUID as their render identit
       row_id: "3eb26195-c9b4-41a2-a01d-3b341a28177e",
       ea_name: "Asemahle Mancayi",
       school: "Charles Duna Primary",
+      employment_status: "active",
       cells: [0, 2, 1],
       total_sessions: 3,
     },

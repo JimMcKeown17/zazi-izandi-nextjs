@@ -1,5 +1,46 @@
 # Zazi iZandi Website Build Log
 
+## 2026-08-10 — Slice 1 independent-review corrections
+
+Closed the material frontend findings from the independent cross-repository
+review without changing the Django/Supabase contracts.
+
+### Corrections
+
+- Preserved `employment_status` through the UUID display adapter and added
+  explicit Active, Inactive, Resigned, and Status unknown badges to mobile
+  heatmap rows. Existing PM rows omit the optional property and retain their
+  previous rendering.
+- Extracted a response-decoding boundary backed by one complete valid frozen
+  payload fixture. Upstream HTTP failures plus 2xx empty, malformed, or
+  schema-invalid JSON now return the sanitized report-unavailable result rather
+  than throwing through the server component.
+- Added mutually exclusive success/error report landmarks. Allowed-role
+  Playwright cases now require the success landmark and absence of the error
+  landmark instead of accepting the shared Sessions heading.
+
+### Evidence
+
+- Focused RED/GREEN captured the dropped employment status, missing status-label
+  behavior, upstream response accepted as success, JSON parse exception, and
+  schema-invalid payload accepted as success.
+- `npm run test:mobile`: 11 tests passed.
+- `npx tsc --noEmit`: passed.
+- Focused ESLint over every correction file: passed.
+- Production build with clearly fake, build-only Clerk/Django values: passed;
+  `/mobile-app` and `/mobile-app/sessions` remain dynamic routes. Expected
+  handled warnings came from existing static PM pages calling the intentionally
+  unreachable placeholder Django URL.
+- Playwright listed all eight authorization cases, then explicitly skipped all
+  eight because Clerk keys and role identities are absent from this worktree.
+
+### Evidence boundary
+
+The response decoder and rendering contracts are locally proven. Credentialed
+Clerk behavior, a successful Django/Supabase report response in the browser,
+responsive visual inspection with real data, deployment, and live behavior
+remain unverified.
+
 ## 2026-08-10 — Mobile-app admin reporting, Slice 1 frontend
 
 Implemented the first vertical frontend slice on

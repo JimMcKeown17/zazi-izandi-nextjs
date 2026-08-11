@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { getEmploymentStatusDisplay } from "@/lib/mobile/presentation";
 
 export interface SessionHeatmapRow {
   row_id?: string;
   ea_name: string;
   school: string;
+  employment_status?: string | null;
   cells: number[];
   total_sessions?: number;
 }
@@ -106,13 +108,34 @@ export function EAHeatmap({
                 const total =
                   ea.total_sessions ?? ea.cells.reduce((a, b) => a + b, 0);
                 const reversedCells = [...ea.cells].reverse();
+                const employmentStatus = getEmploymentStatusDisplay(
+                  ea.employment_status
+                );
+                const employmentStatusClass =
+                  employmentStatus?.kind === "active"
+                    ? "bg-green-50 text-green-700"
+                    : employmentStatus?.kind === "inactive"
+                      ? "bg-amber-50 text-amber-700"
+                      : employmentStatus?.kind === "resigned"
+                        ? "bg-slate-200 text-slate-700"
+                        : "bg-red-50 text-red-700";
                 return (
                   <tr
                     key={ea.row_id ?? `${ea.ea_name}:${ea.school}`}
                     className="border-t border-slate-50"
                   >
-                    <td className="py-1 pr-2 font-medium text-slate-800 truncate max-w-[140px]">
-                      {ea.ea_name}
+                    <td className="max-w-[140px] py-1 pr-2 text-slate-800">
+                      <span className="block truncate font-medium">
+                        {ea.ea_name}
+                      </span>
+                      {employmentStatus ? (
+                        <span
+                          aria-label={`Employment status: ${employmentStatus.label}`}
+                          className={`mt-0.5 inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${employmentStatusClass}`}
+                        >
+                          {employmentStatus.label}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="py-1 pr-2 text-slate-500 truncate max-w-[120px]">
                       {ea.school}

@@ -14,7 +14,11 @@ worktree's implementation and evidence boundaries.
   shell, and Sessions report.
 - [x] Slice 1 report fidelity: UUID row identity, stable unfiltered school
   options, explicit current-school wording, null/unknown school-type handling,
-  explicit Other/unattributed trend series, and full-window heatmap totals.
+  explicit Other/unattributed trend series, full-window heatmap totals, and
+  visible employment status for mobile rows with inactive/resigned activity.
+- [x] Slice 1 review hardening: complete frozen-payload fixture, sanitized
+  handling for upstream/empty/malformed/schema-invalid responses, and
+  success-only versus error-only browser landmarks.
 - [x] Slice 1 local static gates: focused contracts, TypeScript, focused lint,
   and production build with non-secret build-only configuration.
 - [ ] Slice 1 integration gate: exercise the Next.js server against the paired

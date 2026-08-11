@@ -36,7 +36,10 @@ export default async function MobileSessionsPage({
 
   if (!result.ok) {
     return (
-      <div className="mx-auto max-w-7xl space-y-4">
+      <div
+        data-testid="mobile-sessions-report-error"
+        className="mx-auto max-w-7xl space-y-4"
+      >
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Sessions</h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -61,7 +64,10 @@ export default async function MobileSessionsPage({
   );
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4">
+    <div
+      data-testid="mobile-sessions-report-success"
+      className="mx-auto max-w-7xl space-y-4"
+    >
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
           Mobile app reporting
