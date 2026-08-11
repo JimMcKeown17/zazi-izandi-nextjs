@@ -547,10 +547,6 @@ export async function getEAPerformanceHistory(
   cohort = "all",
   timeoutMs = 2_000
 ): Promise<EAPerformanceHistoryResult> {
-  if (timeoutMs <= 0) {
-    return { data: EMPTY_EA_PERFORMANCE_HISTORY, isLive: false };
-  }
-
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {

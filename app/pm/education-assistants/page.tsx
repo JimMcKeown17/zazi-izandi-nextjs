@@ -15,12 +15,10 @@ export default async function EducationAssistantsPage({
   const params = await searchParams;
   const cohort = parseCohort(params.cohort as string | undefined);
   const cohortLabel = getCohortLabel(cohort);
-  const simulateHistoryUnavailable =
-    params.simulate_history_unavailable === "1";
 
   const [currentResult, historyResult] = await Promise.all([
     getEAPerformance(cohort),
-    getEAPerformanceHistory(cohort, simulateHistoryUnavailable ? 0 : 2_000),
+    getEAPerformanceHistory(cohort),
   ]);
   const { data, isLive } = currentResult;
   const { data: history, isLive: historyIsLive } = historyResult;
