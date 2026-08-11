@@ -20,6 +20,9 @@ All pages follow the same pattern: `<Header /> <main className="pt-20"> ... </ma
 | `/login` | `app/login/[[...sign-in]]/page.tsx` | Clerk sign-in page (catch-all for Clerk routing) | Public | Client |
 | `/mobile-app` | `app/mobile-app/page.tsx` | Mobile-app reporting entry point; redirects to Sessions | Protected: junior staff, senior staff, admin, ZZ data manager | Dynamic |
 | `/mobile-app/sessions` | `app/mobile-app/sessions/page.tsx` | Current-roster school views of app-uploaded teaching sessions | Protected: `mobile.sessions.read` | Dynamic, uncached Django API |
+| `/mobile-app/attendance` | `app/mobile-app/attendance/page.tsx` | Shift-level Clock In/Out activity, open/automatic-clock-out evidence, duration totals, and current-roster school filters | Protected: `mobile.time_entries.read` | Dynamic, uncached Django API |
+| `/mobile-app/user-health` | `app/mobile-app/user-health/page.tsx` | Row-level onboarding and operational-health evidence for youth identity, login, device signal, expected data, and app activity | Protected: `mobile.user_health.read` | Dynamic, uncached Django API |
+| `/mobile-app/exports/time-entries` | `app/mobile-app/exports/[kind]/route.ts` | Same-origin CSV download proxy for filtered clock entries, including restricted operational coordinates | Protected: `mobile.csv.export` | Dynamic, uncached Django API |
 
 ## Protected Routes
 
@@ -39,3 +42,15 @@ capability check server-side before fetching or rendering report data.
   session token and the internal service secret to Django with `cache: no-store`.
   Django is the authorization and reporting middle layer; the browser never
   receives either credential.
+- **`/mobile-app/attendance`**: Uses the same server-only boundary for
+  `/api/mobile/time-entries/`. Each result row represents one source shift, not
+  one collapsed EA/day, so legitimate split shifts remain visible.
+- **`/mobile-app/user-health`**: Uses `/api/mobile/user-health/`. The response
+  contract reconciles auth readiness/sign-in evidence with app-device signals,
+  seeded-versus-self-setup data expectations, and clock/session/app-created
+  assessment activity. Next.js validates the joined envelope but does not join
+  those authorities itself.
+- **`/mobile-app/exports/time-entries`**: Re-authenticates the caller and checks
+  `mobile.csv.export`, then forwards only bounded `days` and UUID `school_id`
+  filters to `/api/mobile/exports/time-entries/`. It accepts only a successful
+  `text/csv` response and never exposes the Django URL or internal secret.

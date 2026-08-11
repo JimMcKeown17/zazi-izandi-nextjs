@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   CalendarDays,
   Clock3,
+  HeartPulse,
   LayoutDashboard,
   School,
   Users,
@@ -38,7 +39,13 @@ const NAV_ITEMS: NavItem[] = [
     name: "Clock In/Out",
     href: "/mobile-app/attendance",
     icon: Clock3,
-    enabled: false,
+    enabled: true,
+  },
+  {
+    name: "User health",
+    href: "/mobile-app/user-health",
+    icon: HeartPulse,
+    enabled: true,
   },
   {
     name: "Schools",
@@ -61,13 +68,25 @@ function isActive(pathname: string, item: NavItem): boolean {
 
 export function MobileSidebar({
   canReadSessions,
+  canReadTimeEntries,
+  canReadUserHealth,
 }: {
   canReadSessions: boolean;
+  canReadTimeEntries: boolean;
+  canReadUserHealth: boolean;
 }) {
   const pathname = usePathname();
-  if (!canReadSessions) return null;
+  if (!canReadSessions && !canReadTimeEntries && !canReadUserHealth) return null;
 
-  const enabledItems = NAV_ITEMS.filter((item) => item.enabled);
+  const canOpenItem = (item: NavItem): boolean => {
+    if (!item.enabled) return false;
+    if (item.href === "/mobile-app/sessions") return canReadSessions;
+    if (item.href === "/mobile-app/attendance") return canReadTimeEntries;
+    if (item.href === "/mobile-app/user-health") return canReadUserHealth;
+    return canReadSessions;
+  };
+
+  const enabledItems = NAV_ITEMS.filter(canOpenItem);
 
   return (
     <>
@@ -84,7 +103,8 @@ export function MobileSidebar({
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
-            if (!item.enabled) {
+            if (!canOpenItem(item)) {
+              if (item.enabled) return null;
               return (
                 <span
                   key={item.href}
