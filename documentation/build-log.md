@@ -1,5 +1,33 @@
 # Zazi iZandi Website Build Log
 
+## 2026-08-11 — Backend reporting dependency activated and frontend branch published
+
+- The exact Supabase sessions-reporting migration is now live on the pinned ZZ
+  project with PostgreSQL 17 catalog/effective-role proof, exact stored-SQL
+  checksum evidence, anonymous and unauthenticated PostgREST denial, and a
+  validated service-role response.
+- Aggregate hosted response evidence contains 30 daily cells, 10 heatmap
+  weekdays, 160 rostered EAs, 327 school options, 60 school summaries, six
+  distribution buckets, and zero reported sessions. The empty activity set
+  means representative populated rendering and live metric semantics remain
+  open gates.
+- Pushed clean branch `feat/mobile-app-admin-reporting-phase1` at `e879637` and
+  opened draft GitHub PR `#4`. It is exactly two commits ahead of current
+  GitHub `main`. No merge or Vercel deployment occurred.
+- Jim's separate `design/programme-scoped-closures` checkout remains untouched.
+  A whole-branch merge would surface two unrelated pre-existing support-email
+  conflicts, so reporting activation must continue in a clean release worktree
+  and keep that design branch separate unless both workstreams are deliberately
+  combined.
+- The available Vercel dashboard session is signed out and the saved Vercel CLI
+  token is invalid. The repository does not version its Vercel project link,
+  production branch, automatic-deploy setting, or hosted environment values;
+  those settings remain unverified. Django must be integrated, configured, and
+  deployed before Next.js.
+- The eight Clerk role tests remain registered but unexecuted because the seven
+  test-user identities are not configured locally. No deployed role, responsive
+  browser, or end-to-end Next.js → Django → Supabase claim is made.
+
 ## 2026-08-10 — Slice 1 independent-review corrections
 
 Closed the material frontend findings from the independent cross-repository

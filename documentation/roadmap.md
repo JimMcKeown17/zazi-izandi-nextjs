@@ -1,6 +1,6 @@
 # Zazi iZandi Website Roadmap
 
-_Updated: 2026-08-10_
+_Updated: 2026-08-11_
 
 This tracker records the website work for the approved mobile-app admin
 reporting plan. The detailed cross-repository contract remains in the mobile
@@ -21,13 +21,17 @@ worktree's implementation and evidence boundaries.
   success-only versus error-only browser landmarks.
 - [x] Slice 1 local static gates: focused contracts, TypeScript, focused lint,
   and production build with non-secret build-only configuration.
+- [x] Slice 1 hosted database dependency: apply the exact reporting RPC and
+  verify PostgreSQL 17 structure/effective ACLs, anonymous denial, and
+  service-role response shape on the pinned ZZ project.
 - [ ] Slice 1 integration gate: exercise the Next.js server against the paired
   Django endpoint and reporting RPC with representative data.
 - [ ] Slice 1 browser-auth gate: run the Clerk Playwright role matrix with all
   configured test identities and inspect desktop/mobile responsive rendering.
 - [ ] Slice 1 deployment/live gate: configure the deployed environment and
-  verify the report with authorized live test users. No deploy is part of the
-  current local implementation.
+  verify the report with authorized live test users. First authenticate the
+  Vercel dashboard, confirm its project/production branch/auto-deploy behavior,
+  and deploy the configured Django boundary before deploying this frontend.
 - [ ] Slice 2: Clock In/Out reporting and CSV.
 - [ ] Slice 3: Session CSV exports.
 - [ ] Slice 4: Add-school workflow and audit trail.
