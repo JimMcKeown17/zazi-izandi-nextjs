@@ -1,5 +1,5 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./test";
 
 test.describe("/pm/data-quality auth (middleware coverage)", () => {
   test("unauthenticated visit redirects to login with redirect_url preserved", async ({ page }) => {

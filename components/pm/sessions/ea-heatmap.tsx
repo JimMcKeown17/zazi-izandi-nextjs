@@ -1,11 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import type { EAHeatmapRow } from "@/lib/pm/types";
+
+export interface SessionHeatmapRow {
+  row_id?: string;
+  ea_name: string;
+  school: string;
+  cells: number[];
+  total_sessions?: number;
+}
 
 interface Props {
   dates: string[];
-  eas: EAHeatmapRow[];
+  eas: SessionHeatmapRow[];
+  schoolColumnLabel?: string;
+  subtitle?: string;
 }
 
 function cellColor(count: number): string {
@@ -29,7 +38,12 @@ function formatDate(dateStr: string): string {
   return date.toLocaleDateString("en-ZA", { weekday: "short", day: "numeric" });
 }
 
-export function EAHeatmap({ dates, eas }: Props) {
+export function EAHeatmap({
+  dates,
+  eas,
+  schoolColumnLabel = "School",
+  subtitle = "Sessions per day — last 10 weekdays",
+}: Props) {
   const [search, setSearch] = useState("");
 
   // Reverse dates so most recent is on the left
@@ -45,8 +59,8 @@ export function EAHeatmap({ dates, eas }: Props) {
 
   // Sort by total sessions descending
   const filtered = [...searchFiltered].sort((a, b) => {
-    const totalA = a.cells.reduce((s, c) => s + c, 0);
-    const totalB = b.cells.reduce((s, c) => s + c, 0);
+    const totalA = a.total_sessions ?? a.cells.reduce((s, c) => s + c, 0);
+    const totalB = b.total_sessions ?? b.cells.reduce((s, c) => s + c, 0);
     return totalB - totalA;
   });
 
@@ -55,7 +69,7 @@ export function EAHeatmap({ dates, eas }: Props) {
       <div className="flex items-center justify-between mb-3">
         <div>
           <p className="text-sm font-semibold text-slate-800">EA Activity Heatmap</p>
-          <p className="text-xs text-slate-500">Sessions per day — last 10 weekdays</p>
+          <p className="text-xs text-slate-500">{subtitle}</p>
         </div>
         <input
           type="text"
@@ -76,7 +90,9 @@ export function EAHeatmap({ dates, eas }: Props) {
             <thead>
               <tr className="text-slate-500">
                 <th className="text-left py-1 pr-2 font-medium min-w-[140px]">EA</th>
-                <th className="text-left py-1 pr-2 font-medium min-w-[120px]">School</th>
+                <th className="text-left py-1 pr-2 font-medium min-w-[120px]">
+                  {schoolColumnLabel}
+                </th>
                 {reversedDates.map((d) => (
                   <th key={d} className="text-center py-1 px-1 font-medium min-w-[40px]">
                     {formatDate(d)}
@@ -87,10 +103,14 @@ export function EAHeatmap({ dates, eas }: Props) {
             </thead>
             <tbody>
               {filtered.map((ea) => {
-                const total = ea.cells.reduce((a, b) => a + b, 0);
+                const total =
+                  ea.total_sessions ?? ea.cells.reduce((a, b) => a + b, 0);
                 const reversedCells = [...ea.cells].reverse();
                 return (
-                  <tr key={ea.ea_name} className="border-t border-slate-50">
+                  <tr
+                    key={ea.row_id ?? `${ea.ea_name}:${ea.school}`}
+                    className="border-t border-slate-50"
+                  >
                     <td className="py-1 pr-2 font-medium text-slate-800 truncate max-w-[140px]">
                       {ea.ea_name}
                     </td>

@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:mobile": "tsx --test lib/mobile/*.test.ts",
     "seed:eas": "tsx scripts/seed-clerk-eas.ts"
   },
   "dependencies": {

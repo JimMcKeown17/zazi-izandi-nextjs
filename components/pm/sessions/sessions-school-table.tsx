@@ -1,10 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import type { SessionSchoolSummary } from "@/lib/pm/types";
+import { getSchoolTypeDisplay } from "@/lib/mobile/presentation";
+
+export interface SessionSchoolTableRow {
+  row_id?: string;
+  school_name: string;
+  school_type: string | null;
+  total_sessions: number;
+  sessions_this_week: number;
+  active_eas: number;
+  active_days: number;
+  avg_sessions_per_day_per_ea: number;
+}
 
 interface Props {
-  schools: SessionSchoolSummary[];
+  schools: SessionSchoolTableRow[];
+  title?: string;
+  subtitle?: string;
+  schoolColumnLabel?: string;
+  activeEasLabel?: string;
 }
 
 type SortKey = "school_name" | "total_sessions" | "sessions_this_week" | "active_eas" | "avg_sessions_per_day_per_ea";
@@ -14,7 +29,13 @@ function SortIndicator({ active, sortAsc }: { active: boolean; sortAsc: boolean 
   return <span className="ml-0.5">{sortAsc ? "↑" : "↓"}</span>;
 }
 
-export function SessionsSchoolTable({ schools }: Props) {
+export function SessionsSchoolTable({
+  schools,
+  title = "School Session Summary",
+  subtitle = `${schools.length} schools`,
+  schoolColumnLabel = "School",
+  activeEasLabel = "Active EAs",
+}: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("total_sessions");
   const [sortAsc, setSortAsc] = useState(false);
   const [search, setSearch] = useState("");
@@ -46,8 +67,8 @@ export function SessionsSchoolTable({ schools }: Props) {
     <div className="bg-white rounded-lg shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
         <div>
-          <p className="text-sm font-semibold text-slate-800">School Session Summary</p>
-          <p className="text-xs text-slate-500">{schools.length} schools</p>
+          <p className="text-sm font-semibold text-slate-800">{title}</p>
+          <p className="text-xs text-slate-500">{subtitle}</p>
         </div>
         <input
           type="text"
@@ -66,14 +87,16 @@ export function SessionsSchoolTable({ schools }: Props) {
                 className="text-left py-2 cursor-pointer select-none"
                 onClick={() => toggleSort("school_name")}
               >
-                School <SortIndicator active={sortKey === "school_name"} sortAsc={sortAsc} />
+                {schoolColumnLabel}{" "}
+                <SortIndicator active={sortKey === "school_name"} sortAsc={sortAsc} />
               </th>
               <th className="text-center py-2">Type</th>
               <th
                 className="text-right py-2 cursor-pointer select-none"
                 onClick={() => toggleSort("active_eas")}
               >
-                Active EAs <SortIndicator active={sortKey === "active_eas"} sortAsc={sortAsc} />
+                {activeEasLabel}{" "}
+                <SortIndicator active={sortKey === "active_eas"} sortAsc={sortAsc} />
               </th>
               <th
                 className="text-right py-2 cursor-pointer select-none"
@@ -96,18 +119,26 @@ export function SessionsSchoolTable({ schools }: Props) {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((s) => (
-              <tr key={s.school_name} className="border-t border-slate-50 hover:bg-slate-50">
+            {sorted.map((s) => {
+              const schoolType = getSchoolTypeDisplay(s.school_type);
+              const schoolTypeClass =
+                schoolType.kind === "ecd"
+                  ? "bg-purple-50 text-purple-600"
+                  : schoolType.kind === "primary"
+                    ? "bg-blue-50 text-blue-600"
+                    : "bg-slate-100 text-slate-600";
+
+              return (
+              <tr
+                key={s.row_id ?? s.school_name}
+                className="border-t border-slate-50 hover:bg-slate-50"
+              >
                 <td className="py-1.5 font-medium text-slate-800">{s.school_name}</td>
                 <td className="py-1.5 text-center">
                   <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                      s.school_type === "ECD"
-                        ? "bg-purple-50 text-purple-600"
-                        : "bg-blue-50 text-blue-600"
-                    }`}
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${schoolTypeClass}`}
                   >
-                    {s.school_type === "ECD" ? "ECD" : "Primary"}
+                    {schoolType.label}
                   </span>
                 </td>
                 <td className="py-1.5 text-right text-slate-600">{s.active_eas}</td>
@@ -129,7 +160,8 @@ export function SessionsSchoolTable({ schools }: Props) {
                   </span>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

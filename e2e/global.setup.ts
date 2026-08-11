@@ -1,6 +1,8 @@
 import { clerkSetup } from "@clerk/testing/playwright";
-import { FullConfig } from "@playwright/test";
+import { test as setup } from "@playwright/test";
 
-export default async function globalSetup(_config: FullConfig) {
+setup.describe.configure({ mode: "serial" });
+
+setup("configure Clerk testing token", async () => {
   await clerkSetup();
-}
+});
