@@ -4,6 +4,25 @@ import test from "node:test";
 import { getEAPerformanceHistory } from "./api";
 
 
+test("EA history can be forced unavailable without issuing a request", async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCalls = 0;
+  globalThis.fetch = (() => {
+    fetchCalls += 1;
+    throw new Error("fetch must not run for a zero history budget");
+  }) as typeof fetch;
+
+  try {
+    const result = await getEAPerformanceHistory("treatment", 0);
+    assert.equal(result.isLive, false);
+    assert.deepEqual(result.data.eas, []);
+    assert.equal(fetchCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
 test("EA history fetch aborts at its budget and degrades to unavailable", async () => {
   const originalFetch = globalThis.fetch;
   const originalError = console.error;
