@@ -12,9 +12,14 @@ import {
 } from "recharts";
 import type { SessionTimeSeriesPoint } from "@/lib/pm/types";
 import { CHART_COLORS } from "@/lib/pm/constants";
+import { shouldShowOtherTrend } from "@/lib/mobile/presentation";
+
+type SessionTrendPoint = SessionTimeSeriesPoint & { other?: number };
 
 interface Props {
-  data: SessionTimeSeriesPoint[];
+  data: SessionTrendPoint[];
+  subtitle?: string;
+  otherLabel?: string;
 }
 
 function formatDate(dateStr: string): string {
@@ -23,17 +28,22 @@ function formatDate(dateStr: string): string {
   return date.toLocaleDateString("en-ZA", { day: "numeric", month: "short" });
 }
 
-export function SessionsTrendChart({ data }: Props) {
+export function SessionsTrendChart({
+  data,
+  subtitle = "Sessions per day by school type",
+  otherLabel = "Other",
+}: Props) {
   const formatted = data.map((pt) => ({
     ...pt,
     label: formatDate(pt.date),
   }));
+  const showOther = shouldShowOtherTrend(data);
 
   return (
     <div className="bg-white rounded-lg shadow-sm p-4">
       <div className="mb-3">
         <p className="text-sm font-semibold text-slate-800">Daily Session Trend</p>
-        <p className="text-xs text-slate-500">Sessions per day by school type</p>
+        <p className="text-xs text-slate-500">{subtitle}</p>
       </div>
 
       {data.length === 0 ? (
@@ -74,6 +84,17 @@ export function SessionsTrendChart({ data }: Props) {
               dot={false}
               activeDot={{ r: 4 }}
             />
+            {showOther ? (
+              <Line
+                type="monotone"
+                dataKey="other"
+                name={otherLabel}
+                stroke={CHART_COLORS.other}
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4 }}
+              />
+            ) : null}
             <Line
               type="monotone"
               dataKey="ecd"

@@ -66,6 +66,7 @@ export const CHART_COLORS = {
   primary: "#2c5aa0",
   primaryLight: "#60a5fa",
   ecd: "#8b5cf6",
+  other: "#64748b",
   total: "#22c55e",
   grid: "#e2e8f0",
   text: "#64748b",

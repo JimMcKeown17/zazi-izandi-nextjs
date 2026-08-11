@@ -1,7 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-
-type Role = "ea" | "teacher" | "funder" | "junior_staff" | "senior_staff" | "admin";
+import type { Role } from "@/lib/mobile/capabilities";
 
 export default async function AfterLoginPage() {
   const { userId, sessionClaims } = await auth();
@@ -18,6 +17,10 @@ export default async function AfterLoginPage() {
 
   if (role === "ea") {
     redirect("/my-kids/today");
+  }
+
+  if (role === "zz_data_manager") {
+    redirect("/mobile-app");
   }
 
   redirect("/");

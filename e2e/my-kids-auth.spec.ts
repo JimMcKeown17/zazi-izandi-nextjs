@@ -1,5 +1,5 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./test";
 
 test.describe("/my-kids auth", () => {
   test("unauthenticated users are redirected to /login with redirect_url preserved", async ({

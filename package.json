@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:unit": "node --import tsx --test lib/pm/*.test.ts",
+    "test:mobile": "tsx --test lib/mobile/*.test.ts",
     "seed:eas": "tsx scripts/seed-clerk-eas.ts"
   },
   "dependencies": {

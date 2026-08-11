@@ -1,5 +1,5 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./test";
 
 test.describe("Public pages", () => {
   test("home page loads for guests", async ({ page }) => {

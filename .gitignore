@@ -50,3 +50,6 @@ next-env.d.ts
 
 # Seed-script output reports
 scripts/seed-reports/
+
+# clerk configuration (can include secrets)
+/.clerk/

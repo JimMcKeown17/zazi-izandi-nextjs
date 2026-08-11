@@ -16,6 +16,7 @@ import {
   FolderOpen,
   MapPin,
   CalendarDays,
+  Smartphone,
 } from "lucide-react";
 import { useAuth, useUser, UserButton } from "@clerk/nextjs";
 import {
@@ -26,11 +27,9 @@ import {
   NavigationMenuList,
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu";
+import { hasCapability, type Role } from "@/lib/mobile/capabilities";
 
-// Mirrors middleware.ts role union
-type Role = "ea" | "teacher" | "funder" | "junior_staff" | "senior_staff" | "admin";
-
-const ROLE_LEVELS: Record<Role, number> = {
+const ROLE_LEVELS: Partial<Record<Role, number>> = {
   ea: 0,
   teacher: 1,
   funder: 1,
@@ -41,7 +40,13 @@ const ROLE_LEVELS: Record<Role, number> = {
 
 function hasAccess(userRole: Role | undefined, minRole: Role): boolean {
   if (!userRole) return false;
-  return (ROLE_LEVELS[userRole] ?? 0) >= ROLE_LEVELS[minRole];
+  const userLevel = ROLE_LEVELS[userRole];
+  const minimumLevel = ROLE_LEVELS[minRole];
+  return (
+    userLevel !== undefined &&
+    minimumLevel !== undefined &&
+    userLevel >= minimumLevel
+  );
 }
 
 interface NavItem {
@@ -147,6 +152,7 @@ export default function Header() {
   const { user } = useUser();
 
   const userRole = user?.publicMetadata?.role as Role | undefined;
+  const canViewMobileApp = hasCapability(userRole, "mobile.sessions.read");
 
   const visibleGroups = NAV_GROUPS.filter((group) => {
     if (!group.minRole) return true;
@@ -259,6 +265,20 @@ export default function Header() {
             </Link>
           )}
 
+          {isSignedIn && canViewMobileApp && (
+            <Link
+              href="/mobile-app"
+              className={`ml-1 flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                pathname.startsWith("/mobile-app")
+                  ? "bg-primary/5 text-primary"
+                  : "text-gray-700 hover:text-primary"
+              }`}
+            >
+              <Smartphone className="h-4 w-4" />
+              Mobile App
+            </Link>
+          )}
+
           {/* Auth: show UserButton when signed in, Login link when not */}
           {isSignedIn ? (
             <UserButton afterSignOutUrl="/" />
@@ -338,6 +358,22 @@ export default function Header() {
                   }`}
                 >
                   My Classroom
+                </Link>
+              </div>
+            )}
+            {isSignedIn && canViewMobileApp && (
+              <div className="pt-2">
+                <Link
+                  href="/mobile-app"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-2 py-2 text-sm font-semibold transition-colors ${
+                    pathname.startsWith("/mobile-app")
+                      ? "text-primary"
+                      : "text-gray-700 hover:text-primary"
+                  }`}
+                >
+                  <Smartphone className="h-4 w-4" />
+                  Mobile App
                 </Link>
               </div>
             )}
