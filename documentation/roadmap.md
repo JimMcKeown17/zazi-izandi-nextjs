@@ -24,14 +24,17 @@ worktree's implementation and evidence boundaries.
 - [x] Slice 1 hosted database dependency: apply the exact reporting RPC and
   verify PostgreSQL 17 structure/effective ACLs, anonymous denial, and
   service-role response shape on the pinned ZZ project.
-- [ ] Slice 1 integration gate: exercise the Next.js server against the paired
-  Django endpoint and reporting RPC with representative data.
+- [x] Slice 1 zero-state integration gate: exercise the production Next.js
+  server against the deployed Django endpoint and hosted reporting RPC through
+  an authorized Clerk session, including the seven-day filter round trip.
+- [ ] Slice 1 populated-data gate: inspect representative sessions,
+  attendances, transfers, current-school attribution, and school filtering once
+  qualifying production activity exists.
 - [ ] Slice 1 browser-auth gate: run the Clerk Playwright role matrix with all
   configured test identities and inspect desktop/mobile responsive rendering.
-- [ ] Slice 1 deployment/live gate: configure the deployed environment and
-  verify the report with authorized live test users. First authenticate the
-  Vercel dashboard, confirm its project/production branch/auto-deploy behavior,
-  and deploy the configured Django boundary before deploying this frontend.
+- [x] Slice 1 deployment/live gate: verify Vercel's project, production branch,
+  domains, and environment; deploy Django first; deploy the frontend; prove a
+  cookie-free login redirect and an authorized live success response.
 - [ ] Slice 2: Clock In/Out reporting and CSV.
 - [ ] Slice 3: Session CSV exports.
 - [ ] Slice 4: Add-school workflow and audit trail.

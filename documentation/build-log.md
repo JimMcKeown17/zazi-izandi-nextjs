@@ -1,5 +1,32 @@
 # Zazi iZandi Website Build Log
 
+## 2026-08-11 — Mobile sessions report deployed and verified in production
+
+- Published exact reporting SHA `c1cb9ec` as a three-commit fast-forward of
+  GitHub `main`. Vercel built the production deployment from `main`, associated
+  it with the canonical `www.zazi-izandi.co.za` domain, and marked it Ready.
+- The paired Django boundary was deployed first at `3d80fb6`. Render reported no
+  migrations to apply, and a sanitized production-shell probe resolved the new
+  route and returned the complete hosted Supabase report envelope through
+  Django's service-role adapter.
+- Final exact-candidate gates passed: 11/11 focused mobile-report tests,
+  TypeScript, Git whitespace checks, and a production Next.js build emitting
+  dynamic `/mobile-app` and `/mobile-app/sessions` routes. Expected local build
+  warnings came only from deliberately unreachable build-only backend values.
+- A cookie-free production request to `/mobile-app/sessions` returned `307` to
+  `/login` with Clerk's signed-out reason. In the authenticated browser, an
+  existing authorized staff session rendered exactly one success landmark and
+  no error landmark. The page displayed the complete zero-state report, and
+  changing the reporting window from 30 to seven days produced the expected
+  query URL and another validated success response.
+- Desktop visual inspection found a coherent dedicated reporting shell,
+  capability-gated navigation, filters, summary cards, zero-state charts,
+  heatmap, and current-school table. The production report currently contains
+  zero qualifying sessions, so populated visuals and metric semantics remain
+  explicitly unverified. Narrow/mobile viewport proof and a production
+  disallowed-role smoke remain follow-ups; the development Clerk integration
+  previously proved EA and teacher denial.
+
 ## 2026-08-11 — Backend reporting dependency activated and frontend branch published
 
 - The exact Supabase sessions-reporting migration is now live on the pinned ZZ
