@@ -36,6 +36,7 @@ function transformOverviewResponse(raw: any): ProgrammeOverviewResponse {
 
   return {
     generated_at: raw.generated_at,
+    snapshot_date: raw.snapshot_date ?? "",
     programme: raw.programme,
     targets: raw.targets,
     kpis: {
@@ -447,6 +448,7 @@ const EMPTY_MENTOR_VISITS_SUMMARY: MentorVisitsSummaryResponse = {
 
 const EMPTY_PROGRAMME_OVERVIEW: ProgrammeOverviewResponse = {
   generated_at: "",
+  snapshot_date: "",
   programme: {
     year: 2026,
     start_date: "",
@@ -528,6 +530,8 @@ export async function getEAPerformance(
 
 const EMPTY_EA_PERFORMANCE: EAPerformanceResponse = {
   generated_at: "",
+  snapshot_date: "",
+  data_health: { stale: true, source_session_max: null },
   summary: {
     total_eas: 0,
     avg_sessions_per_programme_day: 0,
@@ -540,12 +544,15 @@ const EMPTY_EA_PERFORMANCE: EAPerformanceResponse = {
 // ─── EA Performance History ──────────────────────────────────
 
 export async function getEAPerformanceHistory(
-  cohort = "all"
+  cohort = "all",
+  timeoutMs = 2_000
 ): Promise<EAPerformanceHistoryResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await djangoFetch(
       `/api/ea-performance-history/?cohort=${encodeURIComponent(cohort)}`,
-      { next: { revalidate: 300 } }
+      { next: { revalidate: 300 }, signal: controller.signal }
     );
 
     if (!res.ok) {
@@ -557,11 +564,20 @@ export async function getEAPerformanceHistory(
   } catch (error) {
     console.error("[pm/api] Failed to fetch EA performance history:", error);
     return { data: EMPTY_EA_PERFORMANCE_HISTORY, isLive: false };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
 const EMPTY_EA_PERFORMANCE_HISTORY: EAPerformanceHistoryResponse = {
   generated_at: "",
+  snapshot_date: "",
+  data_health: { stale: true, source_session_max: null },
+  sampling: {
+    strategy: "weekly-plus-window-anchors-v1",
+    source_date_count: 0,
+    returned_date_count: 0,
+  },
   dates: [],
   eas: [],
 };

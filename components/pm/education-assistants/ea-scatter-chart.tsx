@@ -28,6 +28,12 @@ import {
   type WindowMode,
   type MovementClass,
 } from "@/lib/pm/ea-history-utils";
+import {
+  eaIdentity,
+  indexCurrentEAs,
+  indexHistoricalEAs,
+  stableEAKeys,
+} from "@/lib/pm/ea-projection-utils";
 import { EADetailPanel } from "./ea-detail-panel";
 
 const X_MID = 2.0;
@@ -56,6 +62,7 @@ function getQuadrantColor(x: number, y: number): string {
 interface EAScatterChartProps {
   eas: EAPerformanceItem[];
   history: EAPerformanceHistoryResponse;
+  historyIsLive: boolean;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -79,6 +86,7 @@ function CustomTooltip({ active, payload }: any) {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 interface ArrowAnchor {
+  ea_key: string;
   ea_name: string;
   start: { x: number; y: number };
   end: { x: number; y: number };
@@ -118,7 +126,7 @@ function ArrowsOverlay({ anchors }: { anchors: ArrowAnchor[] }) {
 
         const color = ARROW_COLORS[a.klass];
         return (
-          <g key={a.ea_name}>
+          <g key={a.ea_key}>
             <line
               x1={x1}
               y1={y1}
@@ -140,7 +148,11 @@ function ArrowsOverlay({ anchors }: { anchors: ArrowAnchor[] }) {
   );
 }
 
-export function EAScatterChart({ eas, history }: EAScatterChartProps) {
+export function EAScatterChart({
+  eas,
+  history,
+  historyIsLive,
+}: EAScatterChartProps) {
   const [selectedEA, setSelectedEA] = useState<EAPerformanceItem | null>(null);
   const [windowMode, setWindowMode] = useState<WindowMode>("4w");
   const [arrowsVisible, setArrowsVisible] = useState(false);
@@ -148,7 +160,7 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
   const [playing, setPlaying] = useState(false);
   const playIntervalRef = useRef<number | null>(null);
 
-  const hasHistory = history.dates.length > 0;
+  const hasHistory = historyIsLive && history.dates.length >= 2;
   const sliderActive = sliderIdx !== null;
 
   // Stable EA roster — every dot array uses this ordering so Recharts animates
@@ -156,17 +168,19 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
   // EA enters or leaves the visible set between dates. EAs without data at a
   // given date keep their array slot with alignment_avg_score=null; Recharts
   // skips rendering null-y dots but the index stays put.
-  const stableEAOrder = useMemo(() => {
-    const names = history.eas.map((e) => e.ea_name).sort();
-    return names;
-  }, [history.eas]);
+  const stableEAOrder = useMemo(
+    () => stableEAKeys(eas, history),
+    [eas, history]
+  );
 
   const placeholderItem = useCallback(
     (
+      ea_key: string,
       ea_name: string,
       ea_user_id: number | null,
       school: string
     ): EAPerformanceItem => ({
+      ea_key,
       ea_name,
       ea_user_id,
       school,
@@ -185,30 +199,41 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
 
   // ── Plottable EAs (today's mode) — padded to the stable roster ──
   const plottable = useMemo(() => {
-    const liveByName = new Map(eas.map((e) => [e.ea_name, e]));
-    const histByName = new Map(history.eas.map((h) => [h.ea_name, h]));
-    return stableEAOrder.map((name) => {
-      const live = liveByName.get(name);
+    const liveByKey = indexCurrentEAs(eas);
+    const histByKey = indexHistoricalEAs(history);
+    return stableEAOrder.map((key) => {
+      const live = liveByKey.get(key);
       if (live) return live;
-      const hist = histByName.get(name);
-      return placeholderItem(name, hist?.ea_user_id ?? null, hist?.school ?? "");
+      const hist = histByKey.get(key);
+      return placeholderItem(
+        key,
+        hist?.ea_name ?? key,
+        hist?.ea_user_id ?? null,
+        hist?.school ?? ""
+      );
     });
-  }, [eas, history.eas, stableEAOrder, placeholderItem]);
+  }, [eas, history, stableEAOrder, placeholderItem]);
 
   // ── Slider-mode dot projection — padded to the stable roster ──
   const sliderDots = useMemo<EAPerformanceItem[] | null>(() => {
     if (sliderIdx === null) return null;
     const targetDate = history.dates[sliderIdx];
     if (!targetDate) return null;
-    const histByName = new Map(history.eas.map((h) => [h.ea_name, h]));
-    return stableEAOrder.map((name) => {
-      const ea = histByName.get(name);
-      if (!ea) return placeholderItem(name, null, "");
+    const histByKey = indexHistoricalEAs(history);
+    return stableEAOrder.map((key) => {
+      const ea = histByKey.get(key);
+      if (!ea) return placeholderItem(key, key, null, "");
       const pt = pointAt(ea.trajectory, targetDate);
       if (!pt || pt.y === null) {
-        return placeholderItem(name, ea.ea_user_id, ea.school);
+        return placeholderItem(
+          key,
+          ea.ea_name,
+          ea.ea_user_id,
+          ea.school
+        );
       }
       return {
+        ea_key: ea.ea_key,
         ea_name: ea.ea_name,
         ea_user_id: ea.ea_user_id,
         school: ea.school,
@@ -251,11 +276,11 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
     if (!hasHistory || !viewingDateISO) return [];
     const startISO = resolveWindowStartDate(history, windowMode, viewingDateISO);
     if (!startISO) return [];
-    const histByName = new Map(history.eas.map((h) => [h.ea_name, h]));
+    const histByKey = indexHistoricalEAs(history);
     const anchors: ArrowAnchor[] = [];
     for (const dot of dotsToShow) {
       if (dot.alignment_avg_score === null) continue; // placeholder, no dot
-      const ea = histByName.get(dot.ea_name);
+      const ea = histByKey.get(eaIdentity(dot));
       if (!ea) continue;
       const start = alignmentAnchorAt(ea.trajectory, startISO);
       const end = alignmentAnchorAt(ea.trajectory, viewingDateISO);
@@ -263,6 +288,7 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
       if (start.date === end.date) continue;
       const klass = classifyMovement(start, end);
       anchors.push({
+        ea_key: dot.ea_key,
         ea_name: dot.ea_name,
         start: { x: start.x, y: start.y },
         end: { x: end.x, y: end.y },
@@ -495,10 +521,10 @@ export function EAScatterChart({ eas, history }: EAScatterChartProps) {
                 // — Cell colour is irrelevant but needs to be a string.
                 const isPlaceholder = ea.alignment_avg_score === null;
                 const isSelected =
-                  !sliderActive && selectedEA?.ea_name === ea.ea_name;
+                  !sliderActive && selectedEA?.ea_key === ea.ea_key;
                 return (
                   <Cell
-                    key={ea.ea_name}
+                    key={ea.ea_key}
                     fill={
                       isPlaceholder
                         ? "transparent"
