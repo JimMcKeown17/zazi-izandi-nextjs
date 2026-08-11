@@ -1,5 +1,33 @@
 # Zazi iZandi Website Build Log
 
+## 2026-08-11 — Clock In/Out and user-health reports activated end to end
+
+- The paired service-role-only Supabase functions are live on the pinned ZZ
+  project, and Django production release `47e4881` is live on Render. The
+  existing Next.js pages now complete the intended server-only path:
+  browser → Clerk-protected Next.js → Clerk-verified Django → Supabase RPC.
+- An authenticated production session for an administrator rendered exactly
+  one success landmark and no error landmark on both `/mobile-app/attendance`
+  and `/mobile-app/user-health`; neither page retained the former `Status 404`
+  state.
+- The 30-day Clock In/Out report rendered five separate shift rows, including
+  one completed automatic clock-out and four open shifts. The page exposed the
+  administrator-only CSV control and kept coordinates out of the visible
+  ledger. The hosted CSV RPC returned a non-empty scalar response; saved-file
+  inspection remains separate from the browser-page proof.
+- The User health board rendered 397 accounts, name/email/UUID search, 50-row
+  pagination, auth/login evidence, device signals, seeded/self-setup data
+  readiness, and clock/session/app-assessment usage. The production summary
+  reported 187 auth-ready accounts, 397 accounts with recorded sign-in
+  evidence, one positive device signal, four users active in the 30-day
+  window, 141 of 152 expected seeded users data-ready, and 221 accounts needing
+  attention.
+- Evidence remains deliberately qualified: a push token is positive app-device
+  evidence but is not an install denominator; a missing token is unknown. The
+  server-data readiness column proves stored ownership/count evidence, not what
+  one physical device rendered. A production denied-role smoke and per-EA
+  signed-in mobile browse remain useful follow-ups.
+
 ## 2026-08-11 — Clock In/Out and user-health frontends implemented locally
 
 - Added a protected shift-level Clock In/Out report with 1–90 day and current-
