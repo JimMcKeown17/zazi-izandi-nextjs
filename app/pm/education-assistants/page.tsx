@@ -2,7 +2,7 @@ import { getEAPerformance, getEAPerformanceHistory } from "@/lib/pm/api";
 import { parseCohort, getCohortLabel } from "@/lib/pm/cohorts";
 import { KPICard } from "@/components/pm/shared/kpi-card";
 import { EAScatterChart } from "@/components/pm/education-assistants/ea-scatter-chart";
-import { countImproving } from "@/lib/pm/ea-history-utils";
+import { summarizeImproving } from "@/lib/pm/ea-history-utils";
 import { AlertTriangle } from "lucide-react";
 
 interface Props {
@@ -16,12 +16,15 @@ export default async function EducationAssistantsPage({
   const cohort = parseCohort(params.cohort as string | undefined);
   const cohortLabel = getCohortLabel(cohort);
 
-  const [{ data, isLive }, { data: history }] = await Promise.all([
+  const [currentResult, historyResult] = await Promise.all([
     getEAPerformance(cohort),
     getEAPerformanceHistory(cohort),
   ]);
+  const { data, isLive } = currentResult;
+  const { data: history, isLive: historyIsLive } = historyResult;
   const { summary } = data;
-  const { improving, total: improvingDenominator } = countImproving(history, "4w");
+  const improvingSummary = summarizeImproving(history, historyIsLive, "4w");
+  const { improving, total: improvingDenominator } = improvingSummary;
   const improvingPct =
     improvingDenominator > 0
       ? Math.round((improving / improvingDenominator) * 100)
@@ -38,6 +41,17 @@ export default async function EducationAssistantsPage({
             </span>{" "}
             The EA performance API is not responding. Data shown below may be
             empty.
+          </div>
+        </div>
+      )}
+      {isLive && !historyIsLive && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-3 text-sm">
+          <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+          <div className="text-amber-800">
+            <span className="font-semibold">
+              Trend history is temporarily unavailable.
+            </span>{" "}
+            Current EA positions are still shown.
           </div>
         </div>
       )}
@@ -76,9 +90,11 @@ export default async function EducationAssistantsPage({
           label="Improving"
           value={improvingPct !== null ? `${improvingPct}%` : "—"}
           subtitle={
-            improvingDenominator > 0
+            improvingSummary.status === "unavailable"
+              ? "trend history unavailable"
+              : improvingDenominator > 0
               ? `${improving} of ${improvingDenominator} trending up over 4w`
-              : "no history yet"
+              : "not enough history yet"
           }
           borderColor="border-l-emerald-500"
         />
@@ -97,7 +113,11 @@ export default async function EducationAssistantsPage({
       </div>
 
       {/* Scatter chart + detail panel */}
-      <EAScatterChart eas={data.eas} history={history} />
+      <EAScatterChart
+        eas={data.eas}
+        history={history}
+        historyIsLive={historyIsLive}
+      />
     </div>
   );
 }

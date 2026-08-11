@@ -2,6 +2,7 @@
 
 export interface ProgrammeOverviewResponse {
   generated_at: string;
+  snapshot_date: string;
   programme: {
     year: number;
     start_date: string;
@@ -388,6 +389,8 @@ export interface CoverageGap {
 
 export interface EAPerformanceResponse {
   generated_at: string;
+  snapshot_date: string;
+  data_health: EAPerformanceDataHealth;
   summary: {
     total_eas: number;
     avg_sessions_per_programme_day: number;
@@ -403,6 +406,7 @@ export interface EAPerformanceResponse {
 }
 
 export interface EAPerformanceItem {
+  ea_key: string;
   ea_name: string;
   ea_user_id: number | null;
   school: string;
@@ -436,6 +440,7 @@ export interface EATrajectoryPoint {
 }
 
 export interface EATrajectory {
+  ea_key: string;
   ea_user_id: number | null;
   ea_name: string;
   school: string;
@@ -444,8 +449,20 @@ export interface EATrajectory {
 
 export interface EAPerformanceHistoryResponse {
   generated_at: string;
+  snapshot_date: string;
+  data_health: EAPerformanceDataHealth;
+  sampling: {
+    strategy: string;
+    source_date_count: number;
+    returned_date_count: number;
+  };
   dates: string[];
   eas: EATrajectory[];
+}
+
+export interface EAPerformanceDataHealth {
+  stale: boolean;
+  source_session_max: string | null;
 }
 
 export interface EAPerformanceHistoryResult {

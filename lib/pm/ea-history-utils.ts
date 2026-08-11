@@ -35,12 +35,11 @@ export function classifyMovement(
 }
 
 /**
- * Pick the trajectory point at a given target date. Falls back to the earliest
- * available point if the EA has no data at the target date (e.g., joined the
- * programme after the window's start).
+ * Pick the trajectory point at or before a target date. Returns null when the
+ * EA had not yet entered the as-of roster, so late joiners are not backdated.
  *
- * Returns null only if the trajectory is empty. Used by the slider where any
- * point (including null-y) is acceptable as a chart projection.
+ * Used by the slider where any point (including null-y) is acceptable as a
+ * chart projection.
  */
 export function pointAt(
   trajectory: EATrajectoryPoint[],
@@ -52,7 +51,7 @@ export function pointAt(
     if (p.date <= targetDateISO) candidate = p;
     else break;
   }
-  return candidate ?? trajectory[0];
+  return candidate;
 }
 
 /**
@@ -162,4 +161,22 @@ export function countImproving(
     if (classifyMovement(start, end) === "improved") improving += 1;
   }
   return { improving, total };
+}
+
+export type ImprovingSummary =
+  | { status: "unavailable"; improving: 0; total: 0 }
+  | { status: "insufficient"; improving: number; total: 0 }
+  | { status: "ready"; improving: number; total: number };
+
+export function summarizeImproving(
+  history: EAPerformanceHistoryResponse,
+  isLive: boolean,
+  windowMode: WindowMode = "4w"
+): ImprovingSummary {
+  if (!isLive) return { status: "unavailable", improving: 0, total: 0 };
+  const result = countImproving(history, windowMode);
+  if (result.total === 0) {
+    return { status: "insufficient", improving: result.improving, total: 0 };
+  }
+  return { status: "ready", ...result };
 }

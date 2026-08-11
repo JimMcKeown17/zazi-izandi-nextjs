@@ -1,11 +1,8 @@
-import { getProgrammeOverview, getSchoolPerformanceRows, getGroups2026 } from "@/lib/pm/api";
+import { getProgrammeOverview, getSchoolPerformanceRows } from "@/lib/pm/api";
 import {
   parseCohort,
   filterSchoolsByCohort,
-  filterGroupsByCohort,
-  getCohortDosageTarget,
 } from "@/lib/pm/cohorts";
-import type { ProgrammeKPIs, SchoolPerformanceRow, GroupSummary } from "@/lib/pm/types";
 import { ProgrammeContextBar } from "@/components/pm/layout/programme-context-bar";
 import { OverviewKPIs } from "@/components/pm/overview/overview-kpis";
 import { SessionsChart } from "@/components/pm/overview/sessions-chart";
@@ -17,106 +14,23 @@ interface Props {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-function recomputeKPIs(
-  baseKPIs: ProgrammeKPIs,
-  filteredSchools: SchoolPerformanceRow[],
-  dosageTarget: number,
-  filteredGroups: GroupSummary[] | null
-): ProgrammeKPIs {
-  const totalSchools = filteredSchools.length;
-  const totalSchoolsPrimary = filteredSchools.filter(
-    (s) => s.school_type !== "ECD" && s.school_type !== "ecd"
-  ).length;
-  const totalSchoolsEcd = filteredSchools.filter(
-    (s) => s.school_type === "ECD" || s.school_type === "ecd"
-  ).length;
-  const totalEas = filteredSchools.reduce((sum, s) => sum + s.ea_count, 0);
-  const totalChildren = filteredSchools.reduce((sum, s) => sum + s.children_count, 0);
-  const totalSessionsWeek = filteredSchools.reduce((sum, s) => sum + s.sessions_this_week, 0);
-  const totalSessionsMonth = filteredSchools.reduce((sum, s) => sum + s.sessions_this_month, 0);
-  const totalSessionsAllTime = filteredSchools.reduce((sum, s) => sum + s.total_sessions, 0);
-  const activeFlags = filteredSchools.reduce((sum, s) => sum + s.flags_count, 0);
-
-  const totalGroups = filteredSchools.reduce((sum, s) => sum + s.groups_count, 0);
-  const cohortSchoolNames = new Set(
-    filteredSchools.map((s) => s.school_name.toUpperCase())
-  );
-  const cohortGroups =
-    filteredGroups === null
-      ? null
-      : filteredGroups.filter((g) =>
-          cohortSchoolNames.has(g.program_name.toUpperCase())
-        );
-  // Group-weighted dosage — mean of each group's own calendar-scoped dosage,
-  // matching Django. null = groups feed down (keep backend value); [] = zero.
-  const weightedDosage =
-    cohortGroups === null
-      ? baseKPIs.weighted_dosage
-      : cohortGroups.length > 0
-        ? cohortGroups.reduce((sum, g) => sum + g.avg_sessions_per_week, 0) /
-          cohortGroups.length
-        : 0;
-  const onTrackGroupRate =
-    cohortGroups === null
-      ? baseKPIs.on_track_group_rate
-      : cohortGroups.length > 0
-        ? (cohortGroups.filter((g) => g.avg_sessions_per_week >= dosageTarget)
-            .length /
-            cohortGroups.length) *
-          100
-        : 0;
-
-  return {
-    ...baseKPIs,
-    total_schools: totalSchools,
-    total_schools_primary: totalSchoolsPrimary,
-    total_schools_ecd: totalSchoolsEcd,
-    total_eas: totalEas,
-    total_children: totalChildren,
-    total_sessions_this_week: totalSessionsWeek,
-    total_sessions_this_month: totalSessionsMonth,
-    total_sessions_all_time: totalSessionsAllTime,
-    active_flags: activeFlags,
-    weighted_dosage: Math.round(weightedDosage * 10) / 10,
-    on_track_group_rate: Math.round(onTrackGroupRate * 10) / 10,
-  };
-}
-
 export default async function PMOverviewPage({ searchParams }: Props) {
   const params = await searchParams;
   const cohort = parseCohort(params.cohort as string | undefined);
 
-  const dosageTarget = getCohortDosageTarget(cohort);
-
-  const [overviewResult, schoolsResult, groupsResult] = await Promise.all([
+  const [overviewResult, schoolsResult] = await Promise.all([
     getProgrammeOverview(cohort),
     getSchoolPerformanceRows(),
-    getGroups2026(),
   ]);
 
   const overview = overviewResult.data;
   const allSchools = schoolsResult.data;
   const filteredSchools = filterSchoolsByCohort(allSchools, cohort);
-  const filteredGroups = groupsResult.isLive
-    ? filterGroupsByCohort(groupsResult.data.groups, cohort)
-    : null;
-  const filteredKPIs = recomputeKPIs(
-    overview.kpis,
-    filteredSchools,
-    dosageTarget,
-    filteredGroups
-  );
-  const filteredOverview = {
-    ...overview,
-    targets: { ...overview.targets, dosage: dosageTarget },
-    kpis: filteredKPIs,
-  };
 
   // Determine data source status
   const overviewIsLive = overviewResult.isLive;
   const schoolsIsLive = schoolsResult.isLive;
-  const groupsIsLive = groupsResult.isLive;
-  const hasMockData = !overviewIsLive || !schoolsIsLive || !groupsIsLive;
+  const hasMockData = !overviewIsLive || !schoolsIsLive;
 
   const { data_health } = overview;
   const lastSyncDate = data_health.last_sync
@@ -141,9 +55,7 @@ export default async function PMOverviewPage({ searchParams }: Props) {
               ? "The API is unavailable — data shown below may be empty or incomplete."
               : !overviewIsLive
                 ? "Programme overview API unavailable — KPI targets, health signal, and charts may be empty. School table data is live."
-                : !schoolsIsLive
-                  ? "School data API unavailable — school table may be empty."
-                  : "Group data API unavailable — on-track group rate may use the backend fallback."}
+                : "School data API unavailable — school table may be empty."}
           </div>
         </div>
       )}
@@ -152,7 +64,7 @@ export default async function PMOverviewPage({ searchParams }: Props) {
       <ProgrammeContextBar data={overview} />
 
       {/* Layer 1: KPI cards */}
-      <OverviewKPIs data={filteredOverview} />
+      <OverviewKPIs data={overview} />
 
       {/* Layer 2: Charts — 5:3 ratio on lg */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
