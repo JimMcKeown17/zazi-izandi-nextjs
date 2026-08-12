@@ -62,3 +62,16 @@ unimplemented. Disabled sidebar labels are discovery-only and do not link to
 placeholder write routes. Actual app-store/download telemetry is also not
 available: a push-token registration is useful positive device evidence, but
 its absence cannot prove that the app was never installed.
+
+## Roadmap: future mobile-app operations work
+
+- [ ] Per-EA profile pages (`/mobile-app/users/<id>`, fills the "Users — soon"
+  nav placeholder): one EA's full clock history, sessions, and user-health
+  snapshot on a single page; cross-links from the health board and clock
+  ledger land here instead of on filtered global pages. Needs a design pass
+  and likely a dedicated per-EA Django/Supabase endpoint (full history, not
+  the windowed global feeds).
+- [ ] Part B rollout waves (gated spec in
+  docs/superpowers/plans/2026-08-11-mobile-ops-usability.md): stored wave
+  membership + per-wave coverage; restores the evidence-coverage strip as the
+  wave-scoped instrument.
