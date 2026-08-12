@@ -2036,6 +2036,7 @@ git commit -m "feat(user-health): wave filter with wave-scoped evidence strip an
 - Modify: `App.js` (mount the reporter inside `AuthProvider`)
 - Create: `__tests__/appOpenEvents.test.js`
 - Create: `__tests__/AppOpenReporter.test.js`
+- Create: `__tests__/AppComposition.test.js` (round-10 finding — proves the reporter is actually mounted in the production tree)
 - Read first: `src/services/notifications/notificationRegistration.js` (the injectable-deps house style AND the `.rpc()` call shape to copy), `src/context/AuthContext.js` (confirm `useAuth()` exposes `session` — the offline-restore path sets `user` while `session` stays null, and the reporter MUST key on session identity, not user identity)
 
 Repo: `/Users/jimmckeown/Development/zazi-mobile-clock-reporting-supabase` (same checkout of `zazi-izandi-app`), branch `feat/rollout-waves-app-open`. Depends on Task 2 for the RPC contract only (code ships independently; a failed RPC against a not-yet-migrated DB is swallowed by design).
@@ -2202,6 +2203,9 @@ test('a different user is not blocked by another user\'s in-flight attempt', asy
 import { act, create } from 'react-test-renderer';
 
 jest.mock('../src/context/AuthContext', () => ({ useAuth: jest.fn() }));
+// The live useOffline throws outside its provider (fail-fast guard), so it
+// must be mocked in every reporter test; default isOnline: true.
+jest.mock('../src/context/OfflineContext', () => ({ useOffline: jest.fn() }));
 jest.mock('../src/services/appOpenEvents', () => ({
   reportAppOpenOnce: jest.fn().mockResolvedValue({ reported: true }),
 }));
@@ -2250,9 +2254,9 @@ test('retries when connectivity returns while still foregrounded', () => {
   // Round-8 finding: offline cold start passes the local session check,
   // fails the RPC, then the network returns with NO AppState event and
   // NO session change. The online-state dependency must re-fire the
-  // effect. Drive the mocked OfflineContext/online hook from false to
-  // true across a rerender with the SAME session, and assert
-  // reportAppOpenOnce is invoked again (exactly 2 calls total).
+  // effect. Drive the mocked useOffline from { isOnline: false } to
+  // { isOnline: true } across a rerender with the SAME session, and
+  // assert reportAppOpenOnce is invoked again (exactly 2 calls total).
 });
 
 test('retries on app-foreground so a failed offline attempt recovers', () => {
@@ -2272,11 +2276,49 @@ test('retries on app-foreground so a failed offline attempt recovers', () => {
 });
 ```
 
-(add `import { AppState } from 'react-native';` to the test imports.)
+(add `import { AppState } from 'react-native';` to the test imports, and have `renderWith` also set `useOffline.mockReturnValue({ isOnline: true })` by default.)
+
+`__tests__/AppComposition.test.js` — the mount-integrity regression (round-10 finding: no existing test imports `App`, so an omitted or misplaced `<AppOpenReporter />` mount passes every other suite while silently producing zero evidence, or crashing startup via the hooks' provider guards):
+
+```js
+// Mock AppOpenReporter itself to a findable marker, and mock whatever
+// heavy leaf modules App.js pulls in the same way the closest existing
+// App-adjacent tests mock them (mirror jest.setup.js + AuthContext.test.js
+// conventions; navigation/native modules may need lightweight stubs).
+jest.mock('../src/components/AppOpenReporter', () => {
+  const MockReporter = () => null;
+  MockReporter.displayName = 'AppOpenReporter';
+  return MockReporter;
+});
+
+import { create, act } from 'react-test-renderer';
+import App from '../App';
+import AppOpenReporter from '../src/components/AppOpenReporter';
+import { AuthProvider } from '../src/context/AuthContext';
+import { OfflineProvider } from '../src/context/OfflineContext';
+
+test('AppOpenReporter is mounted beneath OfflineProvider and AuthProvider', () => {
+  let tree;
+  act(() => { tree = create(<App />); });
+  const reporter = tree.root.findByType(AppOpenReporter); // throws if unmounted
+  // Walk ancestors: both providers must wrap the reporter, or its
+  // useAuth/useOffline provider guards would crash production startup.
+  const ancestorTypes = [];
+  let node = reporter.parent;
+  while (node) {
+    ancestorTypes.push(node.type);
+    node = node.parent;
+  }
+  expect(ancestorTypes).toContain(AuthProvider);
+  expect(ancestorTypes).toContain(OfflineProvider);
+});
+```
+
+(Adapt mechanically to what rendering `App` actually requires — the assertion contract is fixed: `findByType` proves presence; the ancestor walk proves placement below BOTH providers. If full `App` render proves impractical under jest-expo even with mocks, assert placement by rendering the exact provider composition extracted from `App.js` — but prefer the real `App` import so a future refactor cannot silently drop the mount.)
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run from the worktree root: `npm test -- appOpenEvents AppOpenReporter`
+Run from the worktree root: `npm test -- appOpenEvents AppOpenReporter AppComposition`
 Expected: FAIL — modules missing.
 
 - [ ] **Step 3: Implement the service**
@@ -2419,12 +2461,12 @@ FIRST confirm `useAuth()` exposes `session` (AuthContext holds `setSession` stat
 
 - [ ] **Step 5: Run the gates**
 
-Run: `npm test -- appOpenEvents AppOpenReporter` → PASS. Then the neighbor suites that mount App-level trees: `npm test -- AuthContext BootstrapGate` → PASS (catches a bad mount). Then `npm run lint` → clean.
+Run: `npm test -- appOpenEvents AppOpenReporter AppComposition` → PASS (`AppComposition` is the mount-integrity gate — the `AuthContext`/`BootstrapGate` suites import their components directly and CANNOT catch a missing or misplaced App.js mount; round-10 finding). Then the neighbor suites: `npm test -- AuthContext BootstrapGate` → PASS. Then `npm run lint` → clean.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/services/appOpenEvents.js src/components/AppOpenReporter.js App.js __tests__/appOpenEvents.test.js __tests__/AppOpenReporter.test.js
+git add src/services/appOpenEvents.js src/components/AppOpenReporter.js App.js __tests__/appOpenEvents.test.js __tests__/AppOpenReporter.test.js __tests__/AppComposition.test.js
 git commit -m "feat(events): report one app_open per launch via rate-bounded RPC"
 ```
 
@@ -2452,7 +2494,7 @@ Nothing here is dispatched to an implementer. The coordinator walks this with Ji
 | Supabase/app worktree | `npm test -- __tests__/<touched>.test.js`; Task 5 additionally the combined postgres harness |
 | Django | `manage.py test api.tests_mobile_operational_reports api.tests_mobile_reports -v 2` via the 2025 venv python |
 | Frontend | `npm run test:mobile` && `npx tsc --noEmit --incremental false` && scoped `npx eslint` |
-| Mobile app | `npm test -- appOpenEvents AppOpenReporter AuthContext BootstrapGate` && `npm run lint` |
+| Mobile app | `npm test -- appOpenEvents AppOpenReporter AppComposition AuthContext BootstrapGate` && `npm run lint` |
 
 Codex sandbox notes (from Part A): forwarders cannot write the linked-worktree git index — the coordinator re-runs gates and commits with the exact message given per task. If `npx tsx`/`npm run test:mobile` hits sandbox IPC EPERM inside codex, `node --import tsx --test lib/mobile/*.test.ts lib/mobile/*/*.test.ts` is the accepted equivalent; plain `npx tsc --noEmit` can fail on a stale incremental cache — always pass `--incremental false`.
 
