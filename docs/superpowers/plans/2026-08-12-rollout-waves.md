@@ -4,7 +4,7 @@
 
 **Goal:** Make rollout waves first-class stored data (tables + transactional loader + RPC/wave filter through Django to the user-health board), turn the activity stage into a true lifetime ratchet, and ship the app-owned `app_open` event as the root fix for login evidence.
 
-**Architecture:** Four repos in a strict deploy order: Supabase migrations (tables + RPC extension) are read by Django (tolerant passthrough deployed FIRST), consumed by the Next.js user-health board (deployed LAST), and fed by the Expo app (`app_open` insert via OTA update). Wave membership is loaded by an authoritative one-transaction set-reconciliation script, never ad-hoc SQL.
+**Architecture:** Four repos in a strict deploy order: the purely ADDITIVE Supabase migrations (new tables + new `mobile_user_health_domain_v2`; v1 untouched) are applied and post-apply-verified FIRST, then Django switches its call to v2, then the Next.js user-health board deploys LAST, with the Expo app feeding `app_open` events via OTA update. Django rollback is always safe (v1 is never modified). Wave membership is loaded by an authoritative one-transaction set-reconciliation script, never ad-hoc SQL.
 
 **Tech Stack:** Postgres 17 (Supabase, plpgsql RPCs, RLS) · Django 5.2 (jsonschema Draft 2020-12 validators, SimpleTestCase) · Next.js 16 / React 19 / TypeScript / Zod v4 / node:test · Expo SDK 54 / supabase-js v2 / Jest (jest-expo)
 
@@ -1565,6 +1565,22 @@ The SAME `domain_user` object then continues through the existing pipeline uncha
 
 (keep the existing v1 entry — it is dead code for this release but harmless, and deleting it would churn the rollback diff). Update the existing `assert_has_calls` expectations in `test_health_report_joins_auth_and_domain_users_and_recomputes_summary` (and any other test pinning the RPC name) to `call("mobile_user_health_domain_v2", {...})` — those tests failing on the name is the RED step for this change.
 
+The report-layer tests use a MOCKED client, so they cannot catch a missing allowlist entry — the real `SupabaseNotificationClient.rpc()` rejects unallowlisted functions BEFORE any network request (round-7 finding). Add a runtime-boundary regression to `api/tests_mobile_reports.py`, next to its existing allowlist-boundary tests (`test_unallowlisted_function_is_rejected_before_network` is the model — copy its network-mocking approach):
+
+```python
+def test_user_health_v2_rpc_is_admitted_with_exact_args(self):
+    # The real client boundary must admit the v2 call fetch_user_health
+    # makes; a mocked-client suite passes even if this allowlist entry is
+    # missing, which would 502 every request in production.
+    # Mock the HTTP layer exactly as the neighboring allowlist tests do,
+    # call SupabaseNotificationClient.rpc(
+    #     "mobile_user_health_domain_v2",
+    #     {"p_days": 30, "p_school_id": None, "p_included_user_ids": []},
+    # ), and assert the request is issued (no allowlist rejection).
+```
+
+(Write it as a real test following that file's conventions; the comment block above states the required behavior, not literal code.)
+
 - [ ] **Step 4: Run the suite to verify green**
 
 Run: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025/venv/bin/python manage.py test api.tests_mobile_operational_reports -v 2`
@@ -1579,8 +1595,8 @@ In `documentation/mobile-app-reporting-configuration.md`, extend the user-health
 - [ ] **Step 6: Commit**
 
 ```bash
-git add api/mobile/reports.py api/tests_mobile_operational_reports.py documentation/mobile-app-reporting-configuration.md
-git commit -m "feat(api): tolerate and pass through wave, lifetime, and app_open evidence"
+git add api/mobile/reports.py api/services/mobile_notifications.py api/tests_mobile_operational_reports.py api/tests_mobile_reports.py documentation/mobile-app-reporting-configuration.md
+git commit -m "feat(api): read user-health v2 with wave, lifetime, and app_open passthrough"
 ```
 
 ---

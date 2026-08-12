@@ -2,6 +2,8 @@
 
 _Written 2026-08-12 for a fresh session to pick up after conversation compaction. Read this top to bottom before doing anything._
 
+> ⚠️ **PARTIALLY SUPERSEDED (2026-08-12, adversarial-review rounds 1–7):** the executable plan is now [`2026-08-12-rollout-waves.md`](2026-08-12-rollout-waves.md) and it OVERRIDES this handoff wherever they disagree. In particular: (1) deploy order is now **additive Supabase migrations FIRST**, then Django — NOT "Django tolerate-first"; (2) Part B ships as a NEW `mobile_user_health_domain_v2` function — the 3-arg v1 is NEVER `CREATE OR REPLACE`d (it is the Django rollback target); (3) `app_open` writes go through a rate-bounded `record_app_open` SECURITY DEFINER RPC — NOT a direct authenticated INSERT with RLS. Do not execute the deployment or RPC instructions below.
+
 ## Where things stand (Part A: DONE, not merged)
 
 - Branch **`feat/mobile-ops-usability`** at **`b3298ca`** in worktree `/Users/jimmckeown/Development/zazi-mobile-clock-reporting-nextjs/.worktrees/mobile-ops` (a linked worktree inside the launch repo — created there because the Codex sandbox can't write outside it).
