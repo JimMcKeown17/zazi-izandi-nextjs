@@ -104,7 +104,10 @@ export function sortUserHealthRows(
       if (left === right) return a.display_name.localeCompare(b.display_name);
       if (left === null) return 1;
       if (right === null) return -1;
-      return right.localeCompare(left);
+      const timeGap =
+        new Date(right).getTime() - new Date(left).getTime();
+      if (timeGap !== 0) return timeGap;
+      return a.display_name.localeCompare(b.display_name);
     });
   }
   return sorted.sort((a, b) => {

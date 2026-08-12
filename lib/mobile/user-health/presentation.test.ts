@@ -154,3 +154,51 @@ test("last_activity sort is newest first with never-active EAs last", () => {
     stamps.length - stamps.filter((stamp) => stamp === null).length
   );
 });
+
+test("last_activity sort compares mixed offsets and fractional precision chronologically", () => {
+  const rows = [
+    {
+      ...base,
+      user_id: "offset-earlier",
+      display_name: "Offset earlier",
+      activity: {
+        ...base.activity,
+        last_activity_at: "2026-08-11T10:30:00+02:00",
+      },
+    },
+    {
+      ...base,
+      user_id: "fraction-earlier",
+      display_name: "Fraction earlier",
+      activity: {
+        ...base.activity,
+        last_activity_at: "2026-08-11T09:00:00.1Z",
+      },
+    },
+    {
+      ...base,
+      user_id: "offset-later",
+      display_name: "Offset later",
+      activity: {
+        ...base.activity,
+        last_activity_at: "2026-08-11T11:30:00+02:00",
+      },
+    },
+    {
+      ...base,
+      user_id: "fraction-later",
+      display_name: "Fraction later",
+      activity: {
+        ...base.activity,
+        last_activity_at: "2026-08-11T09:00:00.19Z",
+      },
+    },
+  ];
+
+  assert.deepEqual(
+    sortUserHealthRows(rows, "last_activity").map(
+      (user) => user.display_name
+    ),
+    ["Offset later", "Fraction later", "Fraction earlier", "Offset earlier"]
+  );
+});
