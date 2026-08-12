@@ -6,6 +6,7 @@ import {
   ShieldCheck,
   Smartphone,
 } from "lucide-react";
+import Link from "next/link";
 
 import type { MobileUserHealthResponse } from "@/lib/mobile/user-health/types";
 
@@ -20,6 +21,16 @@ const TONES = {
 
 export function UserHealthSummary({ data }: { data: MobileUserHealthResponse }) {
   const total = data.summary.total_users;
+  const buildHref = (filters?: Record<string, string>) => {
+    const params = new URLSearchParams({ days: String(data.days) });
+    if (data.applied_filters.school_id) {
+      params.set("school_id", data.applied_filters.school_id);
+    }
+    for (const [key, value] of Object.entries(filters ?? {})) {
+      params.set(key, value);
+    }
+    return `/mobile-app/user-health?${params.toString()}`;
+  };
   const cards = [
     {
       label: "EA accounts",
@@ -27,6 +38,7 @@ export function UserHealthSummary({ data }: { data: MobileUserHealthResponse }) 
       detail: `${data.summary.auth_ready} enabled, confirmed, and not blocked`,
       icon: ShieldCheck,
       tone: "blue" as const,
+      href: buildHref(),
     },
     {
       label: "Authenticated after provisioning",
@@ -48,6 +60,7 @@ export function UserHealthSummary({ data }: { data: MobileUserHealthResponse }) 
       detail: "Clock, session, or app-created assessment activity",
       icon: Activity,
       tone: "green" as const,
+      href: buildHref({ state: "active" }),
     },
     {
       label: "Seeded data ready",
@@ -55,6 +68,7 @@ export function UserHealthSummary({ data }: { data: MobileUserHealthResponse }) 
       detail: "Expected classes, children, groups, and memberships present",
       icon: DatabaseZap,
       tone: "slate" as const,
+      href: buildHref({ cohort: "seeded" }),
     },
     {
       label: "Needs attention",
@@ -62,6 +76,7 @@ export function UserHealthSummary({ data }: { data: MobileUserHealthResponse }) 
       detail: "Auth block or missing expected seeded data",
       icon: AlertTriangle,
       tone: data.summary.needs_attention > 0 ? ("red" as const) : ("slate" as const),
+      href: buildHref({ state: "has_blockers" }),
     },
   ];
 
@@ -69,15 +84,19 @@ export function UserHealthSummary({ data }: { data: MobileUserHealthResponse }) 
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
       {cards.map((card) => {
         const Icon = card.icon;
-        return (
-          <div
-            key={card.label}
-            className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-          >
+        const content = (
+          <>
             <div className="flex items-start justify-between gap-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
-                {card.label}
-              </p>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
+                  {card.label}
+                </p>
+                {card.href ? (
+                  <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                    Filter ↓
+                  </p>
+                ) : null}
+              </div>
               <span className={`rounded-lg p-2 ${TONES[card.tone]}`}>
                 <Icon className="h-4 w-4" />
               </span>
@@ -88,6 +107,23 @@ export function UserHealthSummary({ data }: { data: MobileUserHealthResponse }) 
             <p className="mt-2 text-xs leading-relaxed text-slate-500">
               {card.detail}
             </p>
+          </>
+        );
+
+        return card.href ? (
+          <Link
+            key={card.label}
+            href={card.href}
+            className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            {content}
+          </Link>
+        ) : (
+          <div
+            key={card.label}
+            className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+          >
+            {content}
           </div>
         );
       })}

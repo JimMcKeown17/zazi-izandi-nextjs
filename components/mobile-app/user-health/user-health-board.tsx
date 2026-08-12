@@ -54,6 +54,22 @@ const STAGE_STYLES: Record<ActivityStage, string> = {
   not_started: "bg-slate-100 text-slate-600 ring-slate-200",
 };
 
+function syncUrl(next: {
+  q: string;
+  predicate: UserHealthPredicate;
+  cohort: MobileUserHealthRow["data"]["expectation"] | "all";
+}) {
+  const url = new URL(window.location.href);
+  const setOrDelete = (key: string, value: string, empty: string) => {
+    if (value === empty) url.searchParams.delete(key);
+    else url.searchParams.set(key, value);
+  };
+  setOrDelete("q", next.q, "");
+  setOrDelete("state", next.predicate, "all");
+  setOrDelete("cohort", next.cohort, "all");
+  window.history.replaceState(null, "", url.toString());
+}
+
 function formatTimestamp(value: string | null): string {
   return value ? DATE_TIME_FORMAT.format(new Date(value)) : "No evidence yet";
 }
@@ -241,15 +257,22 @@ function AttentionReasons({ user }: { user: MobileUserHealthRow }) {
 export function UserHealthBoard({
   users,
   days,
+  initialQuery = "",
+  initialPredicate = "all",
+  initialCohort = "all",
 }: {
   users: MobileUserHealthRow[];
   days: number;
+  initialQuery?: string;
+  initialPredicate?: UserHealthPredicate;
+  initialCohort?: MobileUserHealthRow["data"]["expectation"] | "all";
 }) {
-  const [query, setQuery] = useState("");
-  const [predicate, setPredicate] = useState<UserHealthPredicate>("all");
+  const [query, setQuery] = useState(initialQuery);
+  const [predicate, setPredicate] =
+    useState<UserHealthPredicate>(initialPredicate);
   const [expectationFilter, setExpectationFilter] = useState<
     MobileUserHealthRow["data"]["expectation"] | "all"
-  >("all");
+  >(initialCohort);
   const [page, setPage] = useState(1);
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
 
@@ -286,8 +309,14 @@ export function UserHealthBoard({
               type="search"
               value={query}
               onChange={(event) => {
-                setQuery(event.target.value);
+                const nextQuery = event.target.value;
+                setQuery(nextQuery);
                 setPage(1);
+                syncUrl({
+                  q: nextQuery,
+                  predicate,
+                  cohort: expectationFilter,
+                });
               }}
               placeholder="Name, email, or UUID"
               className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm font-normal normal-case tracking-normal text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -299,8 +328,14 @@ export function UserHealthBoard({
           <select
             value={predicate}
             onChange={(event) => {
-              setPredicate(event.target.value as UserHealthPredicate);
+              const nextPredicate = event.target.value as UserHealthPredicate;
+              setPredicate(nextPredicate);
               setPage(1);
+              syncUrl({
+                q: query,
+                predicate: nextPredicate,
+                cohort: expectationFilter,
+              });
             }}
             className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-800 outline-none focus:border-primary"
           >
@@ -316,12 +351,12 @@ export function UserHealthBoard({
           <select
             value={expectationFilter}
             onChange={(event) => {
-              setExpectationFilter(
-                event.target.value as
-                  | MobileUserHealthRow["data"]["expectation"]
-                  | "all"
-              );
+              const nextCohort = event.target.value as
+                | MobileUserHealthRow["data"]["expectation"]
+                | "all";
+              setExpectationFilter(nextCohort);
               setPage(1);
+              syncUrl({ q: query, predicate, cohort: nextCohort });
             }}
             className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-800 outline-none focus:border-primary"
           >

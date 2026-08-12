@@ -11,6 +11,8 @@ import { UserHealthBoard } from "@/components/mobile-app/user-health/user-health
 import { UserHealthFilters } from "@/components/mobile-app/user-health/user-health-filters";
 import { UserHealthSummary } from "@/components/mobile-app/user-health/user-health-summary";
 import { getMobileUserHealth } from "@/lib/mobile/api";
+import type { UserHealthPredicate } from "@/lib/mobile/user-health/presentation";
+import type { MobileUserHealthRow } from "@/lib/mobile/user-health/types";
 
 interface UserHealthPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -26,6 +28,29 @@ function parseDays(value: string | undefined): number {
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 90 ? parsed : 30;
 }
 
+const PREDICATES = [
+  "all",
+  "has_blockers",
+  "active",
+  "reached",
+  "not_started",
+] as const;
+const COHORTS = ["all", "seeded", "self_setup", "unknown"] as const;
+
+function parsePredicate(value: string | undefined): UserHealthPredicate {
+  return (PREDICATES as readonly string[]).includes(value ?? "")
+    ? (value as UserHealthPredicate)
+    : "all";
+}
+
+function parseCohort(
+  value: string | undefined
+): MobileUserHealthRow["data"]["expectation"] | "all" {
+  return (COHORTS as readonly string[]).includes(value ?? "")
+    ? (value as (typeof COHORTS)[number])
+    : "all";
+}
+
 const GENERATED_FORMAT = new Intl.DateTimeFormat("en-ZA", {
   timeZone: "Africa/Johannesburg",
   dateStyle: "medium",
@@ -38,6 +63,9 @@ export default async function MobileUserHealthPage({
   const params = await searchParams;
   const days = parseDays(firstValue(params.days));
   const schoolId = firstValue(params.school_id) || null;
+  const initialQuery = firstValue(params.q) ?? "";
+  const initialPredicate = parsePredicate(firstValue(params.state));
+  const initialCohort = parseCohort(firstValue(params.cohort));
   const result = await getMobileUserHealth({ days, schoolId });
 
   if (!result.ok) {
@@ -134,6 +162,7 @@ export default async function MobileUserHealthPage({
       </div>
 
       <UserHealthFilters
+        key={`${data.days}|${data.applied_filters.school_id ?? ""}`}
         days={data.days}
         selectedSchoolId={data.applied_filters.school_id}
         schoolOptions={data.school_options}
@@ -171,7 +200,14 @@ export default async function MobileUserHealthPage({
         })}
       </div>
 
-      <UserHealthBoard users={data.users} days={data.days} />
+      <UserHealthBoard
+        key={`${initialPredicate}|${initialCohort}|${initialQuery}`}
+        users={data.users}
+        days={data.days}
+        initialQuery={initialQuery}
+        initialPredicate={initialPredicate}
+        initialCohort={initialCohort}
+      />
 
       <p className="text-xs leading-relaxed text-slate-400">
         “Server data ready” verifies stored ownership/count evidence, not a physical

@@ -23,6 +23,23 @@ test("the summary presents the rollout-cutoff authentication proxy precisely", (
   assert.doesNotMatch(html, /have signed in at least once/i);
 });
 
+test("summary tiles deep-link into board filters using the payload's own scope", () => {
+  const html = renderToStaticMarkup(
+    createElement(UserHealthSummary, {
+      data: VALID_MOBILE_USER_HEALTH_PAYLOAD,
+    })
+  );
+
+  assert.match(
+    html,
+    /href="\/mobile-app\/user-health\?days=30&amp;state=has_blockers"/
+  );
+  assert.match(
+    html,
+    /href="\/mobile-app\/user-health\?days=30&amp;state=active"/
+  );
+});
+
 test("the Auth/Login column distinguishes proven, pre-cutoff, and unmeasured accounts", () => {
   const html = renderToStaticMarkup(
     createElement(UserHealthBoard, {
