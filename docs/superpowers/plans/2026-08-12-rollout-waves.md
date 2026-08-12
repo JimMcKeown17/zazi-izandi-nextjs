@@ -2314,7 +2314,7 @@ test('AppOpenReporter is mounted beneath OfflineProvider and AuthProvider', () =
 });
 ```
 
-(Adapt mechanically to what rendering `App` actually requires — the assertion contract is fixed: `findByType` proves presence; the ancestor walk proves placement below BOTH providers. If full `App` render proves impractical under jest-expo even with mocks, assert placement by rendering the exact provider composition extracted from `App.js` — but prefer the real `App` import so a future refactor cannot silently drop the mount.)
+(Adapt the MOCKS mechanically to what rendering `App` actually requires — but the assertion contract is non-negotiable: the test imports and renders the REAL `App`, `findByType` proves presence, and the ancestor walk proves placement below BOTH providers. There is NO surrogate-tree fallback: rendering a hand-copied provider composition would go green the moment `App.js` stops mounting the reporter, which is the exact silent failure this test exists to prevent (round-11 finding). If a heavy leaf module blocks the render, mock THAT module as a passthrough; do not stop rendering `App`.)
 
 - [ ] **Step 2: Run to verify they fail**
 
