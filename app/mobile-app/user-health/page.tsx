@@ -9,8 +9,10 @@ import {
 
 import { UserHealthBoard } from "@/components/mobile-app/user-health/user-health-board";
 import { UserHealthFilters } from "@/components/mobile-app/user-health/user-health-filters";
+import { UserHealthFunnel } from "@/components/mobile-app/user-health/user-health-funnel";
 import { UserHealthSummary } from "@/components/mobile-app/user-health/user-health-summary";
 import { getMobileUserHealth } from "@/lib/mobile/api";
+import { buildFunnelCounts } from "@/lib/mobile/user-health/funnel";
 import type { UserHealthPredicate } from "@/lib/mobile/user-health/presentation";
 import type { MobileUserHealthRow } from "@/lib/mobile/user-health/types";
 
@@ -99,6 +101,7 @@ export default async function MobileUserHealthPage({
   const selectedSchool = data.school_options.find(
     (school) => school.id === data.applied_filters.school_id
   );
+  const funnelCounts = buildFunnelCounts(data.users);
   const evidenceStages = [
     {
       label: "1 · Access enabled",
@@ -134,8 +137,8 @@ export default async function MobileUserHealthPage({
           </p>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">User health</h1>
           <p className="mt-1 max-w-4xl text-sm leading-relaxed text-slate-500">
-            A row-level onboarding funnel for EA identity, Auth readiness,
-            server-data readiness, and real mobile-app activity.
+            Row-level onboarding evidence coverage for EA identity, Auth
+            readiness, server-data readiness, and real mobile-app activity.
           </p>
         </div>
         <p className="shrink-0 text-xs text-slate-400">
@@ -175,6 +178,8 @@ export default async function MobileUserHealthPage({
       ) : null}
 
       <UserHealthSummary data={data} />
+
+      <UserHealthFunnel counts={funnelCounts} days={data.days} />
 
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {evidenceStages.map((stage) => {
