@@ -8,6 +8,11 @@ export type UserAttentionReason =
   | "seeded_memberships_incomplete";
 
 export type ActivityStage = "not_started" | "reached" | "active";
+export type UserHealthSortKey =
+  | "urgency"
+  | "last_activity"
+  | "name"
+  | "school";
 export type UserHealthPredicate =
   | "all"
   | "has_blockers"
@@ -69,6 +74,49 @@ export function getActivityStage(user: MobileUserHealthRow): ActivityStage {
   if (user.app_device.registered) return "reached";
   if (user.auth.authenticated_after_provisioning) return "reached";
   return "not_started";
+}
+
+const STAGE_URGENCY: Record<ActivityStage, number> = {
+  not_started: 0,
+  reached: 1,
+  active: 2,
+};
+
+export function sortUserHealthRows(
+  rows: MobileUserHealthRow[],
+  key: UserHealthSortKey
+): MobileUserHealthRow[] {
+  const sorted = [...rows];
+  if (key === "name") {
+    return sorted.sort((a, b) => a.display_name.localeCompare(b.display_name));
+  }
+  if (key === "school") {
+    return sorted.sort(
+      (a, b) =>
+        a.current_school.localeCompare(b.current_school) ||
+        a.display_name.localeCompare(b.display_name)
+    );
+  }
+  if (key === "last_activity") {
+    return sorted.sort((a, b) => {
+      const left = a.activity.last_activity_at;
+      const right = b.activity.last_activity_at;
+      if (left === right) return a.display_name.localeCompare(b.display_name);
+      if (left === null) return 1;
+      if (right === null) return -1;
+      return right.localeCompare(left);
+    });
+  }
+  return sorted.sort((a, b) => {
+    const blockerGap =
+      getUserAttentionReasons(b).length - getUserAttentionReasons(a).length;
+    if (blockerGap !== 0) return blockerGap;
+    const stageGap =
+      STAGE_URGENCY[getActivityStage(a)] -
+      STAGE_URGENCY[getActivityStage(b)];
+    if (stageGap !== 0) return stageGap;
+    return a.display_name.localeCompare(b.display_name);
+  });
 }
 
 export function matchesUserHealthPredicate(

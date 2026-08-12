@@ -7,6 +7,7 @@ import {
   getUserAttentionReasons,
   hasSeededDataReady,
   matchesUserHealthPredicate,
+  sortUserHealthRows,
 } from "./presentation";
 import { VALID_MOBILE_USER_HEALTH_PAYLOAD } from "./test-fixtures";
 
@@ -122,5 +123,34 @@ test("a provisioning-check timestamp is presented as no authentication proof", (
   assert.equal(
     getProvisioningAuthenticationPresentation(preCutoff).label,
     "No authentication after provisioning"
+  );
+});
+
+test("urgency sort puts blocked EAs first, then the least-advanced stages", () => {
+  const rows = VALID_MOBILE_USER_HEALTH_PAYLOAD.users;
+  const sorted = sortUserHealthRows(rows, "urgency");
+  const blockedCount = sorted.filter(
+    (user) => getUserAttentionReasons(user).length > 0
+  ).length;
+  assert.deepEqual(
+    sorted
+      .slice(0, blockedCount)
+      .map((user) => getUserAttentionReasons(user).length > 0),
+    Array(blockedCount).fill(true)
+  );
+  assert.notEqual(sorted, rows);
+});
+
+test("last_activity sort is newest first with never-active EAs last", () => {
+  const sorted = sortUserHealthRows(
+    VALID_MOBILE_USER_HEALTH_PAYLOAD.users,
+    "last_activity"
+  );
+  const stamps = sorted.map((user) => user.activity.last_activity_at);
+  const nonNull = stamps.filter((stamp): stamp is string => stamp !== null);
+  assert.deepEqual(nonNull, [...nonNull].sort().reverse());
+  assert.equal(
+    stamps.indexOf(null),
+    stamps.length - stamps.filter((stamp) => stamp === null).length
   );
 });

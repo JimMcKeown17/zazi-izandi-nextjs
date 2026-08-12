@@ -18,9 +18,11 @@ import {
   getUserAttentionReasons,
   hasSeededDataReady,
   matchesUserHealthPredicate,
+  sortUserHealthRows,
   type ActivityStage,
   type UserAttentionReason,
   type UserHealthPredicate,
+  type UserHealthSortKey,
 } from "@/lib/mobile/user-health/presentation";
 import type { MobileUserHealthRow } from "@/lib/mobile/user-health/types";
 import { cn } from "@/lib/utils";
@@ -273,6 +275,7 @@ export function UserHealthBoard({
   const [expectationFilter, setExpectationFilter] = useState<
     MobileUserHealthRow["data"]["expectation"] | "all"
   >(initialCohort);
+  const [sortKey, setSortKey] = useState<UserHealthSortKey>("urgency");
   const [page, setPage] = useState(1);
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
 
@@ -293,14 +296,19 @@ export function UserHealthBoard({
     [deferredQuery, expectationFilter, predicate, users]
   );
 
-  const pageCount = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  const sortedUsers = useMemo(
+    () => sortUserHealthRows(filteredUsers, sortKey),
+    [filteredUsers, sortKey]
+  );
+
+  const pageCount = Math.max(1, Math.ceil(sortedUsers.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
   const start = (safePage - 1) * PAGE_SIZE;
-  const visibleUsers = filteredUsers.slice(start, start + PAGE_SIZE);
+  const visibleUsers = sortedUsers.slice(start, start + PAGE_SIZE);
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-[minmax(16rem,1fr)_12rem_12rem_auto] lg:items-end">
+      <div className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-[minmax(16rem,1fr)_12rem_12rem_12rem_auto] lg:items-end">
         <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Find a youth
           <span className="relative">
@@ -364,6 +372,22 @@ export function UserHealthBoard({
             <option value="seeded">TeamPact seeded</option>
             <option value="self_setup">Self-setup</option>
             <option value="unknown">Unknown</option>
+          </select>
+        </label>
+        <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Sort by
+          <select
+            value={sortKey}
+            onChange={(event) => {
+              setSortKey(event.target.value as UserHealthSortKey);
+              setPage(1);
+            }}
+            className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-800 outline-none focus:border-primary"
+          >
+            <option value="urgency">Most urgent</option>
+            <option value="last_activity">Last activity</option>
+            <option value="name">Name</option>
+            <option value="school">School</option>
           </select>
         </label>
         <p className="pb-2 text-xs font-medium tabular-nums text-slate-500">
