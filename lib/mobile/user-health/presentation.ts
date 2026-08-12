@@ -7,11 +7,13 @@ export type UserAttentionReason =
   | "seeded_groups_missing"
   | "seeded_memberships_incomplete";
 
-export type UserHealthState =
+export type ActivityStage = "not_started" | "reached" | "active";
+export type UserHealthPredicate =
+  | "all"
+  | "has_blockers"
   | "active"
-  | "onboarding"
-  | "not_started"
-  | "needs_attention";
+  | "reached"
+  | "not_started";
 
 export interface ProvisioningAuthenticationPresentation {
   label: string;
@@ -28,13 +30,18 @@ export function hasSeededDataReady(user: MobileUserHealthRow): boolean {
     user.data.grouped_children === user.data.children
   );
 }
-export function hasRecentAppActivity(user: MobileUserHealthRow): boolean {
+
+function hasUsageEvidenceInWindow(user: MobileUserHealthRow): boolean {
   return (
     user.activity.clock_entries +
       user.activity.sessions +
       user.activity.app_assessments >
     0
   );
+}
+
+export function hasRecentAppActivity(user: MobileUserHealthRow): boolean {
+  return hasUsageEvidenceInWindow(user);
 }
 
 export function getUserAttentionReasons(
@@ -57,16 +64,22 @@ export function getUserAttentionReasons(
   return reasons;
 }
 
-export function getUserHealthState(user: MobileUserHealthRow): UserHealthState {
-  if (getUserAttentionReasons(user).length > 0) return "needs_attention";
-  if (hasRecentAppActivity(user)) return "active";
-  if (
-    user.auth.authenticated_after_provisioning === true ||
-    user.app_device.registered
-  ) {
-    return "onboarding";
-  }
+export function getActivityStage(user: MobileUserHealthRow): ActivityStage {
+  if (hasUsageEvidenceInWindow(user)) return "active";
+  if (user.app_device.registered) return "reached";
+  if (user.auth.authenticated_after_provisioning) return "reached";
   return "not_started";
+}
+
+export function matchesUserHealthPredicate(
+  user: MobileUserHealthRow,
+  predicate: UserHealthPredicate
+): boolean {
+  if (predicate === "all") return true;
+  if (predicate === "has_blockers") {
+    return getUserAttentionReasons(user).length > 0;
+  }
+  return getActivityStage(user) === predicate;
 }
 
 export function getProvisioningAuthenticationPresentation(

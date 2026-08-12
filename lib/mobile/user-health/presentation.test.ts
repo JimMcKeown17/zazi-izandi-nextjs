@@ -2,12 +2,30 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getActivityStage,
   getProvisioningAuthenticationPresentation,
   getUserAttentionReasons,
-  getUserHealthState,
   hasSeededDataReady,
+  matchesUserHealthPredicate,
 } from "./presentation";
 import { VALID_MOBILE_USER_HEALTH_PAYLOAD } from "./test-fixtures";
+
+const base = VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0];
+const noDevice = {
+  registered: false as const,
+  platform: null,
+  app_version: null,
+  last_seen_at: null,
+};
+const noActivity = {
+  clock_entries: 0,
+  sessions: 0,
+  app_assessments: 0,
+  last_clock_in_at: null,
+  last_session_at: null,
+  last_app_assessment_at: null,
+  last_activity_at: null,
+};
 
 test("import-complete seeded users are distinguished from seeded data gaps", () => {
   const [healthy, missingGroups] = VALID_MOBILE_USER_HEALTH_PAYLOAD.users;
@@ -21,36 +39,67 @@ test("import-complete seeded users are distinguished from seeded data gaps", () 
 test("zero data is expected for a self-setup ECD user", () => {
   const selfSetup = VALID_MOBILE_USER_HEALTH_PAYLOAD.users[2];
   assert.deepEqual(getUserAttentionReasons(selfSetup), []);
-  assert.equal(getUserHealthState(selfSetup), "active");
 });
 
-test("auth blocks take precedence over absence of activity", () => {
+test("auth blocks are reported as an attention reason", () => {
   const blocked = VALID_MOBILE_USER_HEALTH_PAYLOAD.users[3];
   assert.deepEqual(getUserAttentionReasons(blocked), ["auth_blocked"]);
-  assert.equal(getUserHealthState(blocked), "needs_attention");
 });
 
-test("post-provisioning authentication advances an otherwise healthy user to onboarding", () => {
-  const authOnly = {
-    ...VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0],
-    app_device: {
-      registered: false,
-      platform: null,
-      app_version: null,
-      last_seen_at: null,
-    },
-    activity: {
-      clock_entries: 0,
-      sessions: 0,
-      app_assessments: 0,
-      last_clock_in_at: null,
-      last_session_at: null,
-      last_app_assessment_at: null,
-      last_activity_at: null,
-    },
-  };
+test("usage evidence in the window means active", () => {
+  assert.equal(getActivityStage(base), "active");
+});
 
-  assert.equal(getUserHealthState(authOnly), "onboarding");
+test("without in-window activity, remaining reach evidence yields reached, not not_started", () => {
+  const outsideWindow = { ...base, activity: noActivity };
+  assert.equal(getActivityStage(outsideWindow), "reached");
+});
+
+test("stage is current-evidence: an invalidated device token with no durable auth proof regresses to not_started", () => {
+  const deviceLost = {
+    ...base,
+    auth: { ...base.auth, authenticated_after_provisioning: false },
+    app_device: noDevice,
+    activity: noActivity,
+  };
+  assert.equal(getActivityStage(deviceLost), "not_started");
+});
+
+test("a provisioning-check timestamp alone does not advance the stage", () => {
+  const preCutoff = {
+    ...base,
+    auth: { ...base.auth, authenticated_after_provisioning: false },
+    app_device: noDevice,
+    activity: noActivity,
+  };
+  assert.equal(getActivityStage(preCutoff), "not_started");
+});
+
+test("post-provisioning authentication or a device signal reaches the EA without proving usage", () => {
+  const authOnly = { ...base, app_device: noDevice, activity: noActivity };
+  assert.equal(getActivityStage(authOnly), "reached");
+  const deviceOnly = {
+    ...base,
+    auth: { ...base.auth, authenticated_after_provisioning: false },
+    activity: noActivity,
+  };
+  assert.equal(getActivityStage(deviceOnly), "reached");
+});
+
+test("blockers are reported independently of the stage", () => {
+  const blockedButActive = {
+    ...base,
+    auth: { ...base.auth, state: "unconfirmed" as const },
+  };
+  assert.equal(getActivityStage(blockedButActive), "active");
+  assert.deepEqual(getUserAttentionReasons(blockedButActive), ["auth_blocked"]);
+  assert.equal(matchesUserHealthPredicate(blockedButActive, "has_blockers"), true);
+  assert.equal(matchesUserHealthPredicate(blockedButActive, "active"), true);
+});
+
+test("post-provisioning authentication presentation identifies proven auth evidence", () => {
+  const authOnly = { ...base, app_device: noDevice, activity: noActivity };
+
   assert.deepEqual(getProvisioningAuthenticationPresentation(authOnly), {
     label: "Authenticated after provisioning",
     detail: "Auth proof; app and device are not identified",
@@ -58,32 +107,18 @@ test("post-provisioning authentication advances an otherwise healthy user to onb
   });
 });
 
-test("a provisioning-check timestamp does not advance the health state", () => {
+test("a provisioning-check timestamp is presented as no authentication proof", () => {
   const preCutoff = {
-    ...VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0],
+    ...base,
     auth: {
-      ...VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0].auth,
+      ...base.auth,
       last_sign_in_at: "2026-08-08T02:58:00.000Z",
       authenticated_after_provisioning: false,
     },
-    app_device: {
-      registered: false,
-      platform: null,
-      app_version: null,
-      last_seen_at: null,
-    },
-    activity: {
-      clock_entries: 0,
-      sessions: 0,
-      app_assessments: 0,
-      last_clock_in_at: null,
-      last_session_at: null,
-      last_app_assessment_at: null,
-      last_activity_at: null,
-    },
+    app_device: noDevice,
+    activity: noActivity,
   };
 
-  assert.equal(getUserHealthState(preCutoff), "not_started");
   assert.equal(
     getProvisioningAuthenticationPresentation(preCutoff).label,
     "No authentication after provisioning"

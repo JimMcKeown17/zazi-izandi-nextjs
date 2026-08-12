@@ -2,7 +2,6 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import {
-  AlertTriangle,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -12,13 +11,16 @@ import {
   Smartphone,
 } from "lucide-react";
 
+import { getEmploymentStatusDisplay } from "@/lib/mobile/presentation";
 import {
-  getUserAttentionReasons,
-  getUserHealthState,
+  getActivityStage,
   getProvisioningAuthenticationPresentation,
+  getUserAttentionReasons,
   hasSeededDataReady,
+  matchesUserHealthPredicate,
+  type ActivityStage,
   type UserAttentionReason,
-  type UserHealthState,
+  type UserHealthPredicate,
 } from "@/lib/mobile/user-health/presentation";
 import type { MobileUserHealthRow } from "@/lib/mobile/user-health/types";
 import { cn } from "@/lib/utils";
@@ -42,41 +44,54 @@ const ATTENTION_LABELS: Record<UserAttentionReason, string> = {
   seeded_memberships_incomplete: "Group memberships incomplete",
 };
 
-const STATE_LABELS: Record<UserHealthState, string> = {
-  active: "Active",
-  onboarding: "Onboarding",
+const STAGE_LABELS: Record<Exclude<ActivityStage, "active">, string> = {
+  reached: "Onboarding",
   not_started: "Not started",
-  needs_attention: "Needs attention",
+};
+const STAGE_STYLES: Record<ActivityStage, string> = {
+  active: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  reached: "bg-blue-50 text-blue-700 ring-blue-200",
+  not_started: "bg-slate-100 text-slate-600 ring-slate-200",
 };
 
 function formatTimestamp(value: string | null): string {
   return value ? DATE_TIME_FORMAT.format(new Date(value)) : "No evidence yet";
 }
 
-function HealthBadge({ user }: { user: MobileUserHealthRow }) {
-  const state = getUserHealthState(user);
-  const styles: Record<UserHealthState, string> = {
-    active: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-    onboarding: "bg-blue-50 text-blue-700 ring-blue-200",
-    not_started: "bg-slate-100 text-slate-600 ring-slate-200",
-    needs_attention: "bg-red-50 text-red-700 ring-red-200",
-  };
+function StageBadge({
+  user,
+  days,
+}: {
+  user: MobileUserHealthRow;
+  days: number;
+}) {
+  const stage = getActivityStage(user);
   const Icon =
-    state === "active"
+    stage === "active"
       ? CheckCircle2
-      : state === "needs_attention"
-        ? AlertTriangle
-        : state === "onboarding"
-          ? Clock3
-          : CircleDashed;
+      : stage === "reached"
+        ? Clock3
+        : CircleDashed;
+  const label =
+    stage === "active" ? `Active · ${days}d` : STAGE_LABELS[stage];
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset",
-        styles[state]
+        STAGE_STYLES[stage]
       )}
     >
-      <Icon className="h-3 w-3" /> {STATE_LABELS[state]}
+      <Icon className="h-3 w-3" /> {label}
+    </span>
+  );
+}
+
+function EmploymentBadge({ status }: { status: string | null }) {
+  const display = getEmploymentStatusDisplay(status);
+  if (!display || display.kind === "active") return null;
+  return (
+    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+      {display.label}
     </span>
   );
 }
@@ -231,7 +246,7 @@ export function UserHealthBoard({
   days: number;
 }) {
   const [query, setQuery] = useState("");
-  const [stateFilter, setStateFilter] = useState<UserHealthState | "all">("all");
+  const [predicate, setPredicate] = useState<UserHealthPredicate>("all");
   const [expectationFilter, setExpectationFilter] = useState<
     MobileUserHealthRow["data"]["expectation"] | "all"
   >("all");
@@ -246,14 +261,13 @@ export function UserHealthBoard({
           user.display_name.toLowerCase().includes(deferredQuery) ||
           (user.email?.toLowerCase().includes(deferredQuery) ?? false) ||
           user.user_id.toLowerCase().includes(deferredQuery);
-        const matchesState =
-          stateFilter === "all" || getUserHealthState(user) === stateFilter;
+        const matchesPredicate = matchesUserHealthPredicate(user, predicate);
         const matchesExpectation =
           expectationFilter === "all" ||
           user.data.expectation === expectationFilter;
-        return matchesQuery && matchesState && matchesExpectation;
+        return matchesQuery && matchesPredicate && matchesExpectation;
       }),
-    [deferredQuery, expectationFilter, stateFilter, users]
+    [deferredQuery, expectationFilter, predicate, users]
   );
 
   const pageCount = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
@@ -281,19 +295,19 @@ export function UserHealthBoard({
           </span>
         </label>
         <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Health state
+          Stage / blockers
           <select
-            value={stateFilter}
+            value={predicate}
             onChange={(event) => {
-              setStateFilter(event.target.value as UserHealthState | "all");
+              setPredicate(event.target.value as UserHealthPredicate);
               setPage(1);
             }}
             className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-800 outline-none focus:border-primary"
           >
-            <option value="all">All states</option>
-            <option value="needs_attention">Needs attention</option>
-            <option value="active">Active</option>
-            <option value="onboarding">Onboarding</option>
+            <option value="all">All EAs</option>
+            <option value="has_blockers">Has blockers</option>
+            <option value="active">Active in window</option>
+            <option value="reached">Onboarding</option>
             <option value="not_started">Not started</option>
           </select>
         </label>
@@ -327,7 +341,7 @@ export function UserHealthBoard({
         <div className="px-6 py-14 text-center">
           <p className="font-semibold text-slate-800">No users match these filters</p>
           <p className="mt-1 text-sm text-slate-500">
-            Clear the search or choose a broader health/data state.
+            Clear the search or choose broader stage, blocker, or data filters.
           </p>
         </div>
       ) : (
@@ -337,7 +351,7 @@ export function UserHealthBoard({
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.09em] text-slate-500">
                   <th className="px-4 py-3">Youth identity</th>
-                  <th className="px-4 py-3">Health</th>
+                  <th className="px-4 py-3">Stage / blockers</th>
                   <th className="px-4 py-3">Auth / login</th>
                   <th className="px-4 py-3">Device signal</th>
                   <th className="px-4 py-3">Server data</th>
@@ -348,7 +362,10 @@ export function UserHealthBoard({
                 {visibleUsers.map((user) => (
                   <tr key={user.user_id} className="align-top hover:bg-slate-50/80">
                     <td className="px-4 py-4">
-                      <p className="font-bold text-slate-900">{user.display_name}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-bold text-slate-900">{user.display_name}</p>
+                        <EmploymentBadge status={user.employment_status} />
+                      </div>
                       <p className="mt-1 text-xs text-slate-600">
                         {user.email ?? "No email"}
                       </p>
@@ -360,7 +377,7 @@ export function UserHealthBoard({
                       </p>
                     </td>
                     <td className="px-4 py-4">
-                      <HealthBadge user={user} />
+                      <StageBadge user={user} days={days} />
                       <AttentionReasons user={user} />
                     </td>
                     <td className="px-4 py-4"><AuthEvidence user={user} /></td>
@@ -380,7 +397,10 @@ export function UserHealthBoard({
               <article key={user.user_id} className="p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <h3 className="font-bold text-slate-900">{user.display_name}</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-bold text-slate-900">{user.display_name}</h3>
+                      <EmploymentBadge status={user.employment_status} />
+                    </div>
                     <p className="mt-1 break-all text-xs text-slate-600">
                       {user.email ?? "No email"}
                     </p>
@@ -392,7 +412,7 @@ export function UserHealthBoard({
                     </p>
                   </div>
                   <div>
-                    <HealthBadge user={user} />
+                    <StageBadge user={user} days={days} />
                     <AttentionReasons user={user} />
                   </div>
                 </div>
