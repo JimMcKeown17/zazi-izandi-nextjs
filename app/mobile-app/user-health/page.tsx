@@ -118,6 +118,9 @@ export default async function MobileUserHealthPage({
       <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-relaxed text-blue-900">
         <Info className="mt-0.5 h-4 w-4 shrink-0" />
         <p>
+          <strong>Population:</strong> Banned accounts and known synthetic accounts,
+          including <code>+fakedata</code> addresses and staff-test identities, are
+          excluded from both the rows and all summary totals. <br />
           <strong>Download/install is not directly observable.</strong> A registered
           push device is positive app evidence, but no token can also mean notification
           permission was denied. Treat “no device signal” as unknown—not “not installed.”{" "}

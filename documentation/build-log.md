@@ -1,5 +1,16 @@
 # Zazi iZandi Website Build Log
 
+## 2026-08-12 — User-health population policy made explicit
+
+- Added an operator-facing disclosure that banned accounts and known synthetic
+  identities are excluded from the User health rows and every summary total.
+  The filtering remains server-authoritative in Django; the React page does not
+  duplicate identity-policy logic or recompute the response.
+- The focused mobile reporting suite passed 27 tests. The production build
+  compiled, passed TypeScript, and emitted all 44 routes using non-secret local
+  placeholder configuration. Expected existing static-page warnings came from
+  the deliberately unreachable placeholder Django host.
+
 ## 2026-08-11 — Clock In/Out and user-health reports activated end to end
 
 - The paired service-role-only Supabase functions are live on the pinned ZZ
