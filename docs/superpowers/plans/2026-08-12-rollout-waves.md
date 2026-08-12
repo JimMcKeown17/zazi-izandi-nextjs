@@ -20,6 +20,8 @@
 - **Frontend predicate values keep their URL identities AND their meanings.** `state=active` stays WINDOWED (it is what the "Active · Nd" summary tile links to and counts — tile count and drill-down rows must reconcile); the lifetime stage gets its own new predicate `activated`; `quiet` = activated-ever but silent in window. `hasRecentAppActivity` stays windowed (it feeds the server-summary reconciliation in `schema.ts` — changing it breaks every payload). The row badge shows the durable stage; every windowed claim carries the window (round-2 adversarial finding).
 - **Git:** feature branches; no Co-Authored-By/agent trailers; commit messages as given per task.
 - **Copy honesty:** "Activated" (durable, lifetime) and "Active · {days}d" (windowed) are different claims — never label a durable stage with a window and vice versa.
+- **Degraded mode is announced, never silent (round-8 finding + Jim's standing amber-banner rule):** the frontend detects Part B capability by `wave_options` key presence in the payload (Part B Django ALWAYS emits it, legacy Django never does). When absent — i.e. a post-frontend Django-only rollback — the board falls back to windowed labels, hides the lifetime/wave/app-open surfaces, exports the legacy CSV shape, and shows an amber note explaining the degradation. A Django rollback therefore stays a one-service action and the board stays honest throughout.
+- **app_open is REACH evidence and is user-visible** (round-8 finding): a signed-in app open proves the app was installed and opened even when no push token ever existed (notification permission denied). It joins the stage ratchet's `reached` branch, the board row, the CSV, and the wave funnel — it is NOT usage evidence and never makes a row `activated`.
 - Jim's wave decisions (2026-08-12): waves **"ZZ Primary 2026"** (seeded cohort: `staff_identity_links.teampact_user_id IS NOT NULL`, ~152) and **"ZZ ECD 2026"** (auth accounts created 2026-08-11T19:18–19:20Z, ~27). Proposed launch dates **2026-08-08** and **2026-08-11** — Jim sanity-checks generated lists + dates BEFORE the loader runs. A Masifunde wave comes later; nothing may hardcode the two initial waves outside the manifests. Sentry tagging is DEFERRED. Filtered summary tiles are NOT approved — the wave funnel is computed from wave-narrowed rows only, never from search/stage-narrowed rows.
 
 ## Repo / branch map
@@ -1706,7 +1708,7 @@ Per-user additions: `wave: waveSchema.nullable().optional()`, the four timestamp
 
 In the `superRefine`, add per-user checks mirroring Django (Task 6d) — pair-nullity and ordering for the lifetime pair and app_open pair; `last_activity_at` (when non-null) must be `<=` `last_ever_activity_at` when the lifetime key is present non-null, and windowed activity with a present-but-null lifetime pair is an issue; `app_device.registered && ever_registered_device === false` is an issue; every non-null `user.wave.id` must appear in `wave_options` when `wave_options` is present, and `wave_options` must be sorted by `(launch_date, name.toLowerCase(), id)` with unique ids. Issue paths follow the existing style (`["users", index, "last_ever_activity_at"]` etc.).
 
-`test-fixtures.ts`: extend `VALID_MOBILE_USER_HEALTH_PAYLOAD` — add `wave_options` with the two waves ("ZZ Primary 2026" 2026-08-08, "ZZ ECD 2026" 2026-08-11) and give each of the 4 users coherent new fields (at least: one user in Primary wave with lifetime activity matching their windowed activity, one in ECD, one with `wave: null`, one with `ever_registered_device: true` but `app_device.registered: false` and empty windowed activity but non-null lifetime bounds — that user is the future "quiet + token-died" fixture for Tasks 8–9). Keep the summary block reconciling (the new fields do not enter any summary count — but Task 8 CHANGES stage semantics, and `needs_attention`/`active_in_window` reconciliation only uses `getUserAttentionReasons`/`hasRecentAppActivity`, which do not change; verify no fixture change breaks reconciliation).
+`test-fixtures.ts`: extend `VALID_MOBILE_USER_HEALTH_PAYLOAD` — add `wave_options` with the two waves ("ZZ Primary 2026" 2026-08-08, "ZZ ECD 2026" 2026-08-11) and give each user coherent new fields (at least: one user in Primary wave with lifetime activity matching their windowed activity, one in ECD, one with `wave: null`, one with `ever_registered_device: true` but `app_device.registered: false` and empty windowed activity but non-null lifetime bounds — that user is the "quiet + token-died" fixture for Tasks 8–9). ADD a FIFTH user whose ONLY evidence is app_open (round-8 finding): `app_device.registered: false`, `ever_registered_device: false`, zero activity, null lifetime bounds, `authenticated_after_provisioning` not `true`, but non-null `first/last_app_open_at` — the direct-open-only case for the stage/board/CSV pins; update the `summary` block so reconciliation stays green (`total_users`, `auth_ready`, etc. — the superRefine recomputes from rows). ALSO export `LEGACY_MOBILE_USER_HEALTH_PAYLOAD`: a deep-cloned variant with every Part B key deleted (no `wave_options`, none of the six per-user keys) — the degraded-mode fixture for Task 9. Keep the summary reconciling in both fixtures (the new fields do not enter any summary count — `needs_attention`/`active_in_window` reconciliation only uses `getUserAttentionReasons`/`hasRecentAppActivity`, which do not change).
 
 - [ ] **Step 4: Run the gates**
 
@@ -1732,7 +1734,7 @@ Repo/branch: same as Task 7. Depends on Task 7's types.
 
 **Interfaces:**
 - Consumes: Task 7's optional fields.
-- Produces: `hasEverUsedApp(user)`, `hasEverRegisteredDevice(user)`, `isQuiet(user)` in `presentation.ts`; `UserHealthPredicate` union gains `"activated"` and `"quiet"` — **`"active"` keeps its windowed meaning** (`hasRecentAppActivity`), `"activated"` carries the lifetime stage; `FunnelCounts` gains `activated_ever: number` and `device_signal` becomes ratcheted; `getWaveDayNumber(launchDate: string, generatedAt: string): number` and `filterRowsByWave(users, wave: "all" | "none" | string)` in `wave.ts`. Task 9 imports all of these.
+- Produces: `hasEverUsedApp(user)`, `hasEverRegisteredDevice(user)`, `hasEverOpenedApp(user)`, `isQuiet(user)` in `presentation.ts`; `UserHealthPredicate` union gains `"activated"` and `"quiet"` — **`"active"` keeps its windowed meaning** (`hasRecentAppActivity`), `"activated"` carries the lifetime stage, and `hasEverOpenedApp` feeds the `reached` branch; `FunnelCounts` gains `activated_ever: number` and `opened_app_ever: number` and `device_signal` becomes ratcheted; `getWaveDayNumber(launchDate: string, generatedAt: string): number`, `filterRowsByWave(users, wave: "all" | "none" | string)`, and `hasPartBCapability(response)` in `wave.ts`. Task 9 imports all of these.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1747,6 +1749,13 @@ test("stage is a lifetime ratchet: shrinking the window cannot regress active", 
 test("stage is a lifetime ratchet: token invalidation cannot regress reached", () => {
   // app_device.registered false, ever_registered_device true, no auth proof,
   // no activity -> getActivityStage === "reached"
+});
+
+test("a signed-in app open alone proves reached", () => {
+  // No push token ever (notification permission denied), no auth proof,
+  // no activity, but last_app_open_at set -> getActivityStage === "reached"
+  // (round-8 finding: app_open is reach evidence, never usage evidence —
+  // the same row must NOT be "active"/"activated")
 });
 
 test("legacy rows without lifetime fields keep their windowed stage", () => {
@@ -1822,9 +1831,16 @@ export function isQuiet(user: MobileUserHealthRow): boolean {
   return hasEverUsedApp(user) && !hasRecentAppActivity(user);
 }
 
+export function hasEverOpenedApp(user: MobileUserHealthRow): boolean {
+  return (user.last_app_open_at ?? null) !== null;
+}
+
 export function getActivityStage(user: MobileUserHealthRow): ActivityStage {
   if (hasEverUsedApp(user)) return "active";
   if (hasEverRegisteredDevice(user)) return "reached";
+  // A signed-in app open proves reach even when no push token ever
+  // existed (e.g. notification permission denied) — round-8 finding.
+  if (hasEverOpenedApp(user)) return "reached";
   if (user.auth.authenticated_after_provisioning) return "reached";
   return "not_started";
 }
@@ -1853,7 +1869,21 @@ export function matchesUserHealthPredicate(
 
 `hasRecentAppActivity` and `hasUsageEvidenceInWindow` stay exactly as they are (summary reconciliation depends on them).
 
-`funnel.ts` — `FunnelCounts` gains `activated_ever: number`; the loop counts `hasEverUsedApp(user)` into it and switches the `device_signal` increment to `hasEverRegisteredDevice(user)` (import both from `./presentation`; delete the drift-prone inline active arithmetic in favor of `hasRecentAppActivity(user)` while in the file — same semantics, one source of truth). Update the header comment: the strip is now the wave-scoped instrument with durable axes.
+`funnel.ts` — `FunnelCounts` gains `activated_ever: number` AND `opened_app_ever: number`; the loop counts `hasEverUsedApp(user)` and `hasEverOpenedApp(user)` into them and switches the `device_signal` increment to `hasEverRegisteredDevice(user)` (import all from `./presentation`; delete the drift-prone inline active arithmetic in favor of `hasRecentAppActivity(user)` while in the file — same semantics, one source of truth). Update the header comment: the strip is now the wave-scoped instrument with durable axes.
+
+`wave.ts` also gains the Part B capability probe (round-8 finding — drives the announced degraded mode in Task 9):
+
+```ts
+// Part B Django always emits wave_options (possibly []); a legacy payload
+// (post-frontend Django rollback) never does. Absence = degrade honestly.
+export function hasPartBCapability(
+  response: Pick<MobileUserHealthResponse, "wave_options">
+): boolean {
+  return response.wave_options !== undefined;
+}
+```
+
+with tests: `wave_options: []` → true; key absent → false.
 
 `wave.ts`:
 
@@ -1932,9 +1962,9 @@ Repo/branch: same as Task 7. Depends on Tasks 7–8.
 
 - [ ] **Step 1: Write the failing tests**
 
-`export.test.ts`: rework the CSV stage contract (round-2 finding — the current CSV writes `getActivityStage` into a windowed-named column, which becomes a lie once the stage is lifetime). First READ `export.ts` to see the current column set and exact header string, then assert: the windowed-named stage column (`status_in_window` or whatever the current header names it) is REPLACED by three explicit columns — `stage` (durable: `not_started|reached|activated`, mapping stage value `active` → the string `activated`), `active_in_window` (`true|false` from `hasRecentAppActivity`), `quiet` (`true|false` from `isQuiet`) — plus appended `wave_name` and `last_ever_activity_at` (empty string when null/absent). Pin: a quiet fixture row exports `stage=activated, active_in_window=false, quiet=true`; a windowed-active row exports `active_in_window=true, quiet=false`; NO row can ever export `active_in_window=true` AND `quiet=true` (assert over every fixture row). `buildChaseListText`: the `· Nd` window suffix moves off the stage word onto the windowed marker (e.g. `active 30d` / `quiet 30d`), and a quiet row's line carries `quiet`.
+`export.test.ts`: rework the CSV stage contract (round-2 finding — the current CSV writes `getActivityStage` into a windowed-named column, which becomes a lie once the stage is lifetime). First READ `export.ts` to see the current column set and exact header string, then assert: the windowed-named stage column (`status_in_window` or whatever the current header names it) is REPLACED by three explicit columns — `stage` (durable: `not_started|reached|activated`, mapping stage value `active` → the string `activated`), `active_in_window` (`true|false` from `hasRecentAppActivity`), `quiet` (`true|false` from `isQuiet`) — plus appended `wave_name`, `last_ever_activity_at`, and `last_app_open_at` (empty string when null/absent; round-8 finding — app-open evidence must reach the chase list). Pin: a quiet fixture row exports `stage=activated, active_in_window=false, quiet=true`; a windowed-active row exports `active_in_window=true, quiet=false`; NO row can ever export `active_in_window=true` AND `quiet=true` (assert over every fixture row); the app-open-only fixture row exports `stage=reached` with its `last_app_open_at` value. `buildChaseListText`: the `· Nd` window suffix moves off the stage word onto the windowed marker (e.g. `active 30d` / `quiet 30d`), and a quiet row's line carries `quiet`. DEGRADED branch (round-8 finding): `buildChaseListCsv(rows, context, { partB: false })` produces the EXACT pre-Part-B column set (keep the existing Part A implementation as this branch); pin its header string equality against the current header.
 
-`board-copy.test.ts` (this file renders the board via `renderToStaticMarkup`): add — board rendered with `waveOptions` shows a wave `<select>` including "All waves", "No wave", and each wave name; rendering with `initialWave` set to the Primary wave id shows the context chip text `ZZ Primary 2026 · launched 2026-08-08 · day 4` (fixture `generated_at` must make the day number 4 — set `generatedAt` accordingly) and renders the funnel section with the wave-scoped counts; a quiet row shows the `Quiet · 30d` indicator; the stage badge for an activated row reads `Activated`, never `Active · 30d`; the predicate `<select>` lists both `Active · in window` and `Activated (ever)` options; **tile↔filter reconciliation:** rendering the board with `initialPredicate: "active"` over the shared fixture shows exactly `summary.active_in_window` rows (the quiet fixture row is absent), pinning that the "Active · Nd" tile deep-link still lands on a set whose size matches the tile.
+`board-copy.test.ts` (this file renders the board via `renderToStaticMarkup`): add — board rendered with `waveOptions` shows a wave `<select>` including "All waves", "No wave", and each wave name; rendering with `initialWave` set to the Primary wave id shows the context chip text `ZZ Primary 2026 · launched 2026-08-08 · day 4` (fixture `generated_at` must make the day number 4 — set `generatedAt` accordingly) and renders the funnel section with the wave-scoped counts; a quiet row shows the `Quiet · 30d` indicator; the stage badge for an activated row reads `Activated`, never `Active · 30d`; the predicate `<select>` lists both `Active · in window` and `Activated (ever)` options; **tile↔filter reconciliation:** rendering the board with `initialPredicate: "active"` over the shared fixture shows exactly `summary.active_in_window` rows (the quiet fixture row is absent), pinning that the "Active · Nd" tile deep-link still lands on a set whose size matches the tile; **app-open visibility (round-8 finding):** the app-open-only fixture row renders stage badge `Reached` AND an `Opened {date}` marker in its evidence cell; **degraded mode (round-8 finding):** rendering the board with `lifetimeEvidence: false` (legacy fixture, no `wave_options` key) shows the amber degradation note, the windowed `Active · 30d` badge (never `Activated`), NO `Activated (ever)`/`Quiet` dropdown options, NO wave select, and NO `Opened`/quiet markers.
 
 - [ ] **Step 2: Run to verify they fail**
 
@@ -1943,7 +1973,9 @@ Run: `npm run test:mobile` → new assertions FAIL.
 - [ ] **Step 3: Implement**
 
 **Board (`user-health-board.tsx`):**
-- Props: add `waveOptions: MobileRolloutWave[]` (default `[]`) and `initialWave: WaveSelection` (default `"all"`).
+- Props: add `waveOptions: MobileRolloutWave[]` (default `[]`), `initialWave: WaveSelection` (default `"all"`), and `lifetimeEvidence: boolean` (default `true`; the page passes `hasPartBCapability(data)`).
+- Degraded mode (`lifetimeEvidence === false`; round-8 finding): render an amber note above the filters — `Lifetime rollout evidence is temporarily unavailable — showing the window-scoped view.` (reuse the styling of the existing selected-school/amber banner pattern); the stage badge for stage `active` renders the windowed `Active · {days}d` (never `Activated`); the predicate dropdown omits `Activated (ever)` and `Quiet` (and the page treats those URL values as `all` when capability is absent); the wave select, context chip, funnel, quiet badges, and `Opened` markers do not render; `handleDownload` calls the CSV with `{ partB: false }`. All lifetime UI is gated on this one prop — no scattered conditionals on individual fields.
+- App-open evidence (round-8 finding): in each row's device/auth evidence cell, when `user.last_app_open_at` is non-null render `Opened {date}` (date-only, SAST — reuse the row's existing timestamp formatting helper). This is the direct signed-in-open proof for accounts with no push token and no teaching activity.
 - State: `wave` (a `WaveSelection`), initialized from `initialWave`; every change calls `setPage(1)` and extends `syncUrl` to write/delete the `wave` URL param (delete when `"all"`, same pattern as the existing `q`/`state`/`cohort` params).
 - Row pipeline: `const waveRows = filterRowsByWave(users, wave);` then feed `waveRows` (not `users`) into the existing `selectBoardRows(waveRows, selection)` call. The funnel is computed from `waveRows` ONLY — never from the search/stage-filtered rows (filtered tiles are explicitly not approved).
 - Wave control: a `<select>` alongside the existing stage/cohort selects with options `All waves` (`all`), `No wave` (`none`), and one per `waveOptions` entry labeled `{name}` — reuse the exact classNames of the neighboring selects.
@@ -1975,11 +2007,11 @@ interface UserHealthWaveFunnelProps {
 }
 ```
 
-Recreate the deleted strip's bar-row rendering (`git show a1a72bb:components/mobile-app/user-health/user-health-funnel.tsx`) with rows: `Accounts` (`counts.accounts`), `Auth ready`, `Device signal (ever)` (`counts.device_signal`), `Activated (ever)` (`counts.activated_ever`), `Active · {days}d` (`counts.active_in_window`) — each `count · share%` of `counts.accounts` with the same `Math.max(accounts, 1)` guard; keep the two footer lines (logged-in-after-provisioning over measurable with the "Not measured" branch, seeded-ready over seeded-expected). Header: when `wave` is non-null render `{wave.name} · launched {wave.launch_date} · day {getWaveDayNumber(wave.launch_date, generatedAt)}` (when the day number is negative render `{wave.name} · launches {wave.launch_date}`); when `wave` is null render `No wave · {counts.accounts} accounts`.
+Recreate the deleted strip's bar-row rendering (`git show a1a72bb:components/mobile-app/user-health/user-health-funnel.tsx`) with rows: `Accounts` (`counts.accounts`), `Auth ready`, `Device signal (ever)` (`counts.device_signal`), `Opened app (ever)` (`counts.opened_app_ever` — the wave-scoped direct-open rollout metric; round-8 finding), `Activated (ever)` (`counts.activated_ever`), `Active · {days}d` (`counts.active_in_window`) — each `count · share%` of `counts.accounts` with the same `Math.max(accounts, 1)` guard; keep the two footer lines (logged-in-after-provisioning over measurable with the "Not measured" branch, seeded-ready over seeded-expected). Header: when `wave` is non-null render `{wave.name} · launched {wave.launch_date} · day {getWaveDayNumber(wave.launch_date, generatedAt)}` (when the day number is negative render `{wave.name} · launches {wave.launch_date}`); when `wave` is null render `No wave · {counts.accounts} accounts`.
 
-**Page (`page.tsx`):** extend the `PREDICATES` parse list with `"activated"` and `"quiet"`; parse the `wave` param — `parseWave(value, waveOptionIds)` returns `"all"` when absent/unknown, `"none"`, or a validated wave id; pass `waveOptions={data.wave_options ?? []}` and `initialWave` to `UserHealthBoard`; add the wave value to the board remount key string.
+**Page (`page.tsx`):** extend the `PREDICATES` parse list with `"activated"` and `"quiet"` (accepted only when `hasPartBCapability(data)`; otherwise they parse to `"all"`); parse the `wave` param — `parseWave(value, waveOptionIds)` returns `"all"` when absent/unknown, `"none"`, or a validated wave id; pass `waveOptions={data.wave_options ?? []}`, `initialWave`, and `lifetimeEvidence={hasPartBCapability(data)}` to `UserHealthBoard`; add the wave value and the capability boolean to the board remount key string.
 
-**CSV (`export.ts`):** replace the windowed-named stage column with the three-column contract pinned in Step 1 — `stage` (durable, stage value `active` written as `activated`), `active_in_window` (`hasRecentAppActivity`), `quiet` (`isQuiet`) — and append `wave_name` (`user.wave?.name ?? ""`) and `last_ever_activity_at` (`?? ""`), all threaded through the existing quote/injection-guard pipeline. `buildChaseListText`: move the `· Nd` suffix from the stage word to the windowed markers and add `quiet` to quiet rows (match the file's existing line-composition style).
+**CSV (`export.ts`):** `buildChaseListCsv(rows, context, options?: { partB?: boolean })` (default `{ partB: true }`). Part B branch: replace the windowed-named stage column with the three-column contract pinned in Step 1 — `stage` (durable, stage value `active` written as `activated`), `active_in_window` (`hasRecentAppActivity`), `quiet` (`isQuiet`) — and append `wave_name` (`user.wave?.name ?? ""`), `last_ever_activity_at` (`?? ""`), and `last_app_open_at` (`?? ""`), all threaded through the existing quote/injection-guard pipeline. Degraded branch (`partB: false`): keep the CURRENT Part A column set and header byte-identical (retain the existing code path rather than re-deriving it). `buildChaseListText`: move the `· Nd` suffix from the stage word to the windowed markers and add `quiet` to quiet rows (match the file's existing line-composition style).
 
 **How-to panel (`how-to-read-panel.tsx`):** update the stage explanation: stages are now durable — `Activated` means the EA has EVER produced app activity (it can never go backwards; shrinking the window cannot demote anyone); `Reached` includes devices whose push token later died (`ever_registered_device`); windowed claims live in the separate indicators — `Active · {days}d` (usage in the selected window, the same number the summary tile counts) and `Quiet · {days}d` (activated-ever but silent in the window). State plainly that the `Active` filter and tile are windowed while the stage badge is lifetime — they answer different questions. Add a wave paragraph: the wave filter scopes the board and the evidence strip to one rollout wave; `day n` counts whole days since launch in SAST; "No wave" shows accounts not assigned to any wave. Add an app_open note: once the app update ships, `app opens` become direct evidence of signed-in use; older app versions do not emit it, so its absence is not proof of absence.
 
@@ -2214,6 +2246,15 @@ test('reports immediately when cold start restores a live session', () => {
   expect(reportAppOpenOnce).toHaveBeenCalledTimes(1);
 });
 
+test('retries when connectivity returns while still foregrounded', () => {
+  // Round-8 finding: offline cold start passes the local session check,
+  // fails the RPC, then the network returns with NO AppState event and
+  // NO session change. The online-state dependency must re-fire the
+  // effect. Drive the mocked OfflineContext/online hook from false to
+  // true across a rerender with the SAME session, and assert
+  // reportAppOpenOnce is invoked again (exactly 2 calls total).
+});
+
 test('retries on app-foreground so a failed offline attempt recovers', () => {
   // Round-2 finding: without a retrigger, a launch that failed its RPC
   // (offline with a locally-valid session) could never emit. The service
@@ -2352,6 +2393,7 @@ import { reportAppOpenOnce } from '../services/appOpenEvents';
 const AppOpenReporter = () => {
   const { session, loading } = useAuth();
   const sessionUserId = session?.user?.id ?? null;
+  const isOnline = useOfflineOnlineState(); // see note below — from OfflineContext
 
   useEffect(() => {
     if (loading || !sessionUserId) return undefined;
@@ -2362,13 +2404,15 @@ const AppOpenReporter = () => {
       }
     });
     return () => subscription.remove();
-  }, [loading, sessionUserId]);
+  }, [loading, sessionUserId, isOnline]);
 
   return null;
 };
 
 export default AppOpenReporter;
 ```
+
+**Connectivity retry (round-8 finding):** a cold launch can pass the local session check, fail the RPC offline, and then regain connectivity while still foregrounded — with no AppState event and no session change, nothing would retry. `OfflineContext` sits ABOVE `AuthProvider` in the provider order, so the reporter may consume it: read `src/context/OfflineContext.js` and use whatever online/offline state it actually exports (shown here as `useOfflineOnlineState()` — substitute the real hook/selector name; the effect re-runs on the offline→online transition because `isOnline` is a dependency, and the service's per-user recorded/in-flight guards make the extra invocations no-ops after success). If OfflineContext exports no consumable online-state hook, fall back to a bounded interval INSIDE the effect (retry every 60s while unrecorded, max 5 attempts, cleared on unmount and on success) instead of adding new context surface.
 
 FIRST confirm `useAuth()` exposes `session` (AuthContext holds `setSession` state; check the provider's value object). If it does NOT expose `session`, do not add it speculatively to the context — instead have the reporter own a `supabase.auth.onAuthStateChange` subscription (copy the exact subscribe/unsubscribe shape from `src/context/OfflineContext.js:160-172`) that calls `reportAppOpenOnce({ userId: nextSession.user.id })` on `SIGNED_IN` / `INITIAL_SESSION`-with-session / `TOKEN_REFRESHED`, and adjust the component test to drive the mocked subscription instead of context values. Mount the component in `App.js` directly inside `AuthProvider`, as a sibling rendered alongside the existing children (provider order is load-bearing — do not reorder anything; add `<AppOpenReporter />` immediately before the navigator subtree inside the innermost point that is below `AuthProvider`).
 
@@ -2391,7 +2435,7 @@ Nothing here is dispatched to an implementer. The coordinator walks this with Ji
 
 - [ ] **0. Part A gates (unchanged, critical):** Django `fix/mobile-report-real-users` deployed on Render → frontend `fix/mobile-report-real-users` then `feat/mobile-ops-usability` merged to `main` and deployed on Vercel. Remind Jim of the outstanding manual browser checklist in `.superpowers/sdd/2026-08-11-mobile-ops-usability/progress.md` (items 1–6 + version-card reflow) before the production merge.
 - [ ] **1. Supabase migrations (FIRST — purely additive, round-6 ordering):** merge `feat/rollout-waves-app-open` to `main` (app repo), apply the three migrations to hosted (`supabase db push` from the linked worktree — same flow as `20260812120000`), then run `supabase/verification/rollout-waves-post-apply-verification.sql` against hosted and record the output in the repo build log. The running (pre-Part-B) Django is untouched by this step: v1 is byte-identical and the new objects are uncalled.
-- [ ] **2. Django Part B:** merge `feat/mobile-rollout-waves` → `fix/mobile-report-real-users` (or directly to `main` if Part A already merged), deploy on Render. Django now calls `mobile_user_health_domain_v2`. **Rollback at any later point = redeploy the previous Django release** (it calls the untouched v1); no database action is ever required to roll back.
+- [ ] **2. Django Part B:** merge `feat/mobile-rollout-waves` → `fix/mobile-report-real-users` (or directly to `main` if Part A already merged), deploy on Render. Django now calls `mobile_user_health_domain_v2`. **Rollback at any later point = redeploy the previous Django release** (it calls the untouched v1); no database action is ever required to roll back. If this happens AFTER the Part B frontend is live (step 5), the board detects the legacy payload (`wave_options` absent) and switches itself into the announced amber degraded mode — window-scoped labels, lifetime/wave/app-open surfaces hidden — so reporting stays honest without a coordinated frontend rollback (round-8 finding).
 - [ ] **3. Manifests — JIM GATE:** run `generate-wave-manifests.sql` against hosted (read-only), send Jim the two `*-review.csv` files + counts + the proposed launch dates (**2026-08-08** Primary, **2026-08-11** ECD). STOP until Jim confirms lists and dates.
 - [ ] **4. Loader:** run `load-wave-manifest.sql` for ZZ Primary 2026 then ZZ ECD 2026 with `allow_moves=false`, `source_note='manifest <today's date> <file>'`. Paste both load-report NOTICE lines to Jim. Verify: board's `wave_options` shows both waves; per-wave live counts match the manifests.
 - [ ] **5. Frontend:** merge `feat/mobile-rollout-waves` → `main`, deploy. Verify wave filter + strip on production data.
