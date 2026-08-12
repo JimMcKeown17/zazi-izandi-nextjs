@@ -1,12 +1,6 @@
-import {
-  Activity,
-  AlertTriangle,
-  Database,
-  Info,
-  LogIn,
-  ShieldCheck,
-} from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
+import { HowToReadPanel } from "@/components/mobile-app/user-health/how-to-read-panel";
 import { UserHealthBoard } from "@/components/mobile-app/user-health/user-health-board";
 import { UserHealthFilters } from "@/components/mobile-app/user-health/user-health-filters";
 import { UserHealthFunnel } from "@/components/mobile-app/user-health/user-health-funnel";
@@ -104,28 +98,6 @@ export default async function MobileUserHealthPage({
   );
   const funnelCounts = buildFunnelCounts(data.users);
   const deviceVersionBreakdown = buildDeviceVersionBreakdown(data.users);
-  const evidenceStages = [
-    {
-      label: "1 · Access enabled",
-      detail: "Auth account exists, is confirmed, and is not blocked.",
-      icon: ShieldCheck,
-    },
-    {
-      label: "2 · Authentication proven",
-      detail: "A successful Auth event occurred after that rollout cohort's credential cutoff.",
-      icon: LogIn,
-    },
-    {
-      label: "3 · Data ready",
-      detail: "Expected seeded classes, children, groups, and memberships exist.",
-      icon: Database,
-    },
-    {
-      label: "4 · Usage proven",
-      detail: "Clock, session, or app-created assessment activity exists.",
-      icon: Activity,
-    },
-  ];
 
   return (
     <div
@@ -148,24 +120,6 @@ export default async function MobileUserHealthPage({
         </p>
       </div>
 
-      <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-relaxed text-blue-900">
-        <Info className="mt-0.5 h-4 w-4 shrink-0" />
-        <p>
-          <strong>Population:</strong> Banned accounts and known synthetic accounts,
-          including <code>+blank</code>, <code>+groups</code>, <code>+full</code>, and{" "}
-          <code>+fakedata</code> addresses plus named staff-test identities, are
-          excluded from both the rows and all summary totals. <br />
-          <strong>Download/install is not directly observable.</strong> A registered
-          push device is positive app evidence, but no token can also mean notification
-          permission was denied. Treat “no device signal” as unknown—not “not installed.” <br />
-          <strong>Authenticated after provisioning is a rollout proxy.</strong> Primary
-          accounts are compared with the 08 Aug 2026, 04:59 SAST credential release;
-          the ECD account batch is compared with 11 Aug 2026, 21:30 SAST after its CSV
-          completed. A later Auth event proves successful authentication after rollout,
-          but it does not identify the mobile app, platform, or device as the client.
-        </p>
-      </div>
-
       <UserHealthFilters
         key={`${data.days}|${data.applied_filters.school_id ?? ""}`}
         days={data.days}
@@ -183,57 +137,33 @@ export default async function MobileUserHealthPage({
 
       <UserHealthFunnel counts={funnelCounts} days={data.days} />
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <div className="grid gap-2 sm:grid-cols-2">
-          {evidenceStages.map((stage) => {
-            const Icon = stage.icon;
-            return (
-              <div
-                key={stage.label}
-                className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-100/70 p-3"
-              >
-                <span className="rounded-lg bg-white p-2 text-primary shadow-sm">
-                  <Icon className="h-4 w-4" />
-                </span>
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-700">
-                    {stage.label}
-                  </p>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                    {stage.detail}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+      <HowToReadPanel />
 
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-900">
-            App versions in the field
-          </h2>
-          {deviceVersionBreakdown.length > 0 ? (
-            <ul className="mt-3 divide-y divide-slate-100 text-sm text-slate-700">
-              {deviceVersionBreakdown.slice(0, 6).map((row) => (
-                <li
-                  key={row.label}
-                  className="flex items-center justify-between gap-4 py-2 first:pt-0"
-                >
-                  <span className="break-words">{row.label}</span>
-                  <span className="shrink-0 tabular-nums">— {row.count}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-3 text-sm text-slate-500">
-              No registered devices yet.
-            </p>
-          )}
-          <p className="mt-3 text-xs leading-relaxed text-slate-500">
-            Registered devices only — a rollout risk signal, not an install census.
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-sm font-bold text-slate-900">
+          App versions in the field
+        </h2>
+        {deviceVersionBreakdown.length > 0 ? (
+          <ul className="mt-3 divide-y divide-slate-100 text-sm text-slate-700">
+            {deviceVersionBreakdown.slice(0, 6).map((row) => (
+              <li
+                key={row.label}
+                className="flex items-center justify-between gap-4 py-2 first:pt-0"
+              >
+                <span className="break-words">{row.label}</span>
+                <span className="shrink-0 tabular-nums">— {row.count}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-slate-500">
+            No registered devices yet.
           </p>
-        </section>
-      </div>
+        )}
+        <p className="mt-3 text-xs leading-relaxed text-slate-500">
+          Registered devices only — a rollout risk signal, not an install census.
+        </p>
+      </section>
 
       <UserHealthBoard
         key={`${initialPredicate}|${initialCohort}|${initialQuery}`}
@@ -247,11 +177,6 @@ export default async function MobileUserHealthPage({
         initialCohort={initialCohort}
       />
 
-      <p className="text-xs leading-relaxed text-slate-400">
-        “Server data ready” verifies stored ownership/count evidence, not a physical
-        device screen. A real signed-in app browse remains the strongest proof that a
-        specific EA sees the expected children and groups.
-      </p>
     </div>
   );
 }

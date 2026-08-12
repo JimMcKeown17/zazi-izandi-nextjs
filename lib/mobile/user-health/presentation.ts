@@ -15,6 +15,19 @@ export const ATTENTION_LABELS: Record<UserAttentionReason, string> = {
   seeded_memberships_incomplete: "Group memberships incomplete",
 };
 
+export const BLOCKER_PLAYBOOK: Record<UserAttentionReason, string> = {
+  auth_blocked:
+    "The EA cannot log in. Check the email address in Supabase Auth, resend the confirmation, or lift the ban — then re-check this board.",
+  seeded_classes_missing:
+    "No class landed for this EA. Confirm their class assignment in TeamPact, then re-run the seed for this EA.",
+  seeded_children_missing:
+    "No children landed for this EA. Confirm the TeamPact roster, then re-run the seed for this EA.",
+  seeded_groups_missing:
+    "Children exist but no groups landed. Check the seeding manifest for this EA's groups.",
+  seeded_memberships_incomplete:
+    "Some children are not in any group. Re-check group memberships in the seed for this EA.",
+};
+
 export type ActivityStage = "not_started" | "reached" | "active";
 export type UserHealthSortKey =
   | "urgency"

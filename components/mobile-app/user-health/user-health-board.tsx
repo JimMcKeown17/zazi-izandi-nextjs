@@ -21,6 +21,7 @@ import {
 } from "@/lib/mobile/user-health/export";
 import {
   ATTENTION_LABELS,
+  BLOCKER_PLAYBOOK,
   getActivityStage,
   getProvisioningAuthenticationPresentation,
   getUserAttentionReasons,
@@ -245,6 +246,7 @@ function AttentionReasons({ user }: { user: MobileUserHealthRow }) {
       {reasons.map((reason) => (
         <span
           key={reason}
+          title={BLOCKER_PLAYBOOK[reason]}
           className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-700"
         >
           {ATTENTION_LABELS[reason]}
@@ -349,7 +351,7 @@ export function UserHealthBoard({
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-[minmax(14rem,1fr)_10.5rem_10.5rem_10rem_minmax(13rem,auto)] lg:items-end">
         <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Find a youth
+          Find an EA
           <span className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
@@ -472,7 +474,7 @@ export function UserHealthBoard({
             <table className="w-full min-w-[1260px] border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.09em] text-slate-500">
-                  <th className="px-4 py-3">Youth identity</th>
+                  <th className="px-4 py-3">EA identity</th>
                   <th className="px-4 py-3">Stage / blockers</th>
                   <th className="px-4 py-3">Auth / login</th>
                   <th className="px-4 py-3">Device signal</th>
