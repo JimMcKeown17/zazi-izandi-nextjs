@@ -12,6 +12,7 @@ import { UserHealthFilters } from "@/components/mobile-app/user-health/user-heal
 import { UserHealthFunnel } from "@/components/mobile-app/user-health/user-health-funnel";
 import { UserHealthSummary } from "@/components/mobile-app/user-health/user-health-summary";
 import { getMobileUserHealth } from "@/lib/mobile/api";
+import { buildDeviceVersionBreakdown } from "@/lib/mobile/user-health/devices";
 import { buildFunnelCounts } from "@/lib/mobile/user-health/funnel";
 import type { UserHealthPredicate } from "@/lib/mobile/user-health/presentation";
 import type { MobileUserHealthRow } from "@/lib/mobile/user-health/types";
@@ -102,6 +103,7 @@ export default async function MobileUserHealthPage({
     (school) => school.id === data.applied_filters.school_id
   );
   const funnelCounts = buildFunnelCounts(data.users);
+  const deviceVersionBreakdown = buildDeviceVersionBreakdown(data.users);
   const evidenceStages = [
     {
       label: "1 · Access enabled",
@@ -181,28 +183,56 @@ export default async function MobileUserHealthPage({
 
       <UserHealthFunnel counts={funnelCounts} days={data.days} />
 
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        {evidenceStages.map((stage) => {
-          const Icon = stage.icon;
-          return (
-            <div
-              key={stage.label}
-              className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-100/70 p-3"
-            >
-              <span className="rounded-lg bg-white p-2 text-primary shadow-sm">
-                <Icon className="h-4 w-4" />
-              </span>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-700">
-                  {stage.label}
-                </p>
-                <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                  {stage.detail}
-                </p>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-2 sm:grid-cols-2">
+          {evidenceStages.map((stage) => {
+            const Icon = stage.icon;
+            return (
+              <div
+                key={stage.label}
+                className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-100/70 p-3"
+              >
+                <span className="rounded-lg bg-white p-2 text-primary shadow-sm">
+                  <Icon className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                    {stage.label}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                    {stage.detail}
+                  </p>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-bold text-slate-900">
+            App versions in the field
+          </h2>
+          {deviceVersionBreakdown.length > 0 ? (
+            <ul className="mt-3 divide-y divide-slate-100 text-sm text-slate-700">
+              {deviceVersionBreakdown.slice(0, 6).map((row) => (
+                <li
+                  key={row.label}
+                  className="flex items-center justify-between gap-4 py-2 first:pt-0"
+                >
+                  <span className="break-words">{row.label}</span>
+                  <span className="shrink-0 tabular-nums">— {row.count}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-sm text-slate-500">
+              No registered devices yet.
+            </p>
+          )}
+          <p className="mt-3 text-xs leading-relaxed text-slate-500">
+            Registered devices only — a rollout risk signal, not an install census.
+          </p>
+        </section>
       </div>
 
       <UserHealthBoard
