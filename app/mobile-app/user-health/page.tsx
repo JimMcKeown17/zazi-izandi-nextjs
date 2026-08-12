@@ -6,7 +6,10 @@ import { UserHealthFilters } from "@/components/mobile-app/user-health/user-heal
 import { UserHealthFunnel } from "@/components/mobile-app/user-health/user-health-funnel";
 import { UserHealthSummary } from "@/components/mobile-app/user-health/user-health-summary";
 import { getMobileUserHealth } from "@/lib/mobile/api";
-import { buildDeviceVersionBreakdown } from "@/lib/mobile/user-health/devices";
+import {
+  buildDeviceVersionBreakdown,
+  splitVersionBreakdown,
+} from "@/lib/mobile/user-health/devices";
 import { buildFunnelCounts } from "@/lib/mobile/user-health/funnel";
 import type { UserHealthPredicate } from "@/lib/mobile/user-health/presentation";
 import type { MobileUserHealthRow } from "@/lib/mobile/user-health/types";
@@ -98,6 +101,11 @@ export default async function MobileUserHealthPage({
   );
   const funnelCounts = buildFunnelCounts(data.users);
   const deviceVersionBreakdown = buildDeviceVersionBreakdown(data.users);
+  const {
+    top: topDeviceVersions,
+    remainderVersions,
+    remainderCount,
+  } = splitVersionBreakdown(deviceVersionBreakdown, 6);
 
   return (
     <div
@@ -141,11 +149,11 @@ export default async function MobileUserHealthPage({
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="text-sm font-bold text-slate-900">
-          App versions in the field
+          Top app versions in the field
         </h2>
         {deviceVersionBreakdown.length > 0 ? (
           <ul className="mt-3 divide-y divide-slate-100 text-sm text-slate-700">
-            {deviceVersionBreakdown.slice(0, 6).map((row) => (
+            {topDeviceVersions.map((row) => (
               <li
                 key={row.label}
                 className="flex items-center justify-between gap-4 py-2 first:pt-0"
@@ -154,6 +162,11 @@ export default async function MobileUserHealthPage({
                 <span className="shrink-0 tabular-nums">— {row.count}</span>
               </li>
             ))}
+            {remainderVersions > 0 ? (
+              <li className="py-2 text-slate-500">
+                +{remainderVersions} more versions · {remainderCount} devices
+              </li>
+            ) : null}
           </ul>
         ) : (
           <p className="mt-3 text-sm text-slate-500">
@@ -166,7 +179,7 @@ export default async function MobileUserHealthPage({
       </section>
 
       <UserHealthBoard
-        key={`${initialPredicate}|${initialCohort}|${initialQuery}`}
+        key={`${data.days}|${data.applied_filters.school_id ?? ""}|${initialPredicate}|${initialCohort}|${initialQuery}`}
         users={data.users}
         days={data.days}
         generatedAt={data.generated_at}

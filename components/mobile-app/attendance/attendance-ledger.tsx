@@ -102,6 +102,7 @@ export function AttendanceLedger({
       </div>
       {view === "shifts" ? (
         <ClockEntriesTable
+          key={`${needle}|${days}|${schoolId ?? ""}`}
           entries={filtered}
           days={days}
           schoolId={schoolId}

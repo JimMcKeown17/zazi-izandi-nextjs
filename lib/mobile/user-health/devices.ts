@@ -5,6 +5,12 @@ export interface DeviceVersionCount {
   count: number;
 }
 
+export interface SplitVersionBreakdown {
+  top: DeviceVersionCount[];
+  remainderVersions: number;
+  remainderCount: number;
+}
+
 export function buildDeviceVersionBreakdown(
   users: MobileUserHealthRow[]
 ): DeviceVersionCount[] {
@@ -21,4 +27,17 @@ export function buildDeviceVersionBreakdown(
   return [...counts.entries()]
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+export function splitVersionBreakdown(
+  breakdown: readonly DeviceVersionCount[],
+  limit: number
+): SplitVersionBreakdown {
+  const top = breakdown.slice(0, limit);
+  const remainder = breakdown.slice(top.length);
+  return {
+    top,
+    remainderVersions: remainder.length,
+    remainderCount: remainder.reduce((sum, row) => sum + row.count, 0),
+  };
 }
