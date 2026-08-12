@@ -9,6 +9,22 @@ import {
 const uuid = z.string().uuid();
 const absoluteTimestamp = z.iso.datetime({ offset: true });
 const count = z.number().int().nonnegative();
+const waveSchema = z.object({
+  id: uuid,
+  name: z.string().min(1),
+  launch_date: z.iso.date(),
+});
+
+function compareWaves(
+  left: z.infer<typeof waveSchema>,
+  right: z.infer<typeof waveSchema>
+): number {
+  return (
+    left.launch_date.localeCompare(right.launch_date) ||
+    left.name.toLowerCase().localeCompare(right.name.toLowerCase()) ||
+    left.id.localeCompare(right.id)
+  );
+}
 
 const userHealthRowSchema = z.object({
   user_id: uuid,
@@ -17,6 +33,12 @@ const userHealthRowSchema = z.object({
   employment_status: z.string().nullable(),
   current_school_id: uuid.nullable(),
   current_school: z.string().min(1),
+  wave: waveSchema.nullable().optional(),
+  first_ever_activity_at: absoluteTimestamp.nullable().optional(),
+  last_ever_activity_at: absoluteTimestamp.nullable().optional(),
+  ever_registered_device: z.boolean().nullable().optional(),
+  first_app_open_at: absoluteTimestamp.nullable().optional(),
+  last_app_open_at: absoluteTimestamp.nullable().optional(),
   auth: z.object({
     state: z.enum(["ready", "unconfirmed", "banned", "missing_email"]),
     created_at: absoluteTimestamp,
@@ -61,6 +83,7 @@ export const mobileUserHealthSchema = z
         school_type: z.string().nullable(),
       })
     ),
+    wave_options: z.array(waveSchema).optional(),
     summary: z.object({
       total_users: count,
       auth_ready: count,
@@ -76,6 +99,27 @@ export const mobileUserHealthSchema = z
     users: z.array(userHealthRowSchema),
   })
   .superRefine((value, context) => {
+    const waveIds = new Set<string>();
+    value.wave_options?.forEach((wave, index, waves) => {
+      if (waveIds.has(wave.id)) {
+        context.addIssue({
+          code: "custom",
+          path: ["wave_options", index, "id"],
+          message: "wave options must have unique ids",
+        });
+      }
+      waveIds.add(wave.id);
+
+      const previousWave = waves[index - 1];
+      if (previousWave && compareWaves(previousWave, wave) > 0) {
+        context.addIssue({
+          code: "custom",
+          path: ["wave_options", index],
+          message: "wave options must use canonical ordering",
+        });
+      }
+    });
+
     const userIds = new Set<string>();
     value.users.forEach((user, index) => {
       if (userIds.has(user.user_id)) {
@@ -86,6 +130,114 @@ export const mobileUserHealthSchema = z
         });
       }
       userIds.add(user.user_id);
+
+      if (
+        value.wave_options !== undefined &&
+        user.wave != null &&
+        !waveIds.has(user.wave.id)
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["users", index, "wave", "id"],
+          message: "user wave must appear in wave options",
+        });
+      }
+
+      const hasFirstLifetime = "first_ever_activity_at" in user;
+      const hasLastLifetime = "last_ever_activity_at" in user;
+      const firstLifetime = user.first_ever_activity_at ?? null;
+      const lastLifetime = user.last_ever_activity_at ?? null;
+      if (hasFirstLifetime !== hasLastLifetime) {
+        context.addIssue({
+          code: "custom",
+          path: [
+            "users",
+            index,
+            hasFirstLifetime
+              ? "last_ever_activity_at"
+              : "first_ever_activity_at",
+          ],
+          message: "lifetime activity fields must ship together",
+        });
+      }
+      if (hasFirstLifetime && hasLastLifetime) {
+        if ((firstLifetime === null) !== (lastLifetime === null)) {
+          context.addIssue({
+            code: "custom",
+            path: ["users", index, "last_ever_activity_at"],
+            message: "lifetime activity bounds must have matching nullity",
+          });
+        }
+        if (
+          firstLifetime !== null &&
+          lastLifetime !== null &&
+          new Date(firstLifetime) > new Date(lastLifetime)
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: ["users", index, "last_ever_activity_at"],
+            message: "lifetime activity bounds must be ordered",
+          });
+        }
+        if (
+          user.activity.last_activity_at !== null &&
+          (lastLifetime === null ||
+            new Date(user.activity.last_activity_at) > new Date(lastLifetime))
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: ["users", index, "last_ever_activity_at"],
+            message: "lifetime activity must cover windowed activity",
+          });
+        }
+      }
+
+      const hasFirstAppOpen = "first_app_open_at" in user;
+      const hasLastAppOpen = "last_app_open_at" in user;
+      const firstAppOpen = user.first_app_open_at ?? null;
+      const lastAppOpen = user.last_app_open_at ?? null;
+      if (hasFirstAppOpen !== hasLastAppOpen) {
+        context.addIssue({
+          code: "custom",
+          path: [
+            "users",
+            index,
+            hasFirstAppOpen ? "last_app_open_at" : "first_app_open_at",
+          ],
+          message: "app open fields must ship together",
+        });
+      }
+      if (hasFirstAppOpen && hasLastAppOpen) {
+        if ((firstAppOpen === null) !== (lastAppOpen === null)) {
+          context.addIssue({
+            code: "custom",
+            path: ["users", index, "last_app_open_at"],
+            message: "app open bounds must have matching nullity",
+          });
+        }
+        if (
+          firstAppOpen !== null &&
+          lastAppOpen !== null &&
+          new Date(firstAppOpen) > new Date(lastAppOpen)
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: ["users", index, "last_app_open_at"],
+            message: "app open bounds must be ordered",
+          });
+        }
+      }
+
+      if (
+        user.app_device.registered &&
+        user.ever_registered_device === false
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["users", index, "ever_registered_device"],
+          message: "a registered device requires lifetime device evidence",
+        });
+      }
 
       const cutoffAt = user.auth.provisioning_cutoff_at;
       const authenticationResult = user.auth.authenticated_after_provisioning;

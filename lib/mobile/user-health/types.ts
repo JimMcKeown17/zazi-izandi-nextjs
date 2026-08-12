@@ -11,6 +11,12 @@ export type MobileUserDataExpectation =
   | "self_setup"
   | "unknown";
 
+export interface MobileRolloutWave {
+  id: string;
+  name: string;
+  launch_date: string;
+}
+
 export interface MobileUserHealthRow {
   user_id: string;
   display_name: string;
@@ -18,6 +24,12 @@ export interface MobileUserHealthRow {
   employment_status: string | null;
   current_school_id: string | null;
   current_school: string;
+  wave?: MobileRolloutWave | null;
+  first_ever_activity_at?: string | null;
+  last_ever_activity_at?: string | null;
+  ever_registered_device?: boolean | null;
+  first_app_open_at?: string | null;
+  last_app_open_at?: string | null;
   auth: {
     state: MobileUserAuthState;
     created_at: string;
@@ -56,6 +68,7 @@ export interface MobileUserHealthResponse {
     school_id: string | null;
   };
   school_options: MobileSchoolOption[];
+  wave_options?: MobileRolloutWave[];
   summary: {
     total_users: number;
     auth_ready: number;

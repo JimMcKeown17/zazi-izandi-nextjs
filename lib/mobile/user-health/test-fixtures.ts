@@ -1,5 +1,17 @@
 import type { MobileUserHealthResponse } from "./types";
 
+const PRIMARY_WAVE = {
+  id: "aaaaaaaa-0000-4000-8000-000000000001",
+  name: "ZZ Primary 2026",
+  launch_date: "2026-08-08",
+} as const;
+
+const ECD_WAVE = {
+  id: "aaaaaaaa-0000-4000-8000-000000000002",
+  name: "ZZ ECD 2026",
+  launch_date: "2026-08-11",
+} as const;
+
 export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
   generated_at: "2026-08-11T14:30:00.000Z",
   days: 30,
@@ -16,9 +28,10 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
       school_type: "ECD",
     },
   ],
+  wave_options: [PRIMARY_WAVE, ECD_WAVE],
   summary: {
-    total_users: 4,
-    auth_ready: 3,
+    total_users: 5,
+    auth_ready: 4,
     signed_in_ever: 3,
     authentication_measurable: 3,
     authenticated_after_provisioning: 2,
@@ -36,6 +49,12 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
       employment_status: "active",
       current_school_id: "a0c54f15-e176-42c5-ad0e-300947557005",
       current_school: "Charles Duna Primary",
+      wave: PRIMARY_WAVE,
+      first_ever_activity_at: "2026-05-01T08:00:00.000Z",
+      last_ever_activity_at: "2026-08-11T06:10:00.000Z",
+      ever_registered_device: true,
+      first_app_open_at: "2026-08-09T06:45:00.000Z",
+      last_app_open_at: "2026-08-11T06:45:00.000Z",
       auth: {
         state: "ready",
         created_at: "2026-08-07T10:00:00.000Z",
@@ -74,6 +93,12 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
       employment_status: "active",
       current_school_id: "a0c54f15-e176-42c5-ad0e-300947557005",
       current_school: "Charles Duna Primary",
+      wave: PRIMARY_WAVE,
+      first_ever_activity_at: "2026-05-12T08:11:00.000Z",
+      last_ever_activity_at: "2026-07-01T09:00:00.000Z",
+      ever_registered_device: true,
+      first_app_open_at: null,
+      last_app_open_at: null,
       auth: {
         state: "ready",
         created_at: "2026-08-07T10:05:00.000Z",
@@ -112,6 +137,12 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
       employment_status: "active",
       current_school_id: "f3dca3d6-7f09-4de7-b8e8-5557ae7a16a4",
       current_school: "Khayalethu ECD",
+      wave: ECD_WAVE,
+      first_ever_activity_at: "2026-08-11T06:10:00.000Z",
+      last_ever_activity_at: "2026-08-11T06:10:00.000Z",
+      ever_registered_device: true,
+      first_app_open_at: null,
+      last_app_open_at: null,
       auth: {
         state: "ready",
         created_at: "2026-08-11T19:19:00.000Z",
@@ -150,6 +181,12 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
       employment_status: "inactive",
       current_school_id: null,
       current_school: "Unattributed",
+      wave: null,
+      first_ever_activity_at: null,
+      last_ever_activity_at: null,
+      ever_registered_device: false,
+      first_app_open_at: null,
+      last_app_open_at: null,
       auth: {
         state: "banned",
         created_at: "2026-08-07T10:10:00.000Z",
@@ -181,5 +218,64 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
         last_activity_at: null,
       },
     },
+    {
+      user_id: "927ce0ea-f7cf-4f7f-aa6d-9e705786b7fc",
+      display_name: "Ayanda Ndlovu",
+      email: "ayanda@example.org",
+      employment_status: "active",
+      current_school_id: "f3dca3d6-7f09-4de7-b8e8-5557ae7a16a4",
+      current_school: "Khayalethu ECD",
+      wave: ECD_WAVE,
+      first_ever_activity_at: null,
+      last_ever_activity_at: null,
+      ever_registered_device: false,
+      first_app_open_at: "2026-08-11T06:55:00.000Z",
+      last_app_open_at: "2026-08-11T07:05:00.000Z",
+      auth: {
+        state: "ready",
+        created_at: "2026-08-07T10:15:00.000Z",
+        last_sign_in_at: null,
+        provisioning_cutoff_at: null,
+        authenticated_after_provisioning: null,
+      },
+      app_device: {
+        registered: false,
+        platform: null,
+        app_version: null,
+        last_seen_at: null,
+      },
+      data: {
+        expectation: "self_setup",
+        classes: 0,
+        children: 0,
+        groups: 0,
+        grouped_children: 0,
+        imported_assessments: 0,
+      },
+      activity: {
+        clock_entries: 0,
+        sessions: 0,
+        app_assessments: 0,
+        last_clock_in_at: null,
+        last_session_at: null,
+        last_app_assessment_at: null,
+        last_activity_at: null,
+      },
+    },
   ],
 } as const satisfies MobileUserHealthResponse;
+
+const legacyPayload = structuredClone(
+  VALID_MOBILE_USER_HEALTH_PAYLOAD
+) as MobileUserHealthResponse;
+delete legacyPayload.wave_options;
+for (const user of legacyPayload.users) {
+  delete user.wave;
+  delete user.first_ever_activity_at;
+  delete user.last_ever_activity_at;
+  delete user.ever_registered_device;
+  delete user.first_app_open_at;
+  delete user.last_app_open_at;
+}
+
+export const LEGACY_MOBILE_USER_HEALTH_PAYLOAD = legacyPayload;
