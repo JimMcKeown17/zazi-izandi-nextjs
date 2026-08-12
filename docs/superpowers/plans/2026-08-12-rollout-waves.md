@@ -17,7 +17,7 @@
 - **PII:** wave manifests contain emails — they are generated into a gitignored directory and NEVER committed. `app_open` events carry only `user_id`, `event`, `app_version`, `platform`.
 - **No direct client table writes.** The mobile app's only server-write precedent is a SECURITY DEFINER RPC deriving `auth.uid()` (`register_notification_push_token`); `app_open` follows it via `record_app_open(p_app_version, p_platform)` — server-derived identity, length-bounded metadata, 5-minute per-user rate bound. `authenticated` gets NO table privileges on `app_events`. (Deliberate hardening over the original spec's direct-INSERT+RLS sentence — same trust boundary, server-enforced abuse bounds; adversarial-review round 1 finding.)
 - **Wave loads are single-flight.** The loader takes `pg_try_advisory_xact_lock(815001, 0)` first and fails fast if another load holds it — two concurrent reconciliations under READ COMMITTED could otherwise both pass their final asserts and commit a corrupt union (adversarial-review round 1 finding).
-- **Frontend stage predicate values (`all|has_blockers|active|reached|not_started`) keep their URL identities**; `quiet` is added. `hasRecentAppActivity` stays windowed (it feeds the server-summary reconciliation in `schema.ts` — changing it breaks every payload).
+- **Frontend predicate values keep their URL identities AND their meanings.** `state=active` stays WINDOWED (it is what the "Active · Nd" summary tile links to and counts — tile count and drill-down rows must reconcile); the lifetime stage gets its own new predicate `activated`; `quiet` = activated-ever but silent in window. `hasRecentAppActivity` stays windowed (it feeds the server-summary reconciliation in `schema.ts` — changing it breaks every payload). The row badge shows the durable stage; every windowed claim carries the window (round-2 adversarial finding).
 - **Git:** feature branches; no Co-Authored-By/agent trailers; commit messages as given per task.
 - **Copy honesty:** "Activated" (durable, lifetime) and "Active · {days}d" (windowed) are different claims — never label a durable stage with a window and vice versa.
 - Jim's wave decisions (2026-08-12): waves **"ZZ Primary 2026"** (seeded cohort: `staff_identity_links.teampact_user_id IS NOT NULL`, ~152) and **"ZZ ECD 2026"** (auth accounts created 2026-08-11T19:18–19:20Z, ~27). Proposed launch dates **2026-08-08** and **2026-08-11** — Jim sanity-checks generated lists + dates BEFORE the loader runs. A Masifunde wave comes later; nothing may hardcode the two initial waves outside the manifests. Sentry tagging is DEFERRED. Filtered summary tiles are NOT approved — the wave funnel is computed from wave-narrowed rows only, never from search/stage-narrowed rows.
@@ -277,6 +277,7 @@ describe('app_events migration contract', () => {
     expect(text).toMatch(/SET search_path = ''/);
     expect(text).toMatch(/auth\.uid\(\)/);
     expect(text).toMatch(/record_app_open_requires_authentication/);
+    expect(text).toMatch(/pg_advisory_xact_lock\(\s*815002,/);
     expect(text).toMatch(/INTERVAL '5 minutes'/);
     expect(text).toMatch(/REVOKE ALL ON FUNCTION public\.record_app_open\(TEXT, TEXT\)\s+FROM PUBLIC, anon, authenticator, service_role/);
     expect(text).toMatch(/GRANT EXECUTE ON FUNCTION public\.record_app_open\(TEXT, TEXT\)\s+TO authenticated/);
@@ -347,6 +348,15 @@ BEGIN
       ERRCODE = '42501',
       MESSAGE = 'record_app_open_requires_authentication';
   END IF;
+
+  -- Serialize per user: check-then-insert is not atomic on its own, so
+  -- concurrent calls could all pass the EXISTS and burst past the rate
+  -- bound. The lock is transaction-scoped; a concurrent caller blocks
+  -- until this transaction commits and then sees the committed row.
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    815002,
+    pg_catalog.hashtext(v_user_id::TEXT)
+  );
 
   -- Server-side rate bound: at most one app_open per user per 5 minutes.
   -- Reporting consumes only first/last open times, so collapsed duplicates
@@ -951,6 +961,7 @@ Repo/branch: same as Task 1. Depends on Tasks 1–4.
 7. **Single-flight loader lock:** in a SECOND psql connection, open a transaction and take the lock (`BEGIN; SELECT pg_advisory_xact_lock(815001, 0);`, connection held open); run the loader in the primary connection → it aborts immediately with `rollout_wave_load_concurrent_load_in_progress` and membership is unchanged; close the second connection; rerun the loader → succeeds. (Deterministic serialization proof — the mechanism, not a timing race.)
 8. **Immutability trigger:** direct `UPDATE … SET assigned_at = now()` on a live row → error `app_rollout_wave_members_only_supersede_transition_allowed`; `DELETE` → `app_rollout_wave_members_rows_are_append_only`; `UPDATE … SET superseded_at = NULL` on a superseded row → error; `UPDATE … SET superseded_at = now()` on a live row → allowed.
 9. **record_app_open behavior:** using `SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claim.sub = '<fixture uuid>'` (mirror how the existing harness impersonates authenticated callers): first call `record_app_open('1.1.1', 'ios')` → one row with the derived `user_id`; immediate second call → still exactly one row (rate bound); call with a 100-char version string → stored value is 64 chars; call with platform `'web'` → row stored with `platform NULL`; call with no jwt claim (unauthenticated) → raises `record_app_open_requires_authentication`; direct `INSERT INTO public.app_events …` as authenticated → permission denied; `SELECT` as authenticated → permission denied; `SELECT` via the default service connection → succeeds. Then clear the rate window for the reporting fixture by seeding the second `app_open` row directly via the service connection with an explicit older `occurred_at`.
+9b. **record_app_open concurrency proof (round-2 finding):** for a FRESH fixture user, spawn a background psql running one transaction `BEGIN; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claim.sub = '<uuid>'; SELECT public.record_app_open('1.1.1','ios'); SELECT pg_sleep(2); COMMIT;` and, while it sleeps, run the same call for the same user from the primary connection. The second call blocks on the per-user advisory lock until the first commits, then its rate-bound EXISTS sees the committed row. After both complete, assert EXACTLY one `app_open` row exists for that user.
 10. **RPC fields:** seed `app_events` rows (two `app_open` for one user — see case 9), an invalidated push token for a second user (`invalidated_at = now()`, no live token), lifetime activity older than the window (a `time_entries` row 60 days back), then call `mobile_user_health_domain(7, NULL, ARRAY[…])` and assert for the relevant users: `wave.name = 'Harness Wave A'`; `wave_options` lists both harness waves ordered by launch_date; user with no wave has `"wave": null`; `first/last_app_open_at` match the seeded min/max; invalidated-token user has `app_device.registered = false` but `ever_registered_device = true`; out-of-window-activity user has `activity.clock_entries = 0` (windowed) but non-null `first/last_ever_activity_at`; `last_ever_activity_at >= last_activity_at` for every user with windowed activity.
 11. **Zero residue** after teardown (including `app_events`, `app_rollout_waves`, `app_rollout_wave_members`).
 
@@ -1424,7 +1435,7 @@ Repo/branch: same as Task 7. Depends on Task 7's types.
 
 **Interfaces:**
 - Consumes: Task 7's optional fields.
-- Produces: `hasEverUsedApp(user)`, `hasEverRegisteredDevice(user)`, `isQuiet(user)` in `presentation.ts`; `UserHealthPredicate` union gains `"quiet"`; `FunnelCounts` gains `activated_ever: number` and `device_signal` becomes ratcheted; `getWaveDayNumber(launchDate: string, generatedAt: string): number` and `filterRowsByWave(users, wave: "all" | "none" | string)` in `wave.ts`. Task 9 imports all of these.
+- Produces: `hasEverUsedApp(user)`, `hasEverRegisteredDevice(user)`, `isQuiet(user)` in `presentation.ts`; `UserHealthPredicate` union gains `"activated"` and `"quiet"` — **`"active"` keeps its windowed meaning** (`hasRecentAppActivity`), `"activated"` carries the lifetime stage; `FunnelCounts` gains `activated_ever: number` and `device_signal` becomes ratcheted; `getWaveDayNumber(launchDate: string, generatedAt: string): number` and `filterRowsByWave(users, wave: "all" | "none" | string)` in `wave.ts`. Task 9 imports all of these.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1451,8 +1462,19 @@ test("quiet means activated ever but silent in the window", () => {
   // never activated -> isQuiet false
 });
 
-test("quiet predicate filters rows", () => {
-  // matchesUserHealthPredicate(row, "quiet") mirrors isQuiet
+test("the active predicate stays windowed and excludes quiet rows", () => {
+  // A quiet row (lifetime activity, zero windowed counts):
+  //   matchesUserHealthPredicate(row, "active") === false
+  //   matchesUserHealthPredicate(row, "activated") === true
+  //   matchesUserHealthPredicate(row, "quiet") === true
+  // A windowed-active row:
+  //   "active" === true, "activated" === true, "quiet" === false
+});
+
+test("the active predicate count reconciles with the summary tile count", () => {
+  // Over the shared fixture's users: rows matching "active" must equal
+  // summary.active_in_window — the "Active · Nd" tile links state=active,
+  // so its count and its drill-down rows must agree (round-2 finding).
 });
 ```
 
@@ -1511,7 +1533,28 @@ export function getActivityStage(user: MobileUserHealthRow): ActivityStage {
 }
 ```
 
-`UserHealthPredicate` gains `"quiet"`; `matchesUserHealthPredicate` adds `if (predicate === "quiet") return isQuiet(user);` BEFORE the stage-equality fallthrough. `hasRecentAppActivity` and `hasUsageEvidenceInWindow` stay exactly as they are (summary reconciliation depends on them).
+`UserHealthPredicate` gains `"activated"` and `"quiet"`, and `matchesUserHealthPredicate` becomes explicit about which axis each predicate reads — the old stage-equality fallthrough must NOT silently give `"active"` the new lifetime meaning:
+
+```ts
+export function matchesUserHealthPredicate(
+  user: MobileUserHealthRow,
+  predicate: UserHealthPredicate
+): boolean {
+  if (predicate === "all") return true;
+  if (predicate === "has_blockers") {
+    return getUserAttentionReasons(user).length > 0;
+  }
+  // WINDOWED: "active" is what the "Active · Nd" summary tile links to;
+  // its count and drill-down must reconcile with summary.active_in_window.
+  if (predicate === "active") return hasRecentAppActivity(user);
+  // LIFETIME: the durable stage axis.
+  if (predicate === "activated") return getActivityStage(user) === "active";
+  if (predicate === "quiet") return isQuiet(user);
+  return getActivityStage(user) === predicate; // "reached" | "not_started"
+}
+```
+
+`hasRecentAppActivity` and `hasUsageEvidenceInWindow` stay exactly as they are (summary reconciliation depends on them).
 
 `funnel.ts` — `FunnelCounts` gains `activated_ever: number`; the loop counts `hasEverUsedApp(user)` into it and switches the `device_signal` increment to `hasEverRegisteredDevice(user)` (import both from `./presentation`; delete the drift-prone inline active arithmetic in favor of `hasRecentAppActivity(user)` while in the file — same semantics, one source of truth). Update the header comment: the strip is now the wave-scoped instrument with durable axes.
 
@@ -1592,9 +1635,9 @@ Repo/branch: same as Task 7. Depends on Tasks 7–8.
 
 - [ ] **Step 1: Write the failing tests**
 
-`export.test.ts`: extend the CSV assertions — header gains `wave_name,quiet,last_ever_activity_at` (appended after the existing final column); a row in a wave carries its wave name; a quiet row carries `true`; rows without the fields carry empty string / `false` / empty string respectively. Follow the file's existing exact-string assertion style.
+`export.test.ts`: rework the CSV stage contract (round-2 finding — the current CSV writes `getActivityStage` into a windowed-named column, which becomes a lie once the stage is lifetime). First READ `export.ts` to see the current column set and exact header string, then assert: the windowed-named stage column (`status_in_window` or whatever the current header names it) is REPLACED by three explicit columns — `stage` (durable: `not_started|reached|activated`, mapping stage value `active` → the string `activated`), `active_in_window` (`true|false` from `hasRecentAppActivity`), `quiet` (`true|false` from `isQuiet`) — plus appended `wave_name` and `last_ever_activity_at` (empty string when null/absent). Pin: a quiet fixture row exports `stage=activated, active_in_window=false, quiet=true`; a windowed-active row exports `active_in_window=true, quiet=false`; NO row can ever export `active_in_window=true` AND `quiet=true` (assert over every fixture row). `buildChaseListText`: the `· Nd` window suffix moves off the stage word onto the windowed marker (e.g. `active 30d` / `quiet 30d`), and a quiet row's line carries `quiet`.
 
-`board-copy.test.ts` (this file renders the board via `renderToStaticMarkup`): add — board rendered with `waveOptions` shows a wave `<select>` including "All waves", "No wave", and each wave name; rendering with `initialWave` set to the Primary wave id shows the context chip text `ZZ Primary 2026 · launched 2026-08-08 · day 4` (fixture `generated_at` must make the day number 4 — set `generatedAt` accordingly) and renders the funnel section with the wave-scoped counts; a quiet row shows the `Quiet` indicator; the stage badge for an activated row reads `Activated`, never `Active · 30d`.
+`board-copy.test.ts` (this file renders the board via `renderToStaticMarkup`): add — board rendered with `waveOptions` shows a wave `<select>` including "All waves", "No wave", and each wave name; rendering with `initialWave` set to the Primary wave id shows the context chip text `ZZ Primary 2026 · launched 2026-08-08 · day 4` (fixture `generated_at` must make the day number 4 — set `generatedAt` accordingly) and renders the funnel section with the wave-scoped counts; a quiet row shows the `Quiet · 30d` indicator; the stage badge for an activated row reads `Activated`, never `Active · 30d`; the predicate `<select>` lists both `Active · in window` and `Activated (ever)` options; **tile↔filter reconciliation:** rendering the board with `initialPredicate: "active"` over the shared fixture shows exactly `summary.active_in_window` rows (the quiet fixture row is absent), pinning that the "Active · Nd" tile deep-link still lands on a set whose size matches the tile.
 
 - [ ] **Step 2: Run to verify they fail**
 
@@ -1620,8 +1663,9 @@ Run: `npm run test:mobile` → new assertions FAIL.
 ) : null}
 ```
 
-- Quiet: add `Quiet` to the predicate `<select>` (label `Quiet (activated, silent in window)`), and render a per-row indicator badge `Quiet · {days}d` next to the stage badge when `isQuiet(user)`.
-- Stage labels: change the displayed stage badge text for `active` to `Activated` (grep the board for the current active-stage label rendering — Part A shipped it as window-suffixed; the window suffix moves to the Quiet/recency indicator, which is the only windowed claim left on the row).
+- Predicate dropdown: relabel `active` to `Active · in window` (its meaning is unchanged and still matches the summary tile), add `Activated (ever)` (`activated`) and `Quiet (activated, silent in window)` (`quiet`). Render a per-row indicator badge `Quiet · {days}d` next to the stage badge when `isQuiet(user)`, and an `Active · {days}d` indicator when `hasRecentAppActivity(user)` — the windowed claims live on these indicators only.
+- Stage labels: change the displayed stage badge text for stage `active` to `Activated` (grep the board for the current active-stage label rendering — Part A shipped it as window-suffixed; the badge is now the durable claim).
+- Summary tiles (`user-health-summary.tsx`): NO change — the `Active · Nd` tile still links `{ state: "active" }`, which still means windowed, so tile counts keep reconciling with their drill-downs. The board-copy reconciliation test pins this.
 
 **Wave funnel (`user-health-wave-funnel.tsx`):** new server-compatible component (no hooks), props:
 
@@ -1636,11 +1680,11 @@ interface UserHealthWaveFunnelProps {
 
 Recreate the deleted strip's bar-row rendering (`git show a1a72bb:components/mobile-app/user-health/user-health-funnel.tsx`) with rows: `Accounts` (`counts.accounts`), `Auth ready`, `Device signal (ever)` (`counts.device_signal`), `Activated (ever)` (`counts.activated_ever`), `Active · {days}d` (`counts.active_in_window`) — each `count · share%` of `counts.accounts` with the same `Math.max(accounts, 1)` guard; keep the two footer lines (logged-in-after-provisioning over measurable with the "Not measured" branch, seeded-ready over seeded-expected). Header: when `wave` is non-null render `{wave.name} · launched {wave.launch_date} · day {getWaveDayNumber(wave.launch_date, generatedAt)}` (when the day number is negative render `{wave.name} · launches {wave.launch_date}`); when `wave` is null render `No wave · {counts.accounts} accounts`.
 
-**Page (`page.tsx`):** parse the `wave` param — `parseWave(value, waveOptionIds)` returns `"all"` when absent/unknown, `"none"`, or a validated wave id; pass `waveOptions={data.wave_options ?? []}` and `initialWave` to `UserHealthBoard`; add the wave value to the board remount key string.
+**Page (`page.tsx`):** extend the `PREDICATES` parse list with `"activated"` and `"quiet"`; parse the `wave` param — `parseWave(value, waveOptionIds)` returns `"all"` when absent/unknown, `"none"`, or a validated wave id; pass `waveOptions={data.wave_options ?? []}` and `initialWave` to `UserHealthBoard`; add the wave value to the board remount key string.
 
-**CSV (`export.ts`):** append three columns `wave_name` (`user.wave?.name ?? ""`), `quiet` (`isQuiet(user) ? "true" : "false"`), `last_ever_activity_at` (`?? ""`), threaded through the existing quote/injection-guard pipeline. `buildChaseListText` gains a ` · quiet` marker on quiet rows (match the file's existing line-composition style).
+**CSV (`export.ts`):** replace the windowed-named stage column with the three-column contract pinned in Step 1 — `stage` (durable, stage value `active` written as `activated`), `active_in_window` (`hasRecentAppActivity`), `quiet` (`isQuiet`) — and append `wave_name` (`user.wave?.name ?? ""`) and `last_ever_activity_at` (`?? ""`), all threaded through the existing quote/injection-guard pipeline. `buildChaseListText`: move the `· Nd` suffix from the stage word to the windowed markers and add `quiet` to quiet rows (match the file's existing line-composition style).
 
-**How-to panel (`how-to-read-panel.tsx`):** update the stage explanation: stages are now durable — `Activated` means the EA has EVER produced app activity (it can never go backwards; shrinking the window cannot demote anyone); `Reached` includes devices whose push token later died (`ever_registered_device`); the windowed claim lives in the separate `Quiet · {days}d` indicator, meaning activated-ever but no activity in the selected window. Add a wave paragraph: the wave filter scopes the board and the evidence strip to one rollout wave; `day n` counts whole days since launch in SAST; "No wave" shows accounts not assigned to any wave. Add an app_open note: once the app update ships, `app opens` become direct evidence of signed-in use; older app versions do not emit it, so its absence is not proof of absence.
+**How-to panel (`how-to-read-panel.tsx`):** update the stage explanation: stages are now durable — `Activated` means the EA has EVER produced app activity (it can never go backwards; shrinking the window cannot demote anyone); `Reached` includes devices whose push token later died (`ever_registered_device`); windowed claims live in the separate indicators — `Active · {days}d` (usage in the selected window, the same number the summary tile counts) and `Quiet · {days}d` (activated-ever but silent in the window). State plainly that the `Active` filter and tile are windowed while the stage badge is lifetime — they answer different questions. Add a wave paragraph: the wave filter scopes the board and the evidence strip to one rollout wave; `day n` counts whole days since launch in SAST; "No wave" shows accounts not assigned to any wave. Add an app_open note: once the app update ships, `app opens` become direct evidence of signed-in use; older app versions do not emit it, so its absence is not proof of absence.
 
 - [ ] **Step 4: Run the gates**
 
@@ -1733,11 +1777,27 @@ test('swallows RPC failures', async () => {
   expect(result).toEqual({ reported: false, reason: 'error' });
 });
 
-test('does not retry after a failure within the same launch', async () => {
-  const failing = buildClient({ rpcError: { message: 'nope' } });
-  await reportAppOpenOnce({ userId: 'user-1', client: failing, constants, platform: 'ios' });
+test('a transient failure is retryable and still records exactly once', async () => {
+  // Round-2 finding: getSession resolves LOCALLY, so an offline launch with
+  // a valid cached session passes the session guard and then fails the
+  // network RPC — the common field case. Failure must not end the launch.
+  const failing = buildClient({ rpcError: { message: 'gateway timeout' } });
+  const first = await reportAppOpenOnce({ userId: 'user-1', client: failing, constants, platform: 'ios' });
+  expect(first).toEqual({ reported: false, reason: 'error' });
   const retry = await reportAppOpenOnce({ userId: 'user-1', client: buildClient(), constants, platform: 'ios' });
-  expect(retry).toEqual({ reported: false, reason: 'already-reported' });
+  expect(retry).toEqual({ reported: true });
+  const after = await reportAppOpenOnce({ userId: 'user-1', client: buildClient(), constants, platform: 'ios' });
+  expect(after).toEqual({ reported: false, reason: 'already-reported' });
+});
+
+test('concurrent calls collapse to a single attempt', async () => {
+  const client = buildClient();
+  const [a, b] = await Promise.all([
+    reportAppOpenOnce({ userId: 'user-1', client, constants, platform: 'ios' }),
+    reportAppOpenOnce({ userId: 'user-1', client, constants, platform: 'ios' }),
+  ]);
+  expect([a.reported, b.reported].filter(Boolean)).toHaveLength(1);
+  expect(client.rpc).toHaveBeenCalledTimes(1);
 });
 
 test('normalizes missing version and non-mobile platforms to null', async () => {
@@ -1799,7 +1859,25 @@ test('reports immediately when cold start restores a live session', () => {
   renderWith({ user, session: { user }, loading: false });
   expect(reportAppOpenOnce).toHaveBeenCalledTimes(1);
 });
+
+test('retries on app-foreground so a failed offline attempt recovers', () => {
+  // Round-2 finding: without a retrigger, a launch that failed its RPC
+  // (offline with a locally-valid session) could never emit. The service
+  // self-guards after success, so extra foreground calls are no-ops.
+  const user = { id: 'user-1' };
+  const handlers = [];
+  jest.spyOn(AppState, 'addEventListener').mockImplementation((type, handler) => {
+    handlers.push(handler);
+    return { remove: jest.fn() };
+  });
+  renderWith({ user, session: { user }, loading: false });
+  expect(reportAppOpenOnce).toHaveBeenCalledTimes(1);
+  act(() => handlers.forEach((handler) => handler('active')));
+  expect(reportAppOpenOnce).toHaveBeenCalledTimes(2);
+});
 ```
+
+(add `import { AppState } from 'react-native';` to the test imports.)
 
 - [ ] **Step 2: Run to verify they fail**
 
@@ -1811,14 +1889,20 @@ Expected: FAIL — modules missing.
 `src/services/appOpenEvents.js`:
 
 ```js
-// One fire-and-forget app_open event per launch, emitted once a live
-// authenticated session exists. Identity is derived server-side by the
-// record_app_open RPC. Every failure is swallowed — evidence collection
-// must never affect app behavior.
-let hasReportedAppOpenThisLaunch = false;
+// One app_open event per launch, recorded once a live authenticated
+// session exists. Identity is derived server-side by the record_app_open
+// RPC. Failures are swallowed (evidence collection must never affect app
+// behavior) but RETRYABLE: getSession resolves locally, so an offline
+// launch with a valid cached session reaches the RPC and fails on the
+// network — the launch flag is only set on confirmed success, and the
+// reporter retries on app-foreground. The server-side 5-minute rate
+// bound absorbs any duplicate that slips through.
+let hasRecordedAppOpenThisLaunch = false;
+let isAppOpenAttemptInFlight = false;
 
 export const resetAppOpenReportForTests = () => {
-  hasReportedAppOpenThisLaunch = false;
+  hasRecordedAppOpenThisLaunch = false;
+  isAppOpenAttemptInFlight = false;
 };
 
 const resolveClient = (client) => client || require('./supabaseClient').supabase;
@@ -1835,39 +1919,42 @@ const resolvePlatform = (platform) => {
 };
 
 export const reportAppOpenOnce = async ({ userId, client, constants, platform } = {}) => {
-  if (hasReportedAppOpenThisLaunch) {
+  if (hasRecordedAppOpenThisLaunch) {
     return { reported: false, reason: 'already-reported' };
+  }
+  if (isAppOpenAttemptInFlight) {
+    return { reported: false, reason: 'in-flight' };
   }
   if (!userId) {
     return { reported: false, reason: 'no-user' };
   }
+  isAppOpenAttemptInFlight = true;
   try {
     const supabaseClient = resolveClient(client);
     const { data: { session } = {} } = await supabaseClient.auth.getSession();
     if (!session?.user?.id || session.user.id !== userId) {
-      // Offline restore keeps user without a live session. Do NOT burn the
-      // launch flag: the reporter retries when a session appears.
+      // Offline restore keeps user without a live session; the reporter
+      // retries when a session appears.
       return { reported: false, reason: 'no-session' };
     }
-    hasReportedAppOpenThisLaunch = true;
     const { error } = await supabaseClient.rpc('record_app_open', {
       p_app_version: resolveAppVersion(constants),
       p_platform: resolvePlatform(platform),
     });
     if (error) {
       console.log('[AppOpen] record failed:', error?.message);
-      return { reported: false, reason: 'error' };
+      return { reported: false, reason: 'error' }; // retryable
     }
+    hasRecordedAppOpenThisLaunch = true;
     return { reported: true };
   } catch (error) {
-    hasReportedAppOpenThisLaunch = true;
     console.log('[AppOpen] unexpected failure:', error?.message);
-    return { reported: false, reason: 'error' };
+    return { reported: false, reason: 'error' }; // retryable
+  } finally {
+    isAppOpenAttemptInFlight = false;
   }
 };
 ```
-
-(The flag is set only once a live session is confirmed — a launch that starts offline and later gains a session still reports; after any real attempt, failures are terminal for the launch. The rate bound server-side makes a duplicate report harmless anyway.)
 
 - [ ] **Step 4: Implement the reporter and mount it**
 
@@ -1875,19 +1962,29 @@ export const reportAppOpenOnce = async ({ userId, client, constants, platform } 
 
 ```js
 import { useEffect } from 'react';
+import { AppState } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { reportAppOpenOnce } from '../services/appOpenEvents';
 
-// Renders nothing; emits at most one app_open event per launch, once a
-// LIVE session exists (offline restore alone never fires — and the effect
-// re-runs when the session arrives later in the same launch).
+// Renders nothing; records at most one app_open event per launch, once a
+// LIVE session exists (offline restore alone never fires — the effect
+// re-runs when the session arrives later in the same launch). App
+// foregrounding retries a launch whose first attempt failed offline; the
+// service self-guards after success, and the server rate bound absorbs
+// any duplicate.
 const AppOpenReporter = () => {
   const { session, loading } = useAuth();
   const sessionUserId = session?.user?.id ?? null;
 
   useEffect(() => {
-    if (loading || !sessionUserId) return;
+    if (loading || !sessionUserId) return undefined;
     reportAppOpenOnce({ userId: sessionUserId });
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        reportAppOpenOnce({ userId: sessionUserId });
+      }
+    });
+    return () => subscription.remove();
   }, [loading, sessionUserId]);
 
   return null;
