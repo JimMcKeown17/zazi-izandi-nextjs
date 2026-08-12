@@ -3,14 +3,12 @@ import { AlertTriangle } from "lucide-react";
 import { HowToReadPanel } from "@/components/mobile-app/user-health/how-to-read-panel";
 import { UserHealthBoard } from "@/components/mobile-app/user-health/user-health-board";
 import { UserHealthFilters } from "@/components/mobile-app/user-health/user-health-filters";
-import { UserHealthFunnel } from "@/components/mobile-app/user-health/user-health-funnel";
 import { UserHealthSummary } from "@/components/mobile-app/user-health/user-health-summary";
 import { getMobileUserHealth } from "@/lib/mobile/api";
 import {
   buildDeviceVersionBreakdown,
   splitVersionBreakdown,
 } from "@/lib/mobile/user-health/devices";
-import { buildFunnelCounts } from "@/lib/mobile/user-health/funnel";
 import type { UserHealthPredicate } from "@/lib/mobile/user-health/presentation";
 import type { MobileUserHealthRow } from "@/lib/mobile/user-health/types";
 
@@ -99,7 +97,6 @@ export default async function MobileUserHealthPage({
   const selectedSchool = data.school_options.find(
     (school) => school.id === data.applied_filters.school_id
   );
-  const funnelCounts = buildFunnelCounts(data.users);
   const deviceVersionBreakdown = buildDeviceVersionBreakdown(data.users);
   const {
     top: topDeviceVersions,
@@ -143,41 +140,6 @@ export default async function MobileUserHealthPage({
 
       <UserHealthSummary data={data} />
 
-      <UserHealthFunnel counts={funnelCounts} days={data.days} />
-
-      <HowToReadPanel />
-
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-bold text-slate-900">
-          Top app versions in the field
-        </h2>
-        {deviceVersionBreakdown.length > 0 ? (
-          <ul className="mt-3 divide-y divide-slate-100 text-sm text-slate-700">
-            {topDeviceVersions.map((row) => (
-              <li
-                key={row.label}
-                className="flex items-center justify-between gap-4 py-2 first:pt-0"
-              >
-                <span className="break-words">{row.label}</span>
-                <span className="shrink-0 tabular-nums">— {row.count}</span>
-              </li>
-            ))}
-            {remainderVersions > 0 ? (
-              <li className="py-2 text-slate-500">
-                +{remainderVersions} more versions · {remainderCount} devices
-              </li>
-            ) : null}
-          </ul>
-        ) : (
-          <p className="mt-3 text-sm text-slate-500">
-            No registered devices yet.
-          </p>
-        )}
-        <p className="mt-3 text-xs leading-relaxed text-slate-500">
-          Registered devices only — a rollout risk signal, not an install census.
-        </p>
-      </section>
-
       <UserHealthBoard
         key={`${data.days}|${data.applied_filters.school_id ?? ""}|${initialPredicate}|${initialCohort}|${initialQuery}`}
         users={data.users}
@@ -190,6 +152,37 @@ export default async function MobileUserHealthPage({
         initialCohort={initialCohort}
       />
 
+      <HowToReadPanel />
+
+      <section className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <h2 className="text-xs font-semibold text-slate-900">
+            Top app versions in the field
+          </h2>
+          {deviceVersionBreakdown.length > 0 ? (
+            <ul className="flex flex-wrap items-center gap-1.5 text-xs text-slate-700">
+              {topDeviceVersions.map((row) => (
+                <li
+                  key={row.label}
+                  className="rounded bg-slate-50 px-1.5 py-0.5 tabular-nums"
+                >
+                  {row.label} — {row.count}
+                </li>
+              ))}
+              {remainderVersions > 0 ? (
+                <li className="rounded bg-slate-50 px-1.5 py-0.5 text-slate-500 tabular-nums">
+                  +{remainderVersions} more versions · {remainderCount} devices
+                </li>
+              ) : null}
+            </ul>
+          ) : (
+            <p className="text-xs text-slate-500">No registered devices yet.</p>
+          )}
+        </div>
+        <p className="mt-1 text-[11px] leading-snug text-slate-500">
+          Registered devices only — a rollout risk signal, not an install census.
+        </p>
+      </section>
     </div>
   );
 }

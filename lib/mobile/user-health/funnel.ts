@@ -1,3 +1,4 @@
+// Currently no UI consumer: retained for the Part B rollout-wave view (see plan §Part B).
 import { hasSeededDataReady } from "./presentation";
 import type { MobileUserHealthRow } from "./types";
 
