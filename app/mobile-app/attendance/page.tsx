@@ -3,9 +3,11 @@ import { AlertTriangle, Info, MapPinOff } from "lucide-react";
 import { AttendanceFilters } from "@/components/mobile-app/attendance/attendance-filters";
 import { AttendanceLedger } from "@/components/mobile-app/attendance/attendance-ledger";
 import { AttendanceSummary } from "@/components/mobile-app/attendance/attendance-summary";
+import { AttendanceTrendChart } from "@/components/mobile-app/attendance/attendance-trend-chart";
 import { getMobileTimeEntriesActivity } from "@/lib/mobile/api";
 import { requireMobileTimeEntriesSession } from "@/lib/mobile/auth";
 import { hasCapability } from "@/lib/mobile/capabilities";
+import { buildDailyClockSeries } from "@/lib/mobile/time-entries/daily-series";
 
 interface AttendancePageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -72,6 +74,7 @@ export default async function MobileAttendancePage({
   const selectedSchool = data.school_options.find(
     (school) => school.id === data.applied_filters.school_id
   );
+  const trendSeries = buildDailyClockSeries(data.entries, data.days, data.generated_at);
 
   return (
     <div
@@ -112,6 +115,8 @@ export default async function MobileAttendancePage({
       ) : null}
 
       <AttendanceSummary data={data} />
+
+      <AttendanceTrendChart series={trendSeries} />
 
       {data.summary.active_entries > 0 ? (
         <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
