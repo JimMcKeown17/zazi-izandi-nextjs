@@ -28,3 +28,26 @@ test("auth blocks take precedence over absence of activity", () => {
   assert.deepEqual(getUserAttentionReasons(blocked), ["auth_blocked"]);
   assert.equal(getUserHealthState(blocked), "needs_attention");
 });
+
+test("an Auth timestamp alone is not mobile-app onboarding evidence", () => {
+  const authOnly = {
+    ...VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0],
+    app_device: {
+      registered: false,
+      platform: null,
+      app_version: null,
+      last_seen_at: null,
+    },
+    activity: {
+      clock_entries: 0,
+      sessions: 0,
+      app_assessments: 0,
+      last_clock_in_at: null,
+      last_session_at: null,
+      last_app_assessment_at: null,
+      last_activity_at: null,
+    },
+  };
+
+  assert.equal(getUserHealthState(authOnly), "not_started");
+});

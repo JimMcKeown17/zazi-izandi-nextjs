@@ -18,11 +18,6 @@ const TONES = {
   slate: "bg-slate-100 text-slate-600",
 } as const;
 
-function ratio(value: number, total: number): string {
-  if (total === 0) return "0%";
-  return `${Math.round((value / total) * 100)}%`;
-}
-
 export function UserHealthSummary({ data }: { data: MobileUserHealthResponse }) {
   const total = data.summary.total_users;
   const cards = [
@@ -34,11 +29,11 @@ export function UserHealthSummary({ data }: { data: MobileUserHealthResponse }) 
       tone: "blue" as const,
     },
     {
-      label: "Signed in",
-      value: data.summary.signed_in_ever,
-      detail: `${ratio(data.summary.signed_in_ever, total)} have signed in at least once`,
+      label: "Mobile logins",
+      value: "Not tracked",
+      detail: "Auth history includes provisioning checks; app-only telemetry is required",
       icon: LogIn,
-      tone: "green" as const,
+      tone: "amber" as const,
     },
     {
       label: "Device signals",

@@ -1,5 +1,18 @@
 # Zazi iZandi Website Build Log
 
+## 2026-08-12 — Auth history separated from mobile-login evidence
+
+- Removed the false "Signed in" percentage from User health. Supabase Auth
+  `last_sign_in_at` is also updated by the password grants used during rollout
+  verification, so it cannot distinguish a youth opening the app from a
+  provisioning check.
+- The summary now reports mobile logins as "Not tracked" pending an app-owned
+  authenticated event. Row-level timestamps are labelled "Last Auth event"
+  with the same caveat, and an Auth timestamp alone no longer promotes a user
+  from "Not started" to "Onboarding"; a positive device signal is required.
+- Added focused render and state tests so the misleading percentage and
+  Auth-only onboarding classification cannot return unnoticed.
+
 ## 2026-08-12 — User-health population policy made explicit
 
 - Added an operator-facing disclosure that banned accounts and known synthetic

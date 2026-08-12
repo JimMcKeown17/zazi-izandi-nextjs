@@ -98,8 +98,13 @@ function AuthEvidence({ user }: { user: MobileUserHealthRow }) {
         {labels[user.auth.state]}
       </p>
       <p className="mt-1 text-xs text-slate-500">
-        Last sign-in: {formatTimestamp(user.auth.last_sign_in_at)}
+        Last Auth event: {formatTimestamp(user.auth.last_sign_in_at)}
       </p>
+      {user.auth.last_sign_in_at ? (
+        <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+          May be a provisioning check; not proof of an app login
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -320,7 +325,7 @@ export function UserHealthBoard({
                 <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.09em] text-slate-500">
                   <th className="px-4 py-3">Youth identity</th>
                   <th className="px-4 py-3">Health</th>
-                  <th className="px-4 py-3">Auth / login</th>
+                  <th className="px-4 py-3">Auth evidence</th>
                   <th className="px-4 py-3">Device signal</th>
                   <th className="px-4 py-3">Server data</th>
                   <th className="px-4 py-3">App activity</th>
@@ -382,7 +387,7 @@ export function UserHealthBoard({
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-lg bg-slate-50 p-3">
                     <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                      Auth / login
+                      Auth evidence
                     </p>
                     <AuthEvidence user={user} />
                   </div>

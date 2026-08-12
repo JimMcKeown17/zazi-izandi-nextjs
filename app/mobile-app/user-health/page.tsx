@@ -78,8 +78,8 @@ export default async function MobileUserHealthPage({
       icon: ShieldCheck,
     },
     {
-      label: "2 · Login proven",
-      detail: "Supabase Auth records at least one successful sign-in.",
+      label: "2 · Mobile login",
+      detail: "Not currently measurable; Auth history includes provisioning checks.",
       icon: LogIn,
     },
     {
@@ -106,8 +106,8 @@ export default async function MobileUserHealthPage({
           </p>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">User health</h1>
           <p className="mt-1 max-w-4xl text-sm leading-relaxed text-slate-500">
-            A row-level onboarding funnel for EA identity, login, server-data
-            readiness, and real mobile-app activity.
+            A row-level onboarding funnel for EA identity, Auth readiness,
+            server-data readiness, and real mobile-app activity.
           </p>
         </div>
         <p className="shrink-0 text-xs text-slate-400">
@@ -124,8 +124,10 @@ export default async function MobileUserHealthPage({
           <strong>Download/install is not directly observable.</strong> A registered
           push device is positive app evidence, but no token can also mean notification
           permission was denied. Treat “no device signal” as unknown—not “not installed.”{" "}
-          Likewise, an enabled auth account is a login prerequisite; only a recorded
-          sign-in proves that login actually succeeded.
+          Likewise, an enabled Auth account is a login prerequisite, but Supabase Auth
+          history cannot prove a youth used the mobile app: credential provisioning
+          checks create the same sign-in timestamp. Mobile login will remain explicitly
+          unmeasured until the app writes its own authenticated event.
         </p>
       </div>
 

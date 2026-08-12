@@ -54,6 +54,6 @@ export function getUserAttentionReasons(
 export function getUserHealthState(user: MobileUserHealthRow): UserHealthState {
   if (getUserAttentionReasons(user).length > 0) return "needs_attention";
   if (hasRecentAppActivity(user)) return "active";
-  if (user.auth.last_sign_in_at !== null) return "onboarding";
+  if (user.app_device.registered) return "onboarding";
   return "not_started";
 }
