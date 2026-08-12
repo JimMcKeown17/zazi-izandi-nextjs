@@ -10,10 +10,10 @@
 
 ## Global Constraints
 
-- **Deploy order that never breaks (do not reorder):** Django Part B (tolerates absent fields) → Supabase migrations → manifest sanity-check by Jim → wave loader → frontend → mobile OTA (`eas update`). Part A gates come first: Django `fix/mobile-report-real-users` deployed, then frontend `fix/mobile-report-real-users` and `feat/mobile-ops-usability` merged/deployed.
+- **Deploy order that never breaks (do not reorder):** Supabase migrations (purely ADDITIVE — new tables + new `mobile_user_health_domain_v2`; the existing v1 RPC is untouched) → Django Part B (switches to v2) → manifest sanity-check by Jim → wave loader → frontend → mobile OTA (`eas update`). Part A gates come first: Django `fix/mobile-report-real-users` deployed, then frontend `fix/mobile-report-real-users` and `feat/mobile-ops-usability` merged/deployed. **Rollback story (round-6 adversarial finding — this ordering replaces the spec's original "Django tolerate-first" sequence):** because v1 is never modified, redeploying the previous Django release works at ANY point with zero database action; the migration itself never needs reverting (unused tables + an uncalled v2 are inert). Compatibility matrix: old Django + unmigrated DB ✓ (status quo) · old Django + migrated DB ✓ (v1 unchanged) · new Django + migrated DB ✓ (v2) · new Django + unmigrated DB ✗ (v2 absent) — the ✗ cell is excluded by the deploy order and is the ONLY forbidden state.
 - **Supabase house pattern** (every reporting migration): `SET search_path = ''` with every identifier schema-qualified (`public.*`, `pg_catalog.*` for builtins), `$function$` dollar-quoting, `REVOKE ALL … FROM PUBLIC, anon, authenticated, authenticator` + `GRANT EXECUTE … TO service_role` for functions, `COMMENT ON`, one trailing `NOTIFY pgrst, 'reload schema';` per file. Migration filenames match `^\d{14}_[a-z0-9_]+\.sql$` and must sort after `20260812120000`.
-- **The 2-arg legacy RPC overloads must not be touched.** Structural verifiers assert overload count = 2 per report function. Only `CREATE OR REPLACE` the 3-arg `mobile_user_health_domain(INTEGER, UUID, UUID[])`.
-- **Django `MOBILE_USER_HEALTH_DOMAIN_SCHEMA` keeps `additionalProperties: False` everywhere.** New fields are added to `properties` but NOT to `required` (tolerate-first). New cross-field invariants run only when the key is present in the raw RPC payload, and the count⟺timestamp 502 invariant continues to exclude all `_ever_`/app-open fields.
+- **No existing RPC is modified or dropped.** Structural verifiers assert overload count = 2 per report function; the 3-arg `mobile_user_health_domain(INTEGER, UUID, UUID[])` keeps its exact current body (it is the Django rollback target). Part B ships as a NEW function `mobile_user_health_domain_v2(INTEGER, UUID, UUID[])` following the house bare-`CREATE FUNCTION` pattern.
+- **Django `MOBILE_USER_HEALTH_DOMAIN_SCHEMA` keeps `additionalProperties: False` everywhere.** New fields are added to `properties` but NOT to `required` — v2 always emits them, but keeping them optional (with presence-conditional invariants and null normalization) keeps one Django release valid against BOTH RPC generations, which is what makes the deploy/rollback matrix in the first bullet all-green. The count⟺timestamp 502 invariant continues to exclude all `_ever_`/app-open fields.
 - **PII:** wave manifests contain emails — they are generated into a gitignored directory and NEVER committed. `app_open` events carry only `user_id`, `event`, `app_version`, `platform`.
 - **No direct client table writes.** The mobile app's only server-write precedent is a SECURITY DEFINER RPC deriving `auth.uid()` (`register_notification_push_token`); `app_open` follows it via `record_app_open(p_app_version, p_platform)` — server-derived identity, length-bounded metadata, 5-minute per-user rate bound. `authenticated` gets NO table privileges on `app_events`. (Deliberate hardening over the original spec's direct-INSERT+RLS sentence — same trust boundary, server-enforced abuse bounds; adversarial-review round 1 finding.)
 - **Wave loads are single-flight.** The loader takes `pg_try_advisory_xact_lock(815001, 0)` first and fails fast if another load holds it — two concurrent reconciliations under READ COMMITTED could otherwise both pass their final asserts and commit a corrupt union (adversarial-review round 1 finding).
@@ -59,7 +59,7 @@ Top level: `"wave_options": [{"id", "name", "launch_date"}, …]` ordered by `(l
 
 **Auth-only accounts (round-3 adversarial finding):** the domain RPC's `identity_population` starts from `staff_identity_links` (`role = 'ea' OR roster`), but Django deliberately synthesizes board rows for eligible auth accounts with no qualifying identity row (`_empty_domain_user` — e.g. self-setup ECD accounts, which the ECD manifest DOES assign to a wave). So the RPC ALSO returns a top-level `"supplemental_users"` array — one entry per `p_included_user_ids` uuid absent from `users[]`, each `{user_id, wave, first_ever_activity_at, last_ever_activity_at, ever_registered_device, first_app_open_at, last_app_open_at}` — and Django merges the matching entry into each synthesized auth-only row before responding. Wave membership and app_open/device/lifetime evidence therefore survive for exactly the broken-or-missing-identity-link accounts the board exists to expose. `supplemental_users` is internal to the RPC→Django hop; the frontend contract above is unchanged.
 
-Semantics: `wave` is the live (`superseded_at IS NULL`) membership or `null`. `first/last_ever_activity_at` are the lifetime (un-windowed) LEAST/GREATEST over the same three activity sources as the windowed fields, and sit OUTSIDE the count⟺timestamp invariant. `ever_registered_device` is an EXISTS over `notification_push_tokens` INCLUDING invalidated rows. `first/last_app_open_at` aggregate `app_events` rows with `event = 'app_open'`. In the tolerate window (Django deployed, migration not yet applied) all six per-user keys are `null` and `wave_options` is `[]`; `ever_registered_device: null` means "unknown", never "no".
+Semantics: `wave` is the live (`superseded_at IS NULL`) membership or `null`. `first/last_ever_activity_at` are the lifetime (un-windowed) LEAST/GREATEST over the same three activity sources as the windowed fields, and sit OUTSIDE the count⟺timestamp invariant. `ever_registered_device` is an EXISTS over `notification_push_tokens` INCLUDING invalidated rows. `first/last_app_open_at` aggregate `app_events` rows with `event = 'app_open'`. Part B Django reads these from the NEW `mobile_user_health_domain_v2` RPC (same three args; v1 is untouched as the rollback target). Should Django ever face a payload without the new keys (defensive tolerance — the deploy order prevents it), it normalizes all six per-user keys to `null` and `wave_options` to `[]`; `ever_registered_device: null` means "unknown", never "no".
 
 ---
 
@@ -403,7 +403,7 @@ git commit -m "feat(events): add app_events table with rate-bounded record_app_o
 
 ---
 
-### Task 3: Supabase migration — extend `mobile_user_health_domain` (waves, lifetime, app_open)
+### Task 3: Supabase migration — new `mobile_user_health_domain_v2` (waves, lifetime, app_open)
 
 **Files:**
 - Create: `supabase/migrations/20260813092000_mobile_user_health_waves_lifetime.sql`
@@ -413,7 +413,7 @@ git commit -m "feat(events): add app_events table with rate-bounded record_app_o
 Repo/branch: same as Task 1. Depends on Tasks 1–2 (reads their tables).
 
 **Interfaces:**
-- Produces: `CREATE OR REPLACE FUNCTION public.mobile_user_health_domain(p_days INTEGER, p_school_id UUID, p_included_user_ids UUID[])` whose per-user JSON adds the six keys and whose top level adds `wave_options` AND `supplemental_users` (Part B evidence for included uuids absent from `users[]`), exactly per the "Response contract after Part B" section above. Tasks 5 and 6 depend on this shape.
+- Produces: NEW function `public.mobile_user_health_domain_v2(p_days INTEGER, p_school_id UUID, p_included_user_ids UUID[])` — the v1 body plus: per-user six keys, top-level `wave_options` AND `supplemental_users` (Part B evidence for included uuids absent from `users[]`), exactly per the "Response contract after Part B" section above. The existing v1 function is NOT modified (it is the Django rollback target; round-6 adversarial finding). Tasks 5 and 6 depend on this shape.
 
 - [ ] **Step 1: Append the failing contract tests**
 
@@ -421,11 +421,14 @@ Repo/branch: same as Task 1. Depends on Tasks 1–2 (reads their tables).
 describe('user-health RPC extension contract', () => {
   const sql = () => readMigration('20260813092000_mobile_user_health_waves_lifetime.sql');
 
-  test('replaces only the 3-arg overload and never drops functions', () => {
+  test('creates only the new v2 function and never touches v1', () => {
     const text = sql();
-    expect(text).toMatch(/CREATE OR REPLACE FUNCTION public\.mobile_user_health_domain\(\s*p_days INTEGER,\s*p_school_id UUID,\s*p_included_user_ids UUID\[\]\s*\)/);
+    expect(text).toMatch(/CREATE FUNCTION public\.mobile_user_health_domain_v2\(\s*p_days INTEGER,\s*p_school_id UUID,\s*p_included_user_ids UUID\[\]\s*\)/);
     expect(text).not.toMatch(/DROP FUNCTION/i);
-    expect((text.match(/CREATE OR REPLACE FUNCTION/g) || []).length).toBe(1);
+    expect(text).not.toMatch(/CREATE OR REPLACE/);
+    // Rollback contract: v1 must remain byte-identical, so this migration
+    // may reference the v1 name ONLY as part of the v2 identifier.
+    expect(text.replace(/mobile_user_health_domain_v2/g, '')).not.toMatch(/mobile_user_health_domain/);
   });
 
   test('joins live wave membership and exposes wave_options', () => {
@@ -462,8 +465,8 @@ describe('user-health RPC extension contract', () => {
 
   test('keeps the service-role-only grant posture', () => {
     const text = sql();
-    expect(text).toMatch(/REVOKE ALL ON FUNCTION public\.mobile_user_health_domain\(INTEGER, UUID, UUID\[\]\)\s+FROM PUBLIC, anon, authenticated, authenticator/);
-    expect(text).toMatch(/GRANT EXECUTE ON FUNCTION public\.mobile_user_health_domain\(INTEGER, UUID, UUID\[\]\)\s+TO service_role/);
+    expect(text).toMatch(/REVOKE ALL ON FUNCTION public\.mobile_user_health_domain_v2\(INTEGER, UUID, UUID\[\]\)\s+FROM PUBLIC, anon, authenticated, authenticator/);
+    expect(text).toMatch(/GRANT EXECUTE ON FUNCTION public\.mobile_user_health_domain_v2\(INTEGER, UUID, UUID\[\]\)\s+TO service_role/);
     expect(text).toMatch(/NOTIFY pgrst, 'reload schema';/);
   });
 });
@@ -476,7 +479,7 @@ Expected: FAIL on the new describe block only.
 
 - [ ] **Step 3: Write the migration**
 
-Copy the ENTIRE `mobile_user_health_domain(INTEGER, UUID, UUID[])` function from `20260812120000_mobile_reporting_real_user_population.sql` (from its leading comment `-- Mobile-app onboarding and operational-health domain evidence.` through its `NOTIFY`) into the new file, change `CREATE FUNCTION` to `CREATE OR REPLACE FUNCTION`, and apply exactly these edits (everything else stays byte-identical):
+Copy the ENTIRE `mobile_user_health_domain(INTEGER, UUID, UUID[])` function from `20260812120000_mobile_reporting_real_user_population.sql` (from its leading comment `-- Mobile-app onboarding and operational-health domain evidence.` through its `NOTIFY`) into the new file, rename EVERY occurrence of `mobile_user_health_domain` to `mobile_user_health_domain_v2` (the `CREATE FUNCTION`, the error-message prefixes in the RAISE blocks, the REVOKE/GRANT signatures, and the COMMENT — the original function is never referenced again in this file), and apply exactly these edits (everything else stays byte-identical):
 
 **(a)** After the `identity_population` CTE, insert five new CTEs (before `class_counts`):
 
@@ -694,14 +697,14 @@ and in the final `jsonb_build_object`, after `'school_options', school_options.v
 
 and in the final `jsonb_build_object` add `'supplemental_users', supplemental_users.value,` (after `'wave_options'`) plus `CROSS JOIN supplemental_users` in the final FROM.
 
-**(f)** Update the function's `COMMENT ON` to:
+**(f)** The function's `COMMENT ON` becomes:
 
 ```sql
-COMMENT ON FUNCTION public.mobile_user_health_domain(INTEGER, UUID, UUID[]) IS
-  'Current-school mobile onboarding data/device/activity evidence with rollout wave, lifetime activity, and app_open aggregates; Django joins GoTrue auth state by UUID.';
+COMMENT ON FUNCTION public.mobile_user_health_domain_v2(INTEGER, UUID, UUID[]) IS
+  'Part B user-health evidence: v1 shape plus rollout wave, lifetime activity, app_open aggregates, and supplemental auth-only evidence. v1 stays unchanged as the Django rollback target.';
 ```
 
-Keep the REVOKE/GRANT block and the trailing `NOTIFY pgrst, 'reload schema';` (REVOKE/GRANT are re-stated verbatim; `CREATE OR REPLACE` preserves ACLs but the house files state them explicitly).
+Keep the (renamed) REVOKE/GRANT block and the trailing `NOTIFY pgrst, 'reload schema';`.
 
 - [ ] **Step 4: Run the contract test to verify it passes**
 
@@ -712,7 +715,7 @@ Expected: PASS (all describe blocks).
 
 ```bash
 git add supabase/migrations/20260813092000_mobile_user_health_waves_lifetime.sql __tests__/rolloutWavesAppOpenSqlContract.test.js
-git commit -m "feat(waves): extend user-health RPC with wave, lifetime, and app_open evidence"
+git commit -m "feat(waves): add user-health v2 RPC with wave, lifetime, and app_open evidence"
 ```
 
 ---
@@ -1051,7 +1054,8 @@ Repo/branch: same as Task 1. Depends on Tasks 1–4.
 8. **Immutability trigger:** direct `UPDATE … SET assigned_at = now()` on a live row → error `app_rollout_wave_members_only_supersede_transition_allowed`; `DELETE` → `app_rollout_wave_members_rows_are_append_only`; `UPDATE … SET superseded_at = NULL` on a superseded row → error; `UPDATE … SET superseded_at = now()` on a live row → allowed.
 9. **record_app_open behavior:** using `SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claim.sub = '<fixture uuid>'` (mirror how the existing harness impersonates authenticated callers): first call `record_app_open('1.1.1', 'ios')` → one row with the derived `user_id`; immediate second call → still exactly one row (rate bound); call with a 100-char version string → stored value is 64 chars; call with platform `'web'` → row stored with `platform NULL`; call with no jwt claim (unauthenticated) → raises `record_app_open_requires_authentication`; direct `INSERT INTO public.app_events …` as authenticated → permission denied; `SELECT` as authenticated → permission denied; `SELECT` via the default service connection → succeeds. Then clear the rate window for the reporting fixture by seeding the second `app_open` row directly via the service connection with an explicit older `occurred_at`.
 9b. **record_app_open concurrency proof (round-2 finding):** for a FRESH fixture user, spawn a background psql running one transaction `BEGIN; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claim.sub = '<uuid>'; SELECT public.record_app_open('1.1.1','ios'); SELECT pg_sleep(2); COMMIT;` and, while it sleeps, run the same call for the same user from the primary connection. The second call blocks on the per-user advisory lock until the first commits, then its rate-bound EXISTS sees the committed row. After both complete, assert EXACTLY one `app_open` row exists for that user.
-10. **RPC fields:** seed `app_events` rows (two `app_open` for one user — see case 9), an invalidated push token for a second user (`invalidated_at = now()`, no live token), lifetime activity older than the window (a `time_entries` row 60 days back), then call `mobile_user_health_domain(7, NULL, ARRAY[…])` and assert for the relevant users: `wave.name = 'Harness Wave A'`; `wave_options` lists both harness waves ordered by launch_date; user with no wave has `"wave": null`; `first/last_app_open_at` match the seeded min/max; invalidated-token user has `app_device.registered = false` but `ever_registered_device = true`; out-of-window-activity user has `activity.clock_entries = 0` (windowed) but non-null `first/last_ever_activity_at`; `last_ever_activity_at >= last_activity_at` for every user with windowed activity.
+10. **RPC fields:** seed `app_events` rows (two `app_open` for one user — see case 9), an invalidated push token for a second user (`invalidated_at = now()`, no live token), lifetime activity older than the window (a `time_entries` row 60 days back), then call `mobile_user_health_domain_v2(7, NULL, ARRAY[…])` and assert for the relevant users: `wave.name = 'Harness Wave A'`; `wave_options` lists both harness waves ordered by launch_date; user with no wave has `"wave": null`; `first/last_app_open_at` match the seeded min/max; invalidated-token user has `app_device.registered = false` but `ever_registered_device = true`; out-of-window-activity user has `activity.clock_entries = 0` (windowed) but non-null `first/last_ever_activity_at`; `last_ever_activity_at >= last_activity_at` for every user with windowed activity.
+10a. **v1 untouched (round-6 finding, rollback contract):** with the full Part B fixture in place (waves loaded, app_events seeded), call the ORIGINAL `mobile_user_health_domain(7, NULL, ARRAY[…])` and assert its payload still has NO `wave_options`, NO `supplemental_users`, and user rows WITHOUT any of the six Part B keys — the pre-Part-B Django release must be able to consume v1 unchanged at any time.
 10b. **Auth-only supplemental evidence (round-3 finding):** include in the fixture one auth user whose `staff_identity_links` row does NOT qualify for `identity_population` (set its `role` to a non-`'ea'` value and create no `education_assistants` row — mirrors a self-setup ECD account), give it a wave membership (loader or direct service insert) and an `app_open` row, and pass its uuid in `p_included_user_ids`. Assert: it is ABSENT from `users[]`; `supplemental_users` contains exactly one entry for it carrying `wave.name`, `ever_registered_device`, and the `first/last_app_open_at` values; and every `supplemental_users[].user_id` is disjoint from `users[].user_id`.
 11. **Zero residue** after teardown (including `app_events`, `app_rollout_waves`, `app_rollout_wave_members`).
 
@@ -1059,7 +1063,7 @@ Emit the same single JSON summary line shape as the sibling harness.
 
 - [ ] **Step 2: Write the post-apply verification SQL**
 
-`supabase/verification/rollout-waves-post-apply-verification.sql`, mirroring `mobile-operational-reporting-post-apply-verification.sql` (a `BEGIN;`-only script of `DO` assertions that never commits): assert both wave tables AND `app_events` exist with RLS enabled and zero policies; the partial unique index, the wave_id index, and `app_events_user_event_occurred_idx` exist; the trigger `app_rollout_wave_members_immutable` exists with `tgtype` covering UPDATE and DELETE; `mobile_user_health_domain` still has exactly 2 overloads, and the 3-arg overload's `prosrc` contains `app_rollout_wave_members`, `app_events`, and `wave_options` (proves the replace landed); `record_app_open(TEXT, TEXT)` exists with `prosecdef = true`, `search_path` proconfig set, EXECUTE for `authenticated` and NOT for `anon`/`service_role`; authenticated has zero table privileges on `app_events` and on both wave tables.
+`supabase/verification/rollout-waves-post-apply-verification.sql`, mirroring `mobile-operational-reporting-post-apply-verification.sql` (a `BEGIN;`-only script of `DO` assertions that never commits): assert both wave tables AND `app_events` exist with RLS enabled and zero policies; the partial unique index, the wave_id index, and `app_events_user_event_occurred_idx` exist; the trigger `app_rollout_wave_members_immutable` exists with `tgtype` covering UPDATE and DELETE; `mobile_user_health_domain` still has exactly 2 overloads and the 3-arg v1 overload's `prosrc` contains NONE of `app_rollout_wave_members` / `app_events` / `wave_options` (proves v1 is byte-untouched — it is the Django rollback target); `mobile_user_health_domain_v2(INTEGER, UUID, UUID[])` exists with exactly 1 overload, `prosecdef = false`, `search_path` proconfig set, service_role EXECUTE, and `prosrc` containing `app_rollout_wave_members`, `app_events`, `wave_options`, and `supplemental_users`; `record_app_open(TEXT, TEXT)` exists with `prosecdef = true`, `search_path` proconfig set, EXECUTE for `authenticated` and NOT for `anon`/`service_role`; authenticated has zero table privileges on `app_events` and on both wave tables.
 
 - [ ] **Step 3: Register in the combined harness**
 
@@ -1087,14 +1091,15 @@ git commit -m "test(waves): behavioral harness and post-apply verification for w
 ### Task 6: Django — tolerant passthrough of wave/lifetime/app_open fields
 
 **Files:**
-- Modify: `api/mobile/reports.py` (schema `$defs` ~line 481, top-level schema ~line 594, `_validate_health_domain_payload` ~line 668, `_empty_domain_user` ~line 847, `_build_user_health_payload` ~line 949)
-- Modify: `api/tests_mobile_operational_reports.py` (fixture builders ~line 84, `MobileUserHealthReportTests` ~line 259)
+- Modify: `api/mobile/reports.py` (schema `$defs` ~line 481, top-level schema ~line 594, `_validate_health_domain_payload` ~line 668, `_empty_domain_user` ~line 847, `_build_user_health_payload` ~line 949, `fetch_user_health` ~line 1031 — RPC name)
+- Modify: `api/services/mobile_notifications.py` (`ALLOWED_REPORTING_RPCS` ~lines 19–32 — add the v2 entry)
+- Modify: `api/tests_mobile_operational_reports.py` (fixture builders ~line 84, `MobileUserHealthReportTests` ~line 259, and the existing `assert_has_calls` RPC-name expectations)
 - Modify: `documentation/mobile-app-reporting-configuration.md` (prose contract, ~lines 70–95)
 
 Repo: `/Users/jimmckeown/Development/zazi-mobile-clock-reporting-django`, branch `feat/mobile-rollout-waves`.
 
 **Interfaces:**
-- Consumes: the RPC shape from Task 3 (may be absent — tolerate-first).
+- Consumes: `mobile_user_health_domain_v2` from Task 3 (deployed BEFORE this Django release per the round-6 rollback ordering; the optional-field tolerance is defensive, not a deploy state).
 - Produces: the "Response contract after Part B" exactly — every user row always carries the six keys (null when unknown), top level always carries `wave_options` (default `[]`). Task 7's zod schema depends on this.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1514,7 +1519,7 @@ def _with_part_b_defaults(user):
 "last_app_open_at": None,
 ```
 
-**(g) `_build_user_health_payload`** — ⚠️ the RPC payload parameter inside THIS function is named **`domain_payload`** (the validator's parameter is `payload` — the snippets in (d) are correct as written; do not blindly reuse names across functions, and verify both against the live source before editing; round-4 finding — writing `payload` here is a `NameError` on every request, including legacy ones during the tolerate-first deploy). Wrap every domain-derived user row with `_with_part_b_defaults(...)` at the point where domain rows are merged with auth evidence (the same place `_with_provisioning_auth_evidence` is applied — apply `_with_part_b_defaults` FIRST, then the auth wrapper, so ordering of dict keys stays stable). Near the top of the function build:
+**(g) `_build_user_health_payload`** — ⚠️ the RPC payload parameter inside THIS function is named **`domain_payload`** (the validator's parameter is `payload` — the snippets in (d) are correct as written; do not blindly reuse names across functions, and verify both against the live source before editing; round-4 finding — writing `payload` here is a `NameError` on every request). Wrap every domain-derived user row with `_with_part_b_defaults(...)` at the point where domain rows are merged with auth evidence (the same place `_with_provisioning_auth_evidence` is applied — apply `_with_part_b_defaults` FIRST, then the auth wrapper, so ordering of dict keys stays stable). Near the top of the function build:
 
 ```python
 supplemental_by_user_id = {
@@ -1552,6 +1557,14 @@ The SAME `domain_user` object then continues through the existing pipeline uncha
 
 (`supplemental_users` itself is NOT forwarded to the frontend — it is consumed here.) Both the legacy-payload test and the auth-only supplemental test already exercise the full `fetch_user_health` path, so a naming slip here fails loudly in Step 4.
 
+**(h) Switch the RPC name to v2 (round-6 rollback design).** In `fetch_user_health`, change the reporting call from `"mobile_user_health_domain"` to `"mobile_user_health_domain_v2"` (same three args). In `api/services/mobile_notifications.py`, add to `ALLOWED_REPORTING_RPCS`:
+
+```python
+"mobile_user_health_domain_v2": {"p_days", "p_school_id", "p_included_user_ids"},
+```
+
+(keep the existing v1 entry — it is dead code for this release but harmless, and deleting it would churn the rollback diff). Update the existing `assert_has_calls` expectations in `test_health_report_joins_auth_and_domain_users_and_recomputes_summary` (and any other test pinning the RPC name) to `call("mobile_user_health_domain_v2", {...})` — those tests failing on the name is the RED step for this change.
+
 - [ ] **Step 4: Run the suite to verify green**
 
 Run: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025/venv/bin/python manage.py test api.tests_mobile_operational_reports -v 2`
@@ -1561,7 +1574,7 @@ Also run the sibling mobile suite to prove no contract drift: `/Users/jimmckeown
 
 - [ ] **Step 5: Update the prose contract**
 
-In `documentation/mobile-app-reporting-configuration.md`, extend the user-health section: list the six new per-user fields + `wave_options` with the exact semantics from the "Response contract after Part B" block (including "null means unknown during the tolerate window, never 'no'"), and REPLACE the sentence claiming `last_sign_in_at` alone cannot prove a mobile-app login with: it still cannot — but `first/last_app_open_at` (client-emitted `app_events`) now CAN prove the app was opened by a signed-in user, once the mobile OTA ships; absence of app_open evidence is not absence of use for devices that have not yet applied the OTA update.
+In `documentation/mobile-app-reporting-configuration.md`, extend the user-health section: list the six new per-user fields + `wave_options` with the exact semantics from the "Response contract after Part B" block (including that Django reads `mobile_user_health_domain_v2` while v1 stays untouched as the rollback target, and "null means unknown, never 'no'"), and REPLACE the sentence claiming `last_sign_in_at` alone cannot prove a mobile-app login with: it still cannot — but `first/last_app_open_at` (client-emitted `app_events`) now CAN prove the app was opened by a signed-in user, once the mobile OTA ships; absence of app_open evidence is not absence of use for devices that have not yet applied the OTA update.
 
 - [ ] **Step 6: Commit**
 
@@ -2361,12 +2374,12 @@ git commit -m "feat(events): report one app_open per launch via rate-bounded RPC
 Nothing here is dispatched to an implementer. The coordinator walks this with Jim, in order, each step gated on the previous:
 
 - [ ] **0. Part A gates (unchanged, critical):** Django `fix/mobile-report-real-users` deployed on Render → frontend `fix/mobile-report-real-users` then `feat/mobile-ops-usability` merged to `main` and deployed on Vercel. Remind Jim of the outstanding manual browser checklist in `.superpowers/sdd/2026-08-11-mobile-ops-usability/progress.md` (items 1–6 + version-card reflow) before the production merge.
-- [ ] **1. Django Part B:** merge `feat/mobile-rollout-waves` → `fix/mobile-report-real-users` (or directly to `main` if Part A already merged), deploy on Render. Safe: all new fields tolerated-absent.
-- [ ] **2. Supabase migrations:** merge `feat/rollout-waves-app-open` to `main` (app repo), apply the three migrations to hosted (`supabase db push` from the linked worktree — same flow as `20260812120000`), then run `supabase/verification/rollout-waves-post-apply-verification.sql` against hosted and record the output in the repo build log.
+- [ ] **1. Supabase migrations (FIRST — purely additive, round-6 ordering):** merge `feat/rollout-waves-app-open` to `main` (app repo), apply the three migrations to hosted (`supabase db push` from the linked worktree — same flow as `20260812120000`), then run `supabase/verification/rollout-waves-post-apply-verification.sql` against hosted and record the output in the repo build log. The running (pre-Part-B) Django is untouched by this step: v1 is byte-identical and the new objects are uncalled.
+- [ ] **2. Django Part B:** merge `feat/mobile-rollout-waves` → `fix/mobile-report-real-users` (or directly to `main` if Part A already merged), deploy on Render. Django now calls `mobile_user_health_domain_v2`. **Rollback at any later point = redeploy the previous Django release** (it calls the untouched v1); no database action is ever required to roll back.
 - [ ] **3. Manifests — JIM GATE:** run `generate-wave-manifests.sql` against hosted (read-only), send Jim the two `*-review.csv` files + counts + the proposed launch dates (**2026-08-08** Primary, **2026-08-11** ECD). STOP until Jim confirms lists and dates.
 - [ ] **4. Loader:** run `load-wave-manifest.sql` for ZZ Primary 2026 then ZZ ECD 2026 with `allow_moves=false`, `source_note='manifest <today's date> <file>'`. Paste both load-report NOTICE lines to Jim. Verify: board's `wave_options` shows both waves; per-wave live counts match the manifests.
 - [ ] **5. Frontend:** merge `feat/mobile-rollout-waves` → `main`, deploy. Verify wave filter + strip on production data.
-- [ ] **6. Mobile OTA:** merge `feat/rollout-waves-app-open` is already in `main` (step 2); from Jim's app checkout on `main`, `npm run eas:update` (production channel; the script enforces branch `main` + up-to-date). `runtimeVersion.policy: appVersion` means the update reaches runtime `1.1.1` — check the EAS dashboard for any other live runtime/channel (e.g. `wave2-canary`) and publish per live runtime/channel as needed. Devices emit `app_open` from launch N+1.
+- [ ] **6. Mobile OTA:** `feat/rollout-waves-app-open` is already in `main` (step 1); from Jim's app checkout on `main`, `npm run eas:update` (production channel; the script enforces branch `main` + up-to-date). `runtimeVersion.policy: appVersion` means the update reaches runtime `1.1.1` — check the EAS dashboard for any other live runtime/channel (e.g. `wave2-canary`) and publish per live runtime/channel as needed. Devices emit `app_open` from launch N+1.
 - [ ] **7. Docs:** record the deploy in the app repo `documentation/build-log.md` house style; note in the frontend how-to panel review that app_open evidence begins at OTA date (already written in Task 9's copy).
 
 ---
