@@ -21,12 +21,18 @@ function syncUrl(next: { q: string; view: LedgerView }) {
 
 export function AttendanceLedger({
   entries,
+  days,
+  schoolId,
   initialQuery = "",
   initialView = "shifts",
+  userHealthLinksEnabled = false,
 }: {
   entries: MobileTimeEntryRow[];
+  days: number;
+  schoolId: string | null;
   initialQuery?: string;
   initialView?: LedgerView;
+  userHealthLinksEnabled?: boolean;
 }) {
   const [view, setView] = useState<LedgerView>(initialView);
   const [query, setQuery] = useState(initialQuery);
@@ -95,9 +101,19 @@ export function AttendanceLedger({
         </div>
       </div>
       {view === "shifts" ? (
-        <ClockEntriesTable entries={filtered} />
+        <ClockEntriesTable
+          entries={filtered}
+          days={days}
+          schoolId={schoolId}
+          userHealthLinksEnabled={userHealthLinksEnabled}
+        />
       ) : (
-        <EaRollupTable rollups={rollups} />
+        <EaRollupTable
+          rollups={rollups}
+          days={days}
+          schoolId={schoolId}
+          userHealthLinksEnabled={userHealthLinksEnabled}
+        />
       )}
     </div>
   );

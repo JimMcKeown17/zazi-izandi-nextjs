@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Radio } from "lucide-react";
 
 import { getEmploymentStatusDisplay } from "@/lib/mobile/presentation";
@@ -49,6 +50,17 @@ function formatAutomatic(rollup: EaClockRollup): string {
   )}%)`;
 }
 
+function buildUserHealthHref(
+  days: number,
+  schoolId: string | null,
+  userId: string
+): string {
+  const params = new URLSearchParams({ days: String(days) });
+  if (schoolId !== null) params.set("school_id", schoolId);
+  params.set("q", userId);
+  return `/mobile-app/user-health?${params.toString()}`;
+}
+
 function LastClockIn({ value }: { value: string }) {
   const clockIn = new Date(value);
   return (
@@ -61,7 +73,17 @@ function LastClockIn({ value }: { value: string }) {
   );
 }
 
-export function EaRollupTable({ rollups }: { rollups: EaClockRollup[] }) {
+export function EaRollupTable({
+  rollups,
+  days,
+  schoolId,
+  userHealthLinksEnabled = false,
+}: {
+  rollups: EaClockRollup[];
+  days: number;
+  schoolId: string | null;
+  userHealthLinksEnabled?: boolean;
+}) {
   if (rollups.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
@@ -106,7 +128,16 @@ export function EaRollupTable({ rollups }: { rollups: EaClockRollup[] }) {
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-slate-900">
-                      {rollup.ea_name}
+                      {userHealthLinksEnabled ? (
+                        <Link
+                          href={buildUserHealthHref(days, schoolId, rollup.user_id)}
+                          className="hover:underline"
+                        >
+                          {rollup.ea_name}
+                        </Link>
+                      ) : (
+                        rollup.ea_name
+                      )}
                     </span>
                     <EmploymentBadge status={rollup.employment_status} />
                     {rollup.open_now ? <LiveBadge /> : null}
@@ -145,7 +176,18 @@ export function EaRollupTable({ rollups }: { rollups: EaClockRollup[] }) {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-bold text-slate-900">{rollup.ea_name}</h3>
+                  <h3 className="font-bold text-slate-900">
+                    {userHealthLinksEnabled ? (
+                      <Link
+                        href={buildUserHealthHref(days, schoolId, rollup.user_id)}
+                        className="hover:underline"
+                      >
+                        {rollup.ea_name}
+                      </Link>
+                    ) : (
+                      rollup.ea_name
+                    )}
+                  </h3>
                   <EmploymentBadge status={rollup.employment_status} />
                 </div>
                 <p className="mt-1 truncate text-xs text-slate-500">

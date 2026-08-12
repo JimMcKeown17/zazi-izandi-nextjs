@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   CheckCircle2,
@@ -73,6 +74,17 @@ function syncUrl(next: {
 
 function formatTimestamp(value: string | null): string {
   return value ? DATE_TIME_FORMAT.format(new Date(value)) : "No evidence yet";
+}
+
+function buildClockLedgerHref(
+  days: number,
+  schoolId: string | null,
+  userId: string
+): string {
+  const params = new URLSearchParams({ days: String(days) });
+  if (schoolId !== null) params.set("school_id", schoolId);
+  params.set("q", userId);
+  return `/mobile-app/attendance?${params.toString()}`;
 }
 
 function StageBadge({
@@ -218,9 +230,11 @@ function DataEvidence({ user }: { user: MobileUserHealthRow }) {
 function ActivityEvidence({
   user,
   days,
+  schoolId,
 }: {
   user: MobileUserHealthRow;
   days: number;
+  schoolId: string | null;
 }) {
   return (
     <div>
@@ -234,6 +248,14 @@ function ActivityEvidence({
       <p className="mt-1 text-xs text-slate-500">
         Last activity: {formatTimestamp(user.activity.last_activity_at)}
       </p>
+      {user.activity.clock_entries > 0 ? (
+        <Link
+          href={buildClockLedgerHref(days, schoolId, user.user_id)}
+          className="mt-1 inline-block text-xs font-semibold text-primary hover:underline"
+        >
+          View clock ledger →
+        </Link>
+      ) : null}
     </div>
   );
 }
@@ -508,7 +530,11 @@ export function UserHealthBoard({
                     <td className="px-4 py-4"><DeviceEvidence user={user} /></td>
                     <td className="px-4 py-4"><DataEvidence user={user} /></td>
                     <td className="px-4 py-4">
-                      <ActivityEvidence user={user} days={days} />
+                      <ActivityEvidence
+                        user={user}
+                        days={days}
+                        schoolId={schoolId}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -564,7 +590,11 @@ export function UserHealthBoard({
                     <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                       App activity
                     </p>
-                    <ActivityEvidence user={user} days={days} />
+                    <ActivityEvidence
+                      user={user}
+                      days={days}
+                      schoolId={schoolId}
+                    />
                   </div>
                 </div>
               </article>

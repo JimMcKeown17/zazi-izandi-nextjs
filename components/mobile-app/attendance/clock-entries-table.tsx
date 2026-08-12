@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, Radio } from "lucide-react";
 
@@ -63,6 +64,17 @@ function formatTime(value: string | null): string {
   return value ? TIME_FORMAT.format(new Date(value)) : "Clocked in now";
 }
 
+function buildUserHealthHref(
+  days: number,
+  schoolId: string | null,
+  userId: string
+): string {
+  const params = new URLSearchParams({ days: String(days) });
+  if (schoolId !== null) params.set("school_id", schoolId);
+  params.set("q", userId);
+  return `/mobile-app/user-health?${params.toString()}`;
+}
+
 function Duration({ entry }: { entry: MobileTimeEntryRow }) {
   return entry.duration_minutes === null ? (
     <span className="font-medium text-emerald-700">In progress</span>
@@ -73,7 +85,17 @@ function Duration({ entry }: { entry: MobileTimeEntryRow }) {
   );
 }
 
-export function ClockEntriesTable({ entries }: { entries: MobileTimeEntryRow[] }) {
+export function ClockEntriesTable({
+  entries,
+  days,
+  schoolId,
+  userHealthLinksEnabled = false,
+}: {
+  entries: MobileTimeEntryRow[];
+  days: number;
+  schoolId: string | null;
+  userHealthLinksEnabled?: boolean;
+}) {
   const [page, setPage] = useState(1);
   const pageCount = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
@@ -128,7 +150,16 @@ export function ClockEntriesTable({ entries }: { entries: MobileTimeEntryRow[] }
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-slate-900">
-                      {entry.ea_name}
+                      {userHealthLinksEnabled ? (
+                        <Link
+                          href={buildUserHealthHref(days, schoolId, entry.user_id)}
+                          className="hover:underline"
+                        >
+                          {entry.ea_name}
+                        </Link>
+                      ) : (
+                        entry.ea_name
+                      )}
                     </span>
                     <EmploymentBadge status={entry.employment_status} />
                   </div>
@@ -165,7 +196,18 @@ export function ClockEntriesTable({ entries }: { entries: MobileTimeEntryRow[] }
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-bold text-slate-900">{entry.ea_name}</h3>
+                  <h3 className="font-bold text-slate-900">
+                    {userHealthLinksEnabled ? (
+                      <Link
+                        href={buildUserHealthHref(days, schoolId, entry.user_id)}
+                        className="hover:underline"
+                      >
+                        {entry.ea_name}
+                      </Link>
+                    ) : (
+                      entry.ea_name
+                    )}
+                  </h3>
                   <EmploymentBadge status={entry.employment_status} />
                 </div>
                 <p className="mt-1 truncate text-xs text-slate-500">

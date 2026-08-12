@@ -131,8 +131,14 @@ export default async function MobileAttendancePage({
       <AttendanceLedger
         key={`${initialQuery}|${view}`}
         entries={data.entries}
+        days={data.days}
+        schoolId={data.applied_filters.school_id}
         initialQuery={initialQuery}
         initialView={view}
+        userHealthLinksEnabled={hasCapability(
+          session.role,
+          "mobile.user_health.read"
+        )}
       />
 
       <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-100/70 px-4 py-3 text-xs leading-relaxed text-slate-600">
