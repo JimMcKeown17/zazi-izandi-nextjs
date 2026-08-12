@@ -20,6 +20,7 @@ import {
   buildChaseListCsv,
   buildChaseListText,
   type ChaseListContext,
+  type ChaseListOptions,
 } from "@/lib/mobile/user-health/export";
 import { buildFunnelCounts } from "@/lib/mobile/user-health/funnel";
 import {
@@ -358,10 +359,13 @@ type ChaseListCopyState = "idle" | "copying" | "copied" | "failed";
 
 export async function copyChaseListToClipboard(
   rows: MobileUserHealthRow[],
-  context: ChaseListContext
+  context: ChaseListContext,
+  options: ChaseListOptions = { partB: true }
 ): Promise<Extract<ChaseListCopyState, "copied" | "failed">> {
   try {
-    await navigator.clipboard.writeText(buildChaseListText(rows, context));
+    await navigator.clipboard.writeText(
+      buildChaseListText(rows, context, options)
+    );
     return "copied";
   } catch {
     return "failed";
@@ -454,7 +458,9 @@ export function UserHealthBoard({
 
   const handleCopy = async () => {
     setCopyState("copying");
-    const result = await copyChaseListToClipboard(rows, context);
+    const result = await copyChaseListToClipboard(rows, context, {
+      partB: lifetimeEvidence,
+    });
     setCopyState(result);
     if (result === "copied") {
       window.setTimeout(() => setCopyState("idle"), 2_000);

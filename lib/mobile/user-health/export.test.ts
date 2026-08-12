@@ -164,10 +164,25 @@ test("copied text keeps the durable stage separate from its windowed active or q
   const active = VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0];
   const quiet = VALID_MOBILE_USER_HEALTH_PAYLOAD.users[1];
   const text = buildChaseListText([active, quiet], context);
+  const explicitPartBText = buildChaseListText([active, quiet], context, {
+    partB: true,
+  });
 
+  assert.equal(explicitPartBText, text);
   assert.match(text, /Asemahle Mancayi — activated · active 30d/);
   assert.match(text, /Lihle Jacobs — activated · quiet 30d/);
   assert.doesNotMatch(text, /activated · 30d/);
+});
+
+test("degraded copied text preserves the pre-Part-B windowed wording", () => {
+  const active = VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0];
+  const quiet = VALID_MOBILE_USER_HEALTH_PAYLOAD.users[1];
+  const text = buildChaseListText([active, quiet], context, { partB: false });
+
+  assert.match(text, /Asemahle Mancayi — active · 30d/);
+  assert.match(text, /Lihle Jacobs — reached · 30d/);
+  assert.doesNotMatch(text, /activated/i);
+  assert.doesNotMatch(text, /\bquiet\b/i);
 });
 
 test("a resigned EA is never exported as if they were current staff", () => {

@@ -131,3 +131,30 @@ test("clipboard rejection returns the retryable failure state", async () => {
     restore();
   }
 });
+
+test("degraded clipboard copy writes only pre-Part-B windowed wording", async () => {
+  let copiedText = "";
+  const restore = stubClipboard(async (text) => {
+    copiedText = text;
+  });
+
+  try {
+    assert.equal(
+      await copyChaseListToClipboard(
+        [
+          VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0],
+          VALID_MOBILE_USER_HEALTH_PAYLOAD.users[1],
+        ],
+        chaseListContext,
+        { partB: false }
+      ),
+      "copied"
+    );
+    assert.match(copiedText, /Asemahle Mancayi — active · 30d/);
+    assert.match(copiedText, /Lihle Jacobs — reached · 30d/);
+    assert.doesNotMatch(copiedText, /activated/i);
+    assert.doesNotMatch(copiedText, /\bquiet\b/i);
+  } finally {
+    restore();
+  }
+});

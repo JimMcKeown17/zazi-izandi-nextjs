@@ -27,6 +27,10 @@ export interface ChaseListContext {
   schoolName: string | null;
 }
 
+export interface ChaseListOptions {
+  partB?: boolean;
+}
+
 function buildLegacyChaseListCsv(
   rows: MobileUserHealthRow[],
   context: ChaseListContext
@@ -73,10 +77,30 @@ function getDurableStage(user: MobileUserHealthRow): string {
   return stage === "active" ? "activated" : stage;
 }
 
+function getLegacyWindowedStage(user: MobileUserHealthRow): string {
+  if (hasRecentAppActivity(user)) return "active";
+  if (user.app_device.registered) return "reached";
+  if (user.auth.authenticated_after_provisioning) return "reached";
+  return "not_started";
+}
+
+function getPartBTextEvidence(
+  user: MobileUserHealthRow,
+  days: number
+): string {
+  const stage = getDurableStage(user);
+  const windowedMarker = hasRecentAppActivity(user)
+    ? `active ${days}d`
+    : isQuiet(user)
+      ? `quiet ${days}d`
+      : null;
+  return windowedMarker ? `${stage} · ${windowedMarker}` : stage;
+}
+
 export function buildChaseListCsv(
   rows: MobileUserHealthRow[],
   context: ChaseListContext,
-  options: { partB?: boolean } = { partB: true }
+  options: ChaseListOptions = { partB: true }
 ): string {
   if (options.partB === false) {
     return buildLegacyChaseListCsv(rows, context);
@@ -131,18 +155,16 @@ export function buildChaseListCsv(
 
 export function buildChaseListText(
   rows: MobileUserHealthRow[],
-  context: ChaseListContext
+  context: ChaseListContext,
+  options: ChaseListOptions = { partB: true }
 ): string {
   const scope = context.schoolName ?? "all schools";
   const header = `User health chase list · last ${context.days} days · ${scope} · generated ${context.generatedAt}`;
   const lines = rows.map((user) => {
-    const stage = getDurableStage(user);
-    const windowedMarker = hasRecentAppActivity(user)
-      ? `active ${context.days}d`
-      : isQuiet(user)
-        ? `quiet ${context.days}d`
-        : null;
-    const evidence = windowedMarker ? `${stage} · ${windowedMarker}` : stage;
+    const evidence =
+      options.partB === false
+        ? `${getLegacyWindowedStage(user)} · ${context.days}d`
+        : getPartBTextEvidence(user, context.days);
     const blockers = describeBlockers(user);
     const status =
       blockers.length > 0 ? `${evidence} — blockers: ${blockers}` : evidence;
