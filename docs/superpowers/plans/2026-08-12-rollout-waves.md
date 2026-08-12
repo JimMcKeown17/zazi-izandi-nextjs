@@ -15,6 +15,8 @@
 - **The 2-arg legacy RPC overloads must not be touched.** Structural verifiers assert overload count = 2 per report function. Only `CREATE OR REPLACE` the 3-arg `mobile_user_health_domain(INTEGER, UUID, UUID[])`.
 - **Django `MOBILE_USER_HEALTH_DOMAIN_SCHEMA` keeps `additionalProperties: False` everywhere.** New fields are added to `properties` but NOT to `required` (tolerate-first). New cross-field invariants run only when the key is present in the raw RPC payload, and the count⟺timestamp 502 invariant continues to exclude all `_ever_`/app-open fields.
 - **PII:** wave manifests contain emails — they are generated into a gitignored directory and NEVER committed. `app_open` events carry only `user_id`, `event`, `app_version`, `platform`.
+- **No direct client table writes.** The mobile app's only server-write precedent is a SECURITY DEFINER RPC deriving `auth.uid()` (`register_notification_push_token`); `app_open` follows it via `record_app_open(p_app_version, p_platform)` — server-derived identity, length-bounded metadata, 5-minute per-user rate bound. `authenticated` gets NO table privileges on `app_events`. (Deliberate hardening over the original spec's direct-INSERT+RLS sentence — same trust boundary, server-enforced abuse bounds; adversarial-review round 1 finding.)
+- **Wave loads are single-flight.** The loader takes `pg_try_advisory_xact_lock(815001, 0)` first and fails fast if another load holds it — two concurrent reconciliations under READ COMMITTED could otherwise both pass their final asserts and commit a corrupt union (adversarial-review round 1 finding).
 - **Frontend stage predicate values (`all|has_blockers|active|reached|not_started`) keep their URL identities**; `quiet` is added. `hasRecentAppActivity` stays windowed (it feeds the server-summary reconciliation in `schema.ts` — changing it breaks every payload).
 - **Git:** feature branches; no Co-Authored-By/agent trailers; commit messages as given per task.
 - **Copy honesty:** "Activated" (durable, lifetime) and "Active · {days}d" (windowed) are different claims — never label a durable stage with a window and vice versa.
@@ -232,16 +234,17 @@ git commit -m "feat(waves): add rollout wave tables with append-only membership"
 
 ---
 
-### Task 2: Supabase migration — app_events table
+### Task 2: Supabase migration — app_events table + `record_app_open` RPC
 
 **Files:**
 - Create: `supabase/migrations/20260813091000_app_events.sql`
 - Modify: `__tests__/rolloutWavesAppOpenSqlContract.test.js` (append a describe block)
+- Read first: `supabase/migrations/20260525125500_fix_notification_push_token_rpc_conflict_target.sql` (the house SECURITY DEFINER client-RPC precedent)
 
 Repo/branch: same as Task 1.
 
 **Interfaces:**
-- Produces: table `public.app_events(id, user_id, event, app_version, platform, occurred_at)` with authenticated-INSERT-own RLS. Task 3's RPC and Task 10's client insert depend on these exact column names.
+- Produces: table `public.app_events(id, user_id, event, app_version, platform, occurred_at)` — NO client privileges — and RPC `public.record_app_open(p_app_version TEXT, p_platform TEXT) RETURNS VOID` (SECURITY DEFINER, derives `auth.uid()`, 5-minute per-user rate bound, EXECUTE granted to `authenticated` only). Task 3's reporting RPC reads the table; Task 10's client calls `record_app_open`.
 
 - [ ] **Step 1: Append the failing contract tests**
 
@@ -249,23 +252,34 @@ Repo/branch: same as Task 1.
 describe('app_events migration contract', () => {
   const sql = () => readMigration('20260813091000_app_events.sql');
 
-  test('creates the events table with constrained event and platform', () => {
+  test('creates the events table with constrained event, platform, and version length', () => {
     const text = sql();
     expect(text).toMatch(/CREATE TABLE public\.app_events \(/);
     expect(text).toMatch(/user_id UUID NOT NULL REFERENCES auth\.users\(id\) ON DELETE CASCADE/);
     expect(text).toMatch(/CHECK \(event IN \('app_open'\)\)/);
     expect(text).toMatch(/CHECK \(platform IN \('ios', 'android'\)\)/);
+    expect(text).toMatch(/char_length\(app_version\) <= 64/);
     expect(text).toMatch(/occurred_at TIMESTAMPTZ NOT NULL DEFAULT now\(\)/);
   });
 
-  test('authenticated users may only insert their own events and never read', () => {
+  test('clients get no table access at all — writes only through the RPC', () => {
     const text = sql();
     expect(text).toMatch(/ALTER TABLE public\.app_events ENABLE ROW LEVEL SECURITY/);
-    expect(text).toMatch(/CREATE POLICY app_events_authenticated_insert_own/);
-    expect(text).toMatch(/FOR INSERT/);
-    expect(text).toMatch(/WITH CHECK \(\(SELECT auth\.uid\(\)\) = user_id\)/);
-    expect(text).not.toMatch(/FOR SELECT/);
-    expect(text).toMatch(/GRANT INSERT \(user_id, event, app_version, platform\) ON TABLE public\.app_events TO authenticated/);
+    expect(text).not.toMatch(/CREATE POLICY/);
+    expect(text).toMatch(/REVOKE ALL ON TABLE public\.app_events FROM PUBLIC, anon, authenticated/);
+    expect(text).not.toMatch(/GRANT INSERT[\s\S]*TO authenticated/);
+  });
+
+  test('record_app_open derives identity, bounds metadata, and rate-limits per user', () => {
+    const text = sql();
+    expect(text).toMatch(/CREATE FUNCTION public\.record_app_open\(\s*p_app_version TEXT,\s*p_platform TEXT\s*\)/);
+    expect(text).toMatch(/SECURITY DEFINER/);
+    expect(text).toMatch(/SET search_path = ''/);
+    expect(text).toMatch(/auth\.uid\(\)/);
+    expect(text).toMatch(/record_app_open_requires_authentication/);
+    expect(text).toMatch(/INTERVAL '5 minutes'/);
+    expect(text).toMatch(/REVOKE ALL ON FUNCTION public\.record_app_open\(TEXT, TEXT\)\s+FROM PUBLIC, anon, authenticator, service_role/);
+    expect(text).toMatch(/GRANT EXECUTE ON FUNCTION public\.record_app_open\(TEXT, TEXT\)\s+TO authenticated/);
   });
 });
 ```
@@ -279,38 +293,86 @@ Expected: FAIL — `20260813091000_app_events.sql` missing; Task 1 tests still p
 
 ```sql
 -- App-owned lifecycle events (root fix for mobile login evidence).
--- Clients insert exactly their own rows; all reads are service-role only.
+-- Clients never touch the table: the only write path is record_app_open,
+-- which derives the user from auth.uid(), bounds metadata, and enforces a
+-- server-side per-user rate limit (a modified client or stolen token can
+-- therefore not grow the table unboundedly). Reads are service-role only.
 
 CREATE TABLE public.app_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   event TEXT NOT NULL CHECK (event IN ('app_open')),
-  app_version TEXT,
+  app_version TEXT CHECK (app_version IS NULL OR char_length(app_version) <= 64),
   platform TEXT CHECK (platform IN ('ios', 'android')),
   occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Serves the per-user first/last aggregation in mobile_user_health_domain
--- and doubles as the FK index for the auth.users cascade.
+-- Serves the per-user first/last aggregation in mobile_user_health_domain,
+-- the RPC's rate-bound lookup, and the auth.users cascade.
 CREATE INDEX app_events_user_event_occurred_idx
   ON public.app_events (user_id, event, occurred_at DESC);
 
 ALTER TABLE public.app_events ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY app_events_authenticated_insert_own
-  ON public.app_events
-  FOR INSERT
-  TO authenticated
-  WITH CHECK ((SELECT auth.uid()) = user_id);
--- no SELECT/UPDATE/DELETE policies: reads are service-role only
+-- no policies: no client role reaches the table directly
 
 REVOKE ALL ON TABLE public.app_events FROM PUBLIC, anon, authenticated;
--- Column-scoped INSERT: clients cannot set id or occurred_at (defaults apply).
-GRANT INSERT (user_id, event, app_version, platform) ON TABLE public.app_events TO authenticated;
 GRANT ALL ON TABLE public.app_events TO service_role;
 
 COMMENT ON TABLE public.app_events IS
-  'Client-emitted app lifecycle events (app_open). Insert-only for authenticated users on their own user_id; read via service-role reporting only.';
+  'App lifecycle events (app_open), written only via record_app_open; read via service-role reporting only.';
+
+-- Follows the register_notification_push_token precedent: SECURITY DEFINER
+-- client RPC keyed on auth.uid(), raising if unauthenticated.
+CREATE FUNCTION public.record_app_open(
+  p_app_version TEXT,
+  p_platform TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_user_id UUID := (SELECT auth.uid());
+  v_app_version TEXT :=
+    pg_catalog.left(NULLIF(pg_catalog.btrim(p_app_version), ''), 64);
+  v_platform TEXT := CASE
+    WHEN p_platform IN ('ios', 'android') THEN p_platform
+    ELSE NULL
+  END;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '42501',
+      MESSAGE = 'record_app_open_requires_authentication';
+  END IF;
+
+  -- Server-side rate bound: at most one app_open per user per 5 minutes.
+  -- Reporting consumes only first/last open times, so collapsed duplicates
+  -- lose nothing; the bound caps abuse from any authenticated credential.
+  IF EXISTS (
+    SELECT 1
+    FROM public.app_events AS recent
+    WHERE recent.user_id = v_user_id
+      AND recent.event = 'app_open'
+      AND recent.occurred_at > pg_catalog.now() - INTERVAL '5 minutes'
+  ) THEN
+    RETURN;
+  END IF;
+
+  INSERT INTO public.app_events (user_id, event, app_version, platform)
+  VALUES (v_user_id, 'app_open', v_app_version, v_platform);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.record_app_open(TEXT, TEXT)
+  FROM PUBLIC, anon, authenticator, service_role;
+GRANT EXECUTE ON FUNCTION public.record_app_open(TEXT, TEXT)
+  TO authenticated;
+
+COMMENT ON FUNCTION public.record_app_open(TEXT, TEXT) IS
+  'Rate-bounded client emission of an app_open event for the calling authenticated user.';
 
 NOTIFY pgrst, 'reload schema';
 ```
@@ -318,13 +380,13 @@ NOTIFY pgrst, 'reload schema';
 - [ ] **Step 4: Run the contract test to verify it passes**
 
 Run: `npm test -- __tests__/rolloutWavesAppOpenSqlContract.test.js`
-Expected: PASS (6 tests).
+Expected: PASS (7 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add supabase/migrations/20260813091000_app_events.sql __tests__/rolloutWavesAppOpenSqlContract.test.js
-git commit -m "feat(events): add insert-only app_events table for app_open evidence"
+git commit -m "feat(events): add app_events table with rate-bounded record_app_open RPC"
 ```
 
 ---
@@ -685,6 +747,16 @@ DECLARE
   v_moved INTEGER;
   v_bad RECORD;
 BEGIN
+  -- Single-flight guard: two concurrent reconciliations under READ
+  -- COMMITTED could each pass their final set-equality assert against
+  -- independent snapshots and commit a corrupt union. One global
+  -- transaction-scoped advisory lock serializes every wave load,
+  -- including cross-wave moves; fail fast so an operator never stacks a
+  -- second load behind a stalled one.
+  IF NOT pg_catalog.pg_try_advisory_xact_lock(815001, 0) THEN
+    RAISE EXCEPTION 'rollout_wave_load_concurrent_load_in_progress';
+  END IF;
+
   IF v_source_note IS NULL OR btrim(v_source_note) = '' THEN
     RAISE EXCEPTION 'rollout_wave_load_source_note_required';
   END IF;
@@ -826,7 +898,7 @@ COMMIT;
 
 - [ ] **Step 3: Write the README and gitignore entry**
 
-`scripts/rollout-waves/README.md`: document the two scripts' usage exactly as their headers show, the deploy-order rule (loader runs only AFTER the Task 1 migration is applied and AFTER Jim signs off the review CSVs + launch dates), the re-run semantics (loader is idempotent for an unchanged manifest: 0 inserted / 0 superseded), and the move semantics (`allow_moves=true` supersedes the other wave's row and inserts into the target — history preserved). Append `scripts/rollout-waves/manifests/` to the repo `.gitignore` with a comment `# wave manifests contain emails — never commit`.
+`scripts/rollout-waves/README.md`: document the two scripts' usage exactly as their headers show, the deploy-order rule (loader runs only AFTER the Task 1 migration is applied and AFTER Jim signs off the review CSVs + launch dates), the re-run semantics (loader is idempotent for an unchanged manifest: 0 inserted / 0 superseded), the move semantics (`allow_moves=true` supersedes the other wave's row and inserts into the target — history preserved), and the single-flight rule (loads serialize on advisory lock `(815001, 0)`; a concurrent load aborts immediately with `rollout_wave_load_concurrent_load_in_progress` — rerun after the other load finishes). Append `scripts/rollout-waves/manifests/` to the repo `.gitignore` with a comment `# wave manifests contain emails — never commit`.
 
 - [ ] **Step 4: Syntax-smoke the loader locally**
 
@@ -876,16 +948,17 @@ Repo/branch: same as Task 1. Depends on Tasks 1–4.
 4. **Unresolved abort:** manifest containing a misspelled email → psql exits nonzero with `rollout_wave_load_unresolved_entries`; live membership unchanged.
 5. **Ambiguity abort:** manifest containing an email held by two fixture auth users (create the duplicate-email pair in the fixture; GoTrue does not enforce email uniqueness at the SQL layer) → abort `rollout_wave_load_unresolved_entries`.
 6. **Cross-wave guard:** load one of Wave A's users into `Harness Wave B` with `allow_moves=false` → abort `rollout_wave_load_members_live_in_other_wave`; with `allow_moves=true` → user moves (A row superseded, B row live), and Wave A's next full-manifest load must be run to keep A reconciled (assert the loader's final-assert catches A now being stale only when A is reloaded — i.e. reload A's original manifest and expect `rollout_wave_load_reconciliation_mismatch` NOT to fire; the moved user is simply superseded-absent on that reload).
-7. **Immutability trigger:** direct `UPDATE … SET assigned_at = now()` on a live row → error `app_rollout_wave_members_only_supersede_transition_allowed`; `DELETE` → `app_rollout_wave_members_rows_are_append_only`; `UPDATE … SET superseded_at = NULL` on a superseded row → error; `UPDATE … SET superseded_at = now()` on a live row → allowed.
-8. **app_events RLS:** using `SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claim.sub = '<fixture uuid>'` (mirror how the existing harness asserts "authenticated execution is denied"), INSERT with matching `user_id` succeeds; INSERT with a different `user_id` fails; `SELECT` as authenticated fails (no policy/privilege); `SELECT` as service path (default role) succeeds.
-9. **RPC fields:** seed `app_events` rows (two `app_open` for one user), an invalidated push token for a second user (`invalidated_at = now()`, no live token), lifetime activity older than the window (a `time_entries` row 60 days back), then call `mobile_user_health_domain(7, NULL, ARRAY[…])` and assert for the relevant users: `wave.name = 'Harness Wave A'`; `wave_options` lists both harness waves ordered by launch_date; user with no wave has `"wave": null`; `first/last_app_open_at` match the seeded min/max; invalidated-token user has `app_device.registered = false` but `ever_registered_device = true`; out-of-window-activity user has `activity.clock_entries = 0` (windowed) but non-null `first/last_ever_activity_at`; `last_ever_activity_at >= last_activity_at` for every user with windowed activity.
-10. **Zero residue** after teardown (including `app_events`, `app_rollout_waves`, `app_rollout_wave_members`).
+7. **Single-flight loader lock:** in a SECOND psql connection, open a transaction and take the lock (`BEGIN; SELECT pg_advisory_xact_lock(815001, 0);`, connection held open); run the loader in the primary connection → it aborts immediately with `rollout_wave_load_concurrent_load_in_progress` and membership is unchanged; close the second connection; rerun the loader → succeeds. (Deterministic serialization proof — the mechanism, not a timing race.)
+8. **Immutability trigger:** direct `UPDATE … SET assigned_at = now()` on a live row → error `app_rollout_wave_members_only_supersede_transition_allowed`; `DELETE` → `app_rollout_wave_members_rows_are_append_only`; `UPDATE … SET superseded_at = NULL` on a superseded row → error; `UPDATE … SET superseded_at = now()` on a live row → allowed.
+9. **record_app_open behavior:** using `SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claim.sub = '<fixture uuid>'` (mirror how the existing harness impersonates authenticated callers): first call `record_app_open('1.1.1', 'ios')` → one row with the derived `user_id`; immediate second call → still exactly one row (rate bound); call with a 100-char version string → stored value is 64 chars; call with platform `'web'` → row stored with `platform NULL`; call with no jwt claim (unauthenticated) → raises `record_app_open_requires_authentication`; direct `INSERT INTO public.app_events …` as authenticated → permission denied; `SELECT` as authenticated → permission denied; `SELECT` via the default service connection → succeeds. Then clear the rate window for the reporting fixture by seeding the second `app_open` row directly via the service connection with an explicit older `occurred_at`.
+10. **RPC fields:** seed `app_events` rows (two `app_open` for one user — see case 9), an invalidated push token for a second user (`invalidated_at = now()`, no live token), lifetime activity older than the window (a `time_entries` row 60 days back), then call `mobile_user_health_domain(7, NULL, ARRAY[…])` and assert for the relevant users: `wave.name = 'Harness Wave A'`; `wave_options` lists both harness waves ordered by launch_date; user with no wave has `"wave": null`; `first/last_app_open_at` match the seeded min/max; invalidated-token user has `app_device.registered = false` but `ever_registered_device = true`; out-of-window-activity user has `activity.clock_entries = 0` (windowed) but non-null `first/last_ever_activity_at`; `last_ever_activity_at >= last_activity_at` for every user with windowed activity.
+11. **Zero residue** after teardown (including `app_events`, `app_rollout_waves`, `app_rollout_wave_members`).
 
 Emit the same single JSON summary line shape as the sibling harness.
 
 - [ ] **Step 2: Write the post-apply verification SQL**
 
-`supabase/verification/rollout-waves-post-apply-verification.sql`, mirroring `mobile-operational-reporting-post-apply-verification.sql` (a `BEGIN;`-only script of `DO` assertions that never commits): assert both wave tables exist with RLS enabled and zero policies; `app_events` exists with RLS enabled and exactly one policy named `app_events_authenticated_insert_own` with command `INSERT`; the partial unique index and the wave_id index exist; the trigger `app_rollout_wave_members_immutable` exists with `tgtype` covering UPDATE and DELETE; `mobile_user_health_domain` still has exactly 2 overloads, and the 3-arg overload's `prosrc` contains `app_rollout_wave_members`, `app_events`, and `wave_options` (proves the replace landed); authenticated has INSERT (column-scoped) but not SELECT on `app_events`; authenticated has no privileges on the wave tables.
+`supabase/verification/rollout-waves-post-apply-verification.sql`, mirroring `mobile-operational-reporting-post-apply-verification.sql` (a `BEGIN;`-only script of `DO` assertions that never commits): assert both wave tables AND `app_events` exist with RLS enabled and zero policies; the partial unique index, the wave_id index, and `app_events_user_event_occurred_idx` exist; the trigger `app_rollout_wave_members_immutable` exists with `tgtype` covering UPDATE and DELETE; `mobile_user_health_domain` still has exactly 2 overloads, and the 3-arg overload's `prosrc` contains `app_rollout_wave_members`, `app_events`, and `wave_options` (proves the replace landed); `record_app_open(TEXT, TEXT)` exists with `prosecdef = true`, `search_path` proconfig set, EXECUTE for `authenticated` and NOT for `anon`/`service_role`; authenticated has zero table privileges on `app_events` and on both wave tables.
 
 - [ ] **Step 3: Register in the combined harness**
 
@@ -1237,29 +1310,52 @@ Repo: `/Users/jimmckeown/Development/zazi-mobile-clock-reporting-nextjs/.worktre
 In `response.test.ts` (follow its existing decode-success/decode-failure pattern with `VALID_MOBILE_USER_HEALTH_PAYLOAD`):
 
 ```ts
-test("accepts wave, lifetime, and app_open fields", () => {
+test("decoding RETAINS wave, lifetime, and app_open values exactly", () => {
   const payload = structuredClone(VALID_MOBILE_USER_HEALTH_PAYLOAD);
-  payload.wave_options = [
-    { id: "aaaaaaaa-0000-4000-8000-000000000001", name: "ZZ Primary 2026", launch_date: "2026-08-08" },
-  ];
-  payload.users[0].wave = payload.wave_options[0];
+  const primaryWave = {
+    id: "aaaaaaaa-0000-4000-8000-000000000001",
+    name: "ZZ Primary 2026",
+    launch_date: "2026-08-08",
+  };
+  payload.wave_options = [primaryWave];
+  payload.users[0].wave = primaryWave;
   payload.users[0].first_ever_activity_at = "2026-05-01T08:00:00+00:00";
-  payload.users[0].last_ever_activity_at = payload.users[0].activity.last_activity_at
-    ?? "2026-08-10T11:30:00+00:00";
+  payload.users[0].last_ever_activity_at =
+    payload.users[0].activity.last_activity_at ?? "2026-08-10T11:30:00+00:00";
   payload.users[0].ever_registered_device = true;
-  // decode via the module's existing decode helper; assert success
+  payload.users[0].first_app_open_at = "2026-08-09T06:45:00+00:00";
+  payload.users[0].last_app_open_at = "2026-08-11T06:45:00+00:00";
+  const parsed = mobileUserHealthSchema.parse(payload);
+  // Value-retention assertions are the point: plain z.object STRIPS unknown
+  // keys, so a schema that omits (or misspells) a field passes a bare
+  // "decodes successfully" check while silently dropping production data.
+  assert.deepEqual(parsed.wave_options, [primaryWave]);
+  assert.deepEqual(parsed.users[0].wave, primaryWave);
+  assert.equal(parsed.users[0].first_ever_activity_at, "2026-05-01T08:00:00+00:00");
+  assert.equal(parsed.users[0].ever_registered_device, true);
+  assert.equal(parsed.users[0].first_app_open_at, "2026-08-09T06:45:00+00:00");
+  assert.equal(parsed.users[0].last_app_open_at, "2026-08-11T06:45:00+00:00");
 });
 
 test("accepts the pre-wave legacy payload unchanged", () => {
-  // VALID_MOBILE_USER_HEALTH_PAYLOAD without any new key must still decode
+  // VALID_MOBILE_USER_HEALTH_PAYLOAD without any new key must still parse
 });
 
 test("rejects inverted lifetime bounds", () => {
-  // first_ever_activity_at after last_ever_activity_at -> decode failure
+  // first_ever_activity_at after last_ever_activity_at -> parse failure
+});
+
+test("rejects one-sided lifetime and app_open nullity", () => {
+  // first_ever_activity_at null + last_ever_activity_at non-null -> failure
+  // first_app_open_at non-null + last_app_open_at null -> failure
+});
+
+test("rejects inverted app_open bounds", () => {
+  // first_app_open_at after last_app_open_at -> parse failure
 });
 
 test("rejects a user wave missing from wave_options", () => {
-  // user.wave set, wave_options: [] -> decode failure
+  // user.wave set, wave_options: [] -> parse failure
 });
 
 test("rejects a registered device that claims never-registered", () => {
@@ -1267,12 +1363,12 @@ test("rejects a registered device that claims never-registered", () => {
 });
 ```
 
-Write these as real tests against the module's actual decode/validate entry point (`decodeMobileUserHealthResponse` takes a Response — check how existing tests build one, or use `mobileUserHealthSchema.safeParse` directly as `schema.ts` tests do).
+Write these as real tests against `mobileUserHealthSchema.parse`/`safeParse` (the same entry point the existing schema-acceptance tests use — check how `response.test.ts` currently exercises the schema and follow it).
 
 - [ ] **Step 2: Run to verify they fail**
 
 Run: `npm run test:mobile`
-Expected: new tests FAIL (zod strict object rejects unknown keys → "accepts" tests fail; "rejects" tests fail because parse currently succeeds/fails for the wrong reason).
+Expected: new tests FAIL for the RIGHT reasons — the retention test fails because plain `z.object` silently strips the unknown keys (parsed output has `undefined`, not the values); the rejection tests fail because parse currently succeeds (fields stripped, no superRefine rules yet). The legacy-payload test passes from the start (that is expected — it pins backward compatibility, not new behavior).
 
 - [ ] **Step 3: Implement**
 
@@ -1566,12 +1662,13 @@ git commit -m "feat(user-health): wave filter with wave-scoped evidence strip an
 - Create: `src/components/AppOpenReporter.js`
 - Modify: `App.js` (mount the reporter inside `AuthProvider`)
 - Create: `__tests__/appOpenEvents.test.js`
-- Read first: `src/services/notifications/notificationRegistration.js` (the injectable-deps house style to copy), `src/context/NotificationsContext.js:333-357` (the auth-keyed effect pattern), `src/context/AuthContext.js` (confirm what `useAuth()` exposes)
+- Create: `__tests__/AppOpenReporter.test.js`
+- Read first: `src/services/notifications/notificationRegistration.js` (the injectable-deps house style AND the `.rpc()` call shape to copy), `src/context/AuthContext.js` (confirm `useAuth()` exposes `session` — the offline-restore path sets `user` while `session` stays null, and the reporter MUST key on session identity, not user identity)
 
-Repo: `/Users/jimmckeown/Development/zazi-mobile-clock-reporting-supabase` (same checkout of `zazi-izandi-app`), branch `feat/rollout-waves-app-open`. Depends on Task 2 for the table contract only (code ships independently; a failed insert against a not-yet-migrated DB is swallowed by design).
+Repo: `/Users/jimmckeown/Development/zazi-mobile-clock-reporting-supabase` (same checkout of `zazi-izandi-app`), branch `feat/rollout-waves-app-open`. Depends on Task 2 for the RPC contract only (code ships independently; a failed RPC against a not-yet-migrated DB is swallowed by design).
 
 **Interfaces:**
-- Consumes: `public.app_events` columns `user_id, event, app_version, platform` (Task 2).
+- Consumes: RPC `record_app_open(app_version, platform)` (Task 2 — identity derived server-side).
 - Produces: `reportAppOpenOnce({ userId, client, constants, platform })` → `Promise<{reported: boolean, reason?: string}>`; `resetAppOpenReportForTests()`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1584,31 +1681,24 @@ import {
   resetAppOpenReportForTests,
 } from '../src/services/appOpenEvents';
 
-const buildClient = ({ session = { user: { id: 'user-1' } }, insertError = null } = {}) => {
-  const insert = jest.fn().mockResolvedValue({ error: insertError });
-  return {
-    auth: { getSession: jest.fn().mockResolvedValue({ data: { session } }) },
-    from: jest.fn(() => ({ insert })),
-    __insert: insert,
-  };
-};
+const buildClient = ({ session = { user: { id: 'user-1' } }, rpcError = null } = {}) => ({
+  auth: { getSession: jest.fn().mockResolvedValue({ data: { session } }) },
+  rpc: jest.fn().mockResolvedValue({ error: rpcError }),
+});
 
 const constants = { expoConfig: { version: '1.1.1' } };
 
 beforeEach(() => resetAppOpenReportForTests());
 
-test('inserts one app_open row for the signed-in user', async () => {
+test('records one app_open for the signed-in user via the RPC', async () => {
   const client = buildClient();
   const result = await reportAppOpenOnce({
     userId: 'user-1', client, constants, platform: 'ios',
   });
   expect(result).toEqual({ reported: true });
-  expect(client.from).toHaveBeenCalledWith('app_events');
-  expect(client.__insert).toHaveBeenCalledWith({
-    user_id: 'user-1',
-    event: 'app_open',
-    app_version: '1.1.1',
-    platform: 'ios',
+  expect(client.rpc).toHaveBeenCalledWith('record_app_open', {
+    p_app_version: '1.1.1',
+    p_platform: 'ios',
   });
 });
 
@@ -1617,14 +1707,18 @@ test('reports at most once per launch', async () => {
   await reportAppOpenOnce({ userId: 'user-1', client, constants, platform: 'ios' });
   const second = await reportAppOpenOnce({ userId: 'user-1', client, constants, platform: 'ios' });
   expect(second).toEqual({ reported: false, reason: 'already-reported' });
-  expect(client.__insert).toHaveBeenCalledTimes(1);
+  expect(client.rpc).toHaveBeenCalledTimes(1);
 });
 
-test('skips when there is no live session (offline restore)', async () => {
+test('skips WITHOUT burning the launch flag when there is no live session', async () => {
   const client = buildClient({ session: null });
   const result = await reportAppOpenOnce({ userId: 'user-1', client, constants, platform: 'ios' });
   expect(result).toEqual({ reported: false, reason: 'no-session' });
-  expect(client.__insert).not.toHaveBeenCalled();
+  expect(client.rpc).not.toHaveBeenCalled();
+  // A later call in the same launch (session now live) must still report:
+  const live = buildClient();
+  const retry = await reportAppOpenOnce({ userId: 'user-1', client: live, constants, platform: 'ios' });
+  expect(retry).toEqual({ reported: true });
 });
 
 test('skips when the session belongs to a different user', async () => {
@@ -1633,14 +1727,14 @@ test('skips when the session belongs to a different user', async () => {
   expect(result).toEqual({ reported: false, reason: 'no-session' });
 });
 
-test('swallows insert failures', async () => {
-  const client = buildClient({ insertError: { message: 'relation does not exist' } });
+test('swallows RPC failures', async () => {
+  const client = buildClient({ rpcError: { message: 'function does not exist' } });
   const result = await reportAppOpenOnce({ userId: 'user-1', client, constants, platform: 'ios' });
   expect(result).toEqual({ reported: false, reason: 'error' });
 });
 
 test('does not retry after a failure within the same launch', async () => {
-  const failing = buildClient({ insertError: { message: 'nope' } });
+  const failing = buildClient({ rpcError: { message: 'nope' } });
   await reportAppOpenOnce({ userId: 'user-1', client: failing, constants, platform: 'ios' });
   const retry = await reportAppOpenOnce({ userId: 'user-1', client: buildClient(), constants, platform: 'ios' });
   expect(retry).toEqual({ reported: false, reason: 'already-reported' });
@@ -1649,25 +1743,78 @@ test('does not retry after a failure within the same launch', async () => {
 test('normalizes missing version and non-mobile platforms to null', async () => {
   const client = buildClient();
   await reportAppOpenOnce({ userId: 'user-1', client, constants: {}, platform: 'web' });
-  expect(client.__insert).toHaveBeenCalledWith({
-    user_id: 'user-1', event: 'app_open', app_version: null, platform: null,
+  expect(client.rpc).toHaveBeenCalledWith('record_app_open', {
+    p_app_version: null,
+    p_platform: null,
   });
+});
+```
+
+`__tests__/AppOpenReporter.test.js` — the offline→live regression pinned at component level (adversarial-review round 1 finding: an effect keyed on `user.id`+`loading` alone never re-fires when an offline-restored user later gains a live session, because neither dep changes). Mock the auth context and the service module; drive rerenders with `react-test-renderer` (bundled with jest-expo — mirror whatever `__tests__/BootstrapGate.test.js` uses to render):
+
+```js
+import { act, create } from 'react-test-renderer';
+
+jest.mock('../src/context/AuthContext', () => ({ useAuth: jest.fn() }));
+jest.mock('../src/services/appOpenEvents', () => ({
+  reportAppOpenOnce: jest.fn().mockResolvedValue({ reported: true }),
+}));
+
+import AppOpenReporter from '../src/components/AppOpenReporter';
+import { useAuth } from '../src/context/AuthContext';
+import { reportAppOpenOnce } from '../src/services/appOpenEvents';
+
+const renderWith = (authValue, tree = null) => {
+  useAuth.mockReturnValue(authValue);
+  if (tree) {
+    act(() => tree.update(<AppOpenReporter />));
+    return tree;
+  }
+  let created;
+  act(() => { created = create(<AppOpenReporter />); });
+  return created;
+};
+
+beforeEach(() => jest.clearAllMocks());
+
+test('does not report during loading or offline restore, reports once the session goes live', () => {
+  const user = { id: 'user-1' };
+  // 1: still restoring
+  const tree = renderWith({ user: null, session: null, loading: true });
+  expect(reportAppOpenOnce).not.toHaveBeenCalled();
+  // 2: offline restore — user known, NO live session
+  renderWith({ user, session: null, loading: false }, tree);
+  expect(reportAppOpenOnce).not.toHaveBeenCalled();
+  // 3: session arrives for the SAME user (network back / token refresh)
+  renderWith({ user, session: { user }, loading: false }, tree);
+  expect(reportAppOpenOnce).toHaveBeenCalledTimes(1);
+  expect(reportAppOpenOnce).toHaveBeenCalledWith({ userId: 'user-1' });
+  // 4: unrelated rerender with same session identity does not re-call
+  renderWith({ user, session: { user }, loading: false }, tree);
+  expect(reportAppOpenOnce).toHaveBeenCalledTimes(1);
+});
+
+test('reports immediately when cold start restores a live session', () => {
+  const user = { id: 'user-1' };
+  renderWith({ user, session: { user }, loading: false });
+  expect(reportAppOpenOnce).toHaveBeenCalledTimes(1);
 });
 ```
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run from the worktree root: `npm test -- appOpenEvents`
-Expected: FAIL — module missing.
+Run from the worktree root: `npm test -- appOpenEvents AppOpenReporter`
+Expected: FAIL — modules missing.
 
 - [ ] **Step 3: Implement the service**
 
 `src/services/appOpenEvents.js`:
 
 ```js
-// One fire-and-forget app_open event per cold start, emitted after auth
-// restore. No PII beyond user_id / app version / platform; every failure
-// is swallowed — evidence collection must never affect app behavior.
+// One fire-and-forget app_open event per launch, emitted once a live
+// authenticated session exists. Identity is derived server-side by the
+// record_app_open RPC. Every failure is swallowed — evidence collection
+// must never affect app behavior.
 let hasReportedAppOpenThisLaunch = false;
 
 export const resetAppOpenReportForTests = () => {
@@ -1698,19 +1845,17 @@ export const reportAppOpenOnce = async ({ userId, client, constants, platform } 
     const supabaseClient = resolveClient(client);
     const { data: { session } = {} } = await supabaseClient.auth.getSession();
     if (!session?.user?.id || session.user.id !== userId) {
-      // Offline restore keeps user without a live session; RLS would
-      // reject the insert anyway. Try again next launch.
+      // Offline restore keeps user without a live session. Do NOT burn the
+      // launch flag: the reporter retries when a session appears.
       return { reported: false, reason: 'no-session' };
     }
     hasReportedAppOpenThisLaunch = true;
-    const { error } = await supabaseClient.from('app_events').insert({
-      user_id: userId,
-      event: 'app_open',
-      app_version: resolveAppVersion(constants),
-      platform: resolvePlatform(platform),
+    const { error } = await supabaseClient.rpc('record_app_open', {
+      p_app_version: resolveAppVersion(constants),
+      p_platform: resolvePlatform(platform),
     });
     if (error) {
-      console.log('[AppOpen] insert failed:', error?.message);
+      console.log('[AppOpen] record failed:', error?.message);
       return { reported: false, reason: 'error' };
     }
     return { reported: true };
@@ -1722,27 +1867,28 @@ export const reportAppOpenOnce = async ({ userId, client, constants, platform } 
 };
 ```
 
-(Note the flag is set only once a live session is confirmed — a launch that starts offline and later signs in still reports; after any attempt, failures are terminal for the launch.)
+(The flag is set only once a live session is confirmed — a launch that starts offline and later gains a session still reports; after any real attempt, failures are terminal for the launch. The rate bound server-side makes a duplicate report harmless anyway.)
 
 - [ ] **Step 4: Implement the reporter and mount it**
 
-`src/components/AppOpenReporter.js`:
+`src/components/AppOpenReporter.js` — keyed on SESSION identity, not user identity (the offline-restore path sets `user` with `session` null and neither `loading` nor `user.id` changes when the session later appears — an effect keyed on those would never retry):
 
 ```js
 import { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { reportAppOpenOnce } from '../services/appOpenEvents';
 
-// Renders nothing; emits at most one app_open event per launch once auth
-// has restored a known user.
+// Renders nothing; emits at most one app_open event per launch, once a
+// LIVE session exists (offline restore alone never fires — and the effect
+// re-runs when the session arrives later in the same launch).
 const AppOpenReporter = () => {
-  const { user, loading } = useAuth();
-  const userId = user?.id || null;
+  const { session, loading } = useAuth();
+  const sessionUserId = session?.user?.id ?? null;
 
   useEffect(() => {
-    if (loading || !userId) return;
-    reportAppOpenOnce({ userId });
-  }, [loading, userId]);
+    if (loading || !sessionUserId) return;
+    reportAppOpenOnce({ userId: sessionUserId });
+  }, [loading, sessionUserId]);
 
   return null;
 };
@@ -1750,17 +1896,17 @@ const AppOpenReporter = () => {
 export default AppOpenReporter;
 ```
 
-(Confirm `useAuth()` exposes `user` and `loading` — `AppNavigator.js:421` already destructures exactly these.) Mount it in `App.js` directly inside `AuthProvider`, as a sibling rendered alongside the existing children (provider order is load-bearing — do not reorder anything; add `<AppOpenReporter />` immediately before the navigator subtree inside the innermost point that is below `AuthProvider`).
+FIRST confirm `useAuth()` exposes `session` (AuthContext holds `setSession` state; check the provider's value object). If it does NOT expose `session`, do not add it speculatively to the context — instead have the reporter own a `supabase.auth.onAuthStateChange` subscription (copy the exact subscribe/unsubscribe shape from `src/context/OfflineContext.js:160-172`) that calls `reportAppOpenOnce({ userId: nextSession.user.id })` on `SIGNED_IN` / `INITIAL_SESSION`-with-session / `TOKEN_REFRESHED`, and adjust the component test to drive the mocked subscription instead of context values. Mount the component in `App.js` directly inside `AuthProvider`, as a sibling rendered alongside the existing children (provider order is load-bearing — do not reorder anything; add `<AppOpenReporter />` immediately before the navigator subtree inside the innermost point that is below `AuthProvider`).
 
 - [ ] **Step 5: Run the gates**
 
-Run: `npm test -- appOpenEvents` → PASS. Then the neighbor suites that mount App-level trees: `npm test -- AuthContext BootstrapGate` → PASS (catches a bad mount). Then `npm run lint` → clean.
+Run: `npm test -- appOpenEvents AppOpenReporter` → PASS. Then the neighbor suites that mount App-level trees: `npm test -- AuthContext BootstrapGate` → PASS (catches a bad mount). Then `npm run lint` → clean.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/services/appOpenEvents.js src/components/AppOpenReporter.js App.js __tests__/appOpenEvents.test.js
-git commit -m "feat(events): emit one app_open event per launch after auth restore"
+git add src/services/appOpenEvents.js src/components/AppOpenReporter.js App.js __tests__/appOpenEvents.test.js __tests__/AppOpenReporter.test.js
+git commit -m "feat(events): report one app_open per launch via rate-bounded RPC"
 ```
 
 ---
@@ -1787,7 +1933,7 @@ Nothing here is dispatched to an implementer. The coordinator walks this with Ji
 | Supabase/app worktree | `npm test -- __tests__/<touched>.test.js`; Task 5 additionally the combined postgres harness |
 | Django | `manage.py test api.tests_mobile_operational_reports api.tests_mobile_reports -v 2` via the 2025 venv python |
 | Frontend | `npm run test:mobile` && `npx tsc --noEmit --incremental false` && scoped `npx eslint` |
-| Mobile app | `npm test -- appOpenEvents AuthContext BootstrapGate` && `npm run lint` |
+| Mobile app | `npm test -- appOpenEvents AppOpenReporter AuthContext BootstrapGate` && `npm run lint` |
 
 Codex sandbox notes (from Part A): forwarders cannot write the linked-worktree git index — the coordinator re-runs gates and commits with the exact message given per task. If `npx tsx`/`npm run test:mobile` hits sandbox IPC EPERM inside codex, `node --import tsx --test lib/mobile/*.test.ts lib/mobile/*/*.test.ts` is the accepted equivalent; plain `npx tsc --noEmit` can fail on a stale incremental cache — always pass `--incremental false`.
 
