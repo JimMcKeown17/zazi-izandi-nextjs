@@ -1,8 +1,8 @@
 import { AlertTriangle, Info, MapPinOff } from "lucide-react";
 
 import { AttendanceFilters } from "@/components/mobile-app/attendance/attendance-filters";
+import { AttendanceLedger } from "@/components/mobile-app/attendance/attendance-ledger";
 import { AttendanceSummary } from "@/components/mobile-app/attendance/attendance-summary";
-import { ClockEntriesTable } from "@/components/mobile-app/attendance/clock-entries-table";
 import { getMobileTimeEntriesActivity } from "@/lib/mobile/api";
 import { requireMobileTimeEntriesSession } from "@/lib/mobile/auth";
 import { hasCapability } from "@/lib/mobile/capabilities";
@@ -34,6 +34,8 @@ export default async function MobileAttendancePage({
     requireMobileTimeEntriesSession(),
   ]);
   const days = parseDays(firstValue(params.days));
+  const initialQuery = firstValue(params.q) ?? "";
+  const view = firstValue(params.view) === "ea" ? "ea" : "shifts";
   const schoolId = firstValue(params.school_id) || null;
   const result = await getMobileTimeEntriesActivity({ days, schoolId });
 
@@ -96,6 +98,7 @@ export default async function MobileAttendancePage({
       </div>
 
       <AttendanceFilters
+        key={`${data.days}|${data.applied_filters.school_id ?? ""}`}
         days={data.days}
         selectedSchoolId={data.applied_filters.school_id}
         schoolOptions={data.school_options}
@@ -120,7 +123,12 @@ export default async function MobileAttendancePage({
         </div>
       ) : null}
 
-      <ClockEntriesTable entries={data.entries} />
+      <AttendanceLedger
+        key={`${initialQuery}|${view}`}
+        entries={data.entries}
+        initialQuery={initialQuery}
+        initialView={view}
+      />
 
       <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-100/70 px-4 py-3 text-xs leading-relaxed text-slate-600">
         <MapPinOff className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
