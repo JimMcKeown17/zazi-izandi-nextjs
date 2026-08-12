@@ -57,6 +57,8 @@ Per user (added to today's user-health row; all six keys ALWAYS present in Djang
 
 Top level: `"wave_options": [{"id", "name", "launch_date"}, …]` ordered by `(launch_date, lower(name), id)`; `[]` when the RPC predates the migration.
 
+**Auth-only accounts (round-3 adversarial finding):** the domain RPC's `identity_population` starts from `staff_identity_links` (`role = 'ea' OR roster`), but Django deliberately synthesizes board rows for eligible auth accounts with no qualifying identity row (`_empty_domain_user` — e.g. self-setup ECD accounts, which the ECD manifest DOES assign to a wave). So the RPC ALSO returns a top-level `"supplemental_users"` array — one entry per `p_included_user_ids` uuid absent from `users[]`, each `{user_id, wave, first_ever_activity_at, last_ever_activity_at, ever_registered_device, first_app_open_at, last_app_open_at}` — and Django merges the matching entry into each synthesized auth-only row before responding. Wave membership and app_open/device/lifetime evidence therefore survive for exactly the broken-or-missing-identity-link accounts the board exists to expose. `supplemental_users` is internal to the RPC→Django hop; the frontend contract above is unchanged.
+
 Semantics: `wave` is the live (`superseded_at IS NULL`) membership or `null`. `first/last_ever_activity_at` are the lifetime (un-windowed) LEAST/GREATEST over the same three activity sources as the windowed fields, and sit OUTSIDE the count⟺timestamp invariant. `ever_registered_device` is an EXISTS over `notification_push_tokens` INCLUDING invalidated rows. `first/last_app_open_at` aggregate `app_events` rows with `event = 'app_open'`. In the tolerate window (Django deployed, migration not yet applied) all six per-user keys are `null` and `wave_options` is `[]`; `ever_registered_device: null` means "unknown", never "no".
 
 ---
@@ -411,7 +413,7 @@ git commit -m "feat(events): add app_events table with rate-bounded record_app_o
 Repo/branch: same as Task 1. Depends on Tasks 1–2 (reads their tables).
 
 **Interfaces:**
-- Produces: `CREATE OR REPLACE FUNCTION public.mobile_user_health_domain(p_days INTEGER, p_school_id UUID, p_included_user_ids UUID[])` whose per-user JSON adds the six keys and whose top level adds `wave_options`, exactly per the "Response contract after Part B" section above. Tasks 5 and 6 depend on this shape.
+- Produces: `CREATE OR REPLACE FUNCTION public.mobile_user_health_domain(p_days INTEGER, p_school_id UUID, p_included_user_ids UUID[])` whose per-user JSON adds the six keys and whose top level adds `wave_options` AND `supplemental_users` (Part B evidence for included uuids absent from `users[]`), exactly per the "Response contract after Part B" section above. Tasks 5 and 6 depend on this shape.
 
 - [ ] **Step 1: Append the failing contract tests**
 
@@ -432,6 +434,14 @@ describe('user-health RPC extension contract', () => {
     expect(text).toMatch(/WHERE member\.superseded_at IS NULL/);
     expect(text).toMatch(/'wave_options', wave_options\.value/);
     expect(text).toMatch(/ORDER BY wave\.launch_date, pg_catalog\.lower\(wave\.name\), wave\.id/);
+  });
+
+  test('included users without an identity row keep their evidence via supplemental_users', () => {
+    const text = sql();
+    expect(text).toMatch(/supplemental_population AS \(/);
+    expect(text).toMatch(/FROM pg_catalog\.unnest\(p_included_user_ids\)/);
+    expect(text).toMatch(/NOT EXISTS[\s\S]*identity_population/);
+    expect(text).toMatch(/'supplemental_users', supplemental_users\.value/);
   });
 
   test('lifetime evidence is unwindowed and device history includes invalidated tokens', () => {
@@ -618,7 +628,73 @@ and after the existing `LEFT JOIN LATERAL (…) AS push_token ON TRUE`, add:
 
 and in the final `jsonb_build_object`, after `'school_options', school_options.value,` add `'wave_options', wave_options.value,` plus `CROSS JOIN wave_options` in the final FROM.
 
-**(e)** Update the function's `COMMENT ON` to:
+**(e)** Add the supplemental-evidence CTEs AFTER `users_json` (they reference `identity_population` and all the Part B evidence CTEs; round-3 adversarial finding — Django synthesizes rows for eligible auth accounts with no qualifying identity row, and those rows must keep their wave/evidence):
+
+```sql
+    supplemental_population AS (
+      -- Included users with no identity_population row: Django renders
+      -- these as synthesized auth-only rows and merges this evidence in.
+      -- Under a school filter this also catches other-school users;
+      -- Django drops auth-only rows in filtered views, so those entries
+      -- are simply ignored.
+      SELECT included.user_id
+      FROM pg_catalog.unnest(p_included_user_ids) AS included(user_id)
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM identity_population AS identity
+        WHERE identity.user_id = included.user_id
+      )
+    ),
+    supplemental_users AS (
+      SELECT COALESCE(
+        pg_catalog.jsonb_agg(
+          pg_catalog.jsonb_build_object(
+            'user_id', supplemental.user_id,
+            'wave', CASE
+              WHEN wave_link.wave_id IS NULL THEN NULL::JSONB
+              ELSE pg_catalog.jsonb_build_object(
+                'id', wave_link.wave_id,
+                'name', wave_link.wave_name,
+                'launch_date', wave_link.wave_launch_date
+              )
+            END,
+            'first_ever_activity_at', LEAST(
+              lifetime_clock.first_at,
+              lifetime_session.first_at,
+              lifetime_assessment.first_at
+            ),
+            'last_ever_activity_at', GREATEST(
+              lifetime_clock.last_at,
+              lifetime_session.last_at,
+              lifetime_assessment.last_at
+            ),
+            'ever_registered_device', ever_device.user_id IS NOT NULL,
+            'first_app_open_at', app_open.first_app_open_at,
+            'last_app_open_at', app_open.last_app_open_at
+          )
+          ORDER BY supplemental.user_id
+        ),
+        '[]'::JSONB
+      ) AS value
+      FROM supplemental_population AS supplemental
+      LEFT JOIN wave_membership AS wave_link
+        ON wave_link.user_id = supplemental.user_id
+      LEFT JOIN lifetime_clock_activity AS lifetime_clock
+        ON lifetime_clock.user_id = supplemental.user_id
+      LEFT JOIN lifetime_session_activity AS lifetime_session
+        ON lifetime_session.user_id = supplemental.user_id
+      LEFT JOIN lifetime_assessment_activity AS lifetime_assessment
+        ON lifetime_assessment.user_id = supplemental.user_id
+      LEFT JOIN ever_device
+        ON ever_device.user_id = supplemental.user_id
+      LEFT JOIN app_open_activity AS app_open
+        ON app_open.user_id = supplemental.user_id
+    )
+```
+
+and in the final `jsonb_build_object` add `'supplemental_users', supplemental_users.value,` (after `'wave_options'`) plus `CROSS JOIN supplemental_users` in the final FROM.
+
+**(f)** Update the function's `COMMENT ON` to:
 
 ```sql
 COMMENT ON FUNCTION public.mobile_user_health_domain(INTEGER, UUID, UUID[]) IS
@@ -963,6 +1039,7 @@ Repo/branch: same as Task 1. Depends on Tasks 1–4.
 9. **record_app_open behavior:** using `SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claim.sub = '<fixture uuid>'` (mirror how the existing harness impersonates authenticated callers): first call `record_app_open('1.1.1', 'ios')` → one row with the derived `user_id`; immediate second call → still exactly one row (rate bound); call with a 100-char version string → stored value is 64 chars; call with platform `'web'` → row stored with `platform NULL`; call with no jwt claim (unauthenticated) → raises `record_app_open_requires_authentication`; direct `INSERT INTO public.app_events …` as authenticated → permission denied; `SELECT` as authenticated → permission denied; `SELECT` via the default service connection → succeeds. Then clear the rate window for the reporting fixture by seeding the second `app_open` row directly via the service connection with an explicit older `occurred_at`.
 9b. **record_app_open concurrency proof (round-2 finding):** for a FRESH fixture user, spawn a background psql running one transaction `BEGIN; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claim.sub = '<uuid>'; SELECT public.record_app_open('1.1.1','ios'); SELECT pg_sleep(2); COMMIT;` and, while it sleeps, run the same call for the same user from the primary connection. The second call blocks on the per-user advisory lock until the first commits, then its rate-bound EXISTS sees the committed row. After both complete, assert EXACTLY one `app_open` row exists for that user.
 10. **RPC fields:** seed `app_events` rows (two `app_open` for one user — see case 9), an invalidated push token for a second user (`invalidated_at = now()`, no live token), lifetime activity older than the window (a `time_entries` row 60 days back), then call `mobile_user_health_domain(7, NULL, ARRAY[…])` and assert for the relevant users: `wave.name = 'Harness Wave A'`; `wave_options` lists both harness waves ordered by launch_date; user with no wave has `"wave": null`; `first/last_app_open_at` match the seeded min/max; invalidated-token user has `app_device.registered = false` but `ever_registered_device = true`; out-of-window-activity user has `activity.clock_entries = 0` (windowed) but non-null `first/last_ever_activity_at`; `last_ever_activity_at >= last_activity_at` for every user with windowed activity.
+10b. **Auth-only supplemental evidence (round-3 finding):** include in the fixture one auth user whose `staff_identity_links` row does NOT qualify for `identity_population` (set its `role` to a non-`'ea'` value and create no `education_assistants` row — mirrors a self-setup ECD account), give it a wave membership (loader or direct service insert) and an `app_open` row, and pass its uuid in `p_included_user_ids`. Assert: it is ABSENT from `users[]`; `supplemental_users` contains exactly one entry for it carrying `wave.name`, `ever_registered_device`, and the `first/last_app_open_at` values; and every `supplemental_users[].user_id` is disjoint from `users[].user_id`.
 11. **Zero residue** after teardown (including `app_events`, `app_rollout_waves`, `app_rollout_wave_members`).
 
 Emit the same single JSON summary line shape as the sibling harness.
@@ -1139,6 +1216,53 @@ def test_lifetime_fields_are_independent_of_the_window(self):
     row = next(u for u in result["users"] if u["user_id"] == SEEDED_USER_ID)
     self.assertEqual(row["last_ever_activity_at"], "2026-08-10T11:30:00+00:00")
     self.assertEqual(row["activity"]["clock_entries"], 0)
+
+def test_auth_only_wave_member_keeps_wave_and_evidence(self):
+    # Round-3 adversarial finding: the ECD manifest assigns auth accounts
+    # that have no qualifying staff_identity_links row; their wave and
+    # app_open/device/lifetime evidence ride supplemental_users and must
+    # survive onto the synthesized board row (and its wave denominator).
+    payload = user_health_domain_payload()
+    payload["wave_options"] = [primary_wave(), ecd_wave()]
+    payload["supplemental_users"] = [{
+        "user_id": AUTH_ONLY_USER_ID,
+        "wave": ecd_wave(),
+        "first_ever_activity_at": None,
+        "last_ever_activity_at": None,
+        "ever_registered_device": True,
+        "first_app_open_at": "2026-08-12T05:00:00+00:00",
+        "last_app_open_at": "2026-08-12T05:00:00+00:00",
+    }]
+    client = reporting_client(payload)
+
+    result = fetch_user_health(days=30, school_id=None, client=client)
+
+    auth_only = next(
+        u for u in result["users"] if u["user_id"] == AUTH_ONLY_USER_ID
+    )
+    self.assertEqual(auth_only["current_school"], "Unattributed")
+    self.assertEqual(auth_only["wave"], ecd_wave())
+    self.assertIs(auth_only["ever_registered_device"], True)
+    self.assertEqual(auth_only["last_app_open_at"], "2026-08-12T05:00:00+00:00")
+    self.assertNotIn("supplemental_users", result)
+
+def test_supplemental_user_colliding_with_domain_user_fails_closed(self):
+    payload = user_health_domain_payload()
+    payload["wave_options"] = []
+    payload["supplemental_users"] = [{
+        "user_id": SEEDED_USER_ID,  # already a domain user
+        "wave": None,
+        "first_ever_activity_at": None,
+        "last_ever_activity_at": None,
+        "ever_registered_device": False,
+        "first_app_open_at": None,
+        "last_app_open_at": None,
+    }]
+    client = reporting_client(payload)
+    with self.assertRaisesRegex(
+        MobileReportingError, "^mobile reporting service unavailable$"
+    ):
+        fetch_user_health(days=30, school_id=None, client=client)
 ```
 
 Notes for the "windowed activity without lifetime cover" case: the default seeded fixture has windowed activity, so nulling the lifetime pair while the keys are PRESENT must 502 (windowed count > 0 requires a covering non-null `last_ever_activity_at` — but only when the key is present; the legacy test above proves absence stays valid). The "registered device without ever flag" case relies on the default fixture's `app_device.registered` being `True` — verify that when reading the builder; if it is False, flip the override to target a fixture user with a registered device.
@@ -1187,6 +1311,37 @@ Expected: the new tests FAIL (schema rejects unknown properties → `MobileRepor
 "wave_options": {
     "type": "array",
     "items": {"$ref": "#/$defs/wave"},
+},
+"supplemental_users": {
+    "type": "array",
+    "items": {"$ref": "#/$defs/supplemental_user"},
+},
+```
+
+with the matching `$defs` entry (all keys required here — the RPC always emits the full shape for each supplemental entry):
+
+```python
+"supplemental_user": {
+    "type": "object",
+    "required": [
+        "user_id",
+        "wave",
+        "first_ever_activity_at",
+        "last_ever_activity_at",
+        "ever_registered_device",
+        "first_app_open_at",
+        "last_app_open_at",
+    ],
+    "additionalProperties": False,
+    "properties": {
+        "user_id": {"$ref": "#/$defs/uuid"},
+        "wave": {"$ref": "#/$defs/nullable_wave"},
+        "first_ever_activity_at": {"$ref": "#/$defs/nullable_timestamp"},
+        "last_ever_activity_at": {"$ref": "#/$defs/nullable_timestamp"},
+        "ever_registered_device": {"type": "boolean"},
+        "first_app_open_at": {"$ref": "#/$defs/nullable_timestamp"},
+        "last_app_open_at": {"$ref": "#/$defs/nullable_timestamp"},
+    },
 },
 ```
 
@@ -1248,7 +1403,41 @@ else:
     for user in payload["users"]:
         if user.get("wave") is not None:
             raise ValueError("user wave present without wave_options")
+
+if "supplemental_users" in payload:
+    domain_user_ids = {user["user_id"] for user in payload["users"]}
+    supplemental_ids = set()
+    for entry in payload["supplemental_users"]:
+        if entry["user_id"] in domain_user_ids:
+            raise ValueError("supplemental user collides with domain user")
+        if entry["user_id"] in supplemental_ids:
+            raise ValueError("duplicate supplemental user")
+        supplemental_ids.add(entry["user_id"])
+        first_ever = entry["first_ever_activity_at"]
+        last_ever = entry["last_ever_activity_at"]
+        if (first_ever is None) != (last_ever is None):
+            raise ValueError("supplemental lifetime pair mismatch")
+        if first_ever is not None and (
+            _parse_timestamp(first_ever) > _parse_timestamp(last_ever)
+        ):
+            raise ValueError("supplemental lifetime order inverted")
+        first_open = entry["first_app_open_at"]
+        last_open = entry["last_app_open_at"]
+        if (first_open is None) != (last_open is None):
+            raise ValueError("supplemental app_open pair mismatch")
+        if first_open is not None and (
+            _parse_timestamp(first_open) > _parse_timestamp(last_open)
+        ):
+            raise ValueError("supplemental app_open order inverted")
+        wave = entry["wave"]
+        if wave is not None:
+            if "wave_options" not in payload:
+                raise ValueError("supplemental wave present without wave_options")
+            if wave["id"] not in known_wave_ids:
+                raise ValueError("supplemental wave missing from wave_options")
 ```
+
+(`known_wave_ids` is defined in the `wave_options` branch above; guard the reference as shown — a supplemental wave with no `wave_options` key is itself the error.)
 
 (Import `datetime` if the module does not already import it — check the imports at the top of `reports.py` and follow its existing style, e.g. `from datetime import date` → `date.fromisoformat`.)
 
@@ -1278,11 +1467,33 @@ def _with_part_b_defaults(user):
 "last_app_open_at": None,
 ```
 
-**(g) `_build_user_health_payload`** — wrap every domain-derived user row with `_with_part_b_defaults(...)` at the point where domain rows are merged with auth evidence (the same place `_with_provisioning_auth_evidence` is applied — apply `_with_part_b_defaults` FIRST, then the auth wrapper, so ordering of dict keys stays stable), and add to the returned top-level dict, after `"school_options"`:
+**(g) `_build_user_health_payload`** — wrap every domain-derived user row with `_with_part_b_defaults(...)` at the point where domain rows are merged with auth evidence (the same place `_with_provisioning_auth_evidence` is applied — apply `_with_part_b_defaults` FIRST, then the auth wrapper, so ordering of dict keys stays stable). For SYNTHESIZED auth-only rows (the `_empty_domain_user` path), merge the matching supplemental entry so wave/evidence survive for accounts with no identity row (round-3 finding):
+
+```python
+supplemental_by_user_id = {
+    entry["user_id"]: entry
+    for entry in payload.get("supplemental_users", [])
+}
+```
+
+and where `_empty_domain_user(user_id, display_name)` is called, replace with:
+
+```python
+base = _empty_domain_user(user_id, display_name)
+supplement = supplemental_by_user_id.get(user_id)
+if supplement is not None:
+    base.update(
+        {key: value for key, value in supplement.items() if key != "user_id"}
+    )
+```
+
+Add to the returned top-level dict, after `"school_options"`:
 
 ```python
 "wave_options": payload.get("wave_options", []),
 ```
+
+(`supplemental_users` itself is NOT forwarded to the frontend — it is consumed here.)
 
 - [ ] **Step 4: Run the suite to verify green**
 
@@ -1790,7 +2001,7 @@ test('a transient failure is retryable and still records exactly once', async ()
   expect(after).toEqual({ reported: false, reason: 'already-reported' });
 });
 
-test('concurrent calls collapse to a single attempt', async () => {
+test('concurrent calls collapse to a single attempt when it succeeds', async () => {
   const client = buildClient();
   const [a, b] = await Promise.all([
     reportAppOpenOnce({ userId: 'user-1', client, constants, platform: 'ios' }),
@@ -1798,6 +2009,35 @@ test('concurrent calls collapse to a single attempt', async () => {
   ]);
   expect([a.reported, b.reported].filter(Boolean)).toHaveLength(1);
   expect(client.rpc).toHaveBeenCalledTimes(1);
+});
+
+test('a trigger during a FAILING in-flight attempt is queued, not lost', async () => {
+  // Round-3 finding: without coalescing, a foreground event consumed by
+  // the in-flight guard while the first RPC was pending-then-failing
+  // left the launch permanently unreported.
+  let settleFirstRpc;
+  const pendingRpc = new Promise((resolve) => { settleFirstRpc = resolve; });
+  const rpc = jest.fn()
+    .mockImplementationOnce(() => pendingRpc)          // 1st: pending, will fail
+    .mockResolvedValue({ error: null });               // queued follow-up: succeeds
+  const client = {
+    auth: {
+      getSession: jest.fn().mockResolvedValue({
+        data: { session: { user: { id: 'user-1' } } },
+      }),
+    },
+    rpc,
+  };
+  const first = reportAppOpenOnce({ userId: 'user-1', client, constants, platform: 'ios' });
+  await Promise.resolve(); // let the first attempt pass its session check
+  const during = await reportAppOpenOnce({ userId: 'user-1', client, constants, platform: 'ios' });
+  expect(during).toEqual({ reported: false, reason: 'in-flight' });
+  settleFirstRpc({ error: { message: 'timeout' } });   // first attempt fails
+  await first;
+  await new Promise((resolve) => setTimeout(resolve, 0)); // queued follow-up runs
+  expect(rpc).toHaveBeenCalledTimes(2);                // exactly one follow-up, no third
+  const after = await reportAppOpenOnce({ userId: 'user-1', client, constants, platform: 'ios' });
+  expect(after).toEqual({ reported: false, reason: 'already-reported' });
 });
 
 test('normalizes missing version and non-mobile platforms to null', async () => {
@@ -1899,10 +2139,12 @@ Expected: FAIL — modules missing.
 // bound absorbs any duplicate that slips through.
 let hasRecordedAppOpenThisLaunch = false;
 let isAppOpenAttemptInFlight = false;
+let hasQueuedRetry = false;
 
 export const resetAppOpenReportForTests = () => {
   hasRecordedAppOpenThisLaunch = false;
   isAppOpenAttemptInFlight = false;
+  hasQueuedRetry = false;
 };
 
 const resolveClient = (client) => client || require('./supabaseClient').supabase;
@@ -1923,19 +2165,25 @@ export const reportAppOpenOnce = async ({ userId, client, constants, platform } 
     return { reported: false, reason: 'already-reported' };
   }
   if (isAppOpenAttemptInFlight) {
+    // A trigger arriving mid-attempt (e.g. app foregrounded while the
+    // first RPC is still pending) is COALESCED, not dropped: if the
+    // in-flight attempt fails, one bounded follow-up runs afterwards.
+    hasQueuedRetry = true;
     return { reported: false, reason: 'in-flight' };
   }
   if (!userId) {
     return { reported: false, reason: 'no-user' };
   }
   isAppOpenAttemptInFlight = true;
+  let result;
   try {
     const supabaseClient = resolveClient(client);
     const { data: { session } = {} } = await supabaseClient.auth.getSession();
     if (!session?.user?.id || session.user.id !== userId) {
       // Offline restore keeps user without a live session; the reporter
       // retries when a session appears.
-      return { reported: false, reason: 'no-session' };
+      result = { reported: false, reason: 'no-session' };
+      return result;
     }
     const { error } = await supabaseClient.rpc('record_app_open', {
       p_app_version: resolveAppVersion(constants),
@@ -1943,15 +2191,26 @@ export const reportAppOpenOnce = async ({ userId, client, constants, platform } 
     });
     if (error) {
       console.log('[AppOpen] record failed:', error?.message);
-      return { reported: false, reason: 'error' }; // retryable
+      result = { reported: false, reason: 'error' }; // retryable
+      return result;
     }
     hasRecordedAppOpenThisLaunch = true;
-    return { reported: true };
+    result = { reported: true };
+    return result;
   } catch (error) {
     console.log('[AppOpen] unexpected failure:', error?.message);
-    return { reported: false, reason: 'error' }; // retryable
+    result = { reported: false, reason: 'error' }; // retryable
+    return result;
   } finally {
     isAppOpenAttemptInFlight = false;
+    if (hasQueuedRetry) {
+      hasQueuedRetry = false;
+      if (!hasRecordedAppOpenThisLaunch && result?.reason === 'error') {
+        // One follow-up for the coalesced trigger; if it also fails, the
+        // next foreground/session event is the retry trigger.
+        reportAppOpenOnce({ userId, client, constants, platform });
+      }
+    }
   }
 };
 ```
