@@ -22,6 +22,8 @@ export interface MobileUserHealthRow {
     state: MobileUserAuthState;
     created_at: string;
     last_sign_in_at: string | null;
+    provisioning_cutoff_at: string | null;
+    authenticated_after_provisioning: boolean | null;
   };
   app_device: {
     registered: boolean;
@@ -58,6 +60,8 @@ export interface MobileUserHealthResponse {
     total_users: number;
     auth_ready: number;
     signed_in_ever: number;
+    authentication_measurable: number;
+    authenticated_after_provisioning: number;
     registered_devices: number;
     seeded_expected: number;
     seeded_data_ready: number;

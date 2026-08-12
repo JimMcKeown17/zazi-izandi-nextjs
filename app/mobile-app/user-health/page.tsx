@@ -78,8 +78,8 @@ export default async function MobileUserHealthPage({
       icon: ShieldCheck,
     },
     {
-      label: "2 · Mobile login",
-      detail: "Not currently measurable; Auth history includes provisioning checks.",
+      label: "2 · Authentication proven",
+      detail: "A successful Auth event occurred after that rollout cohort's credential cutoff.",
       icon: LogIn,
     },
     {
@@ -123,11 +123,12 @@ export default async function MobileUserHealthPage({
           excluded from both the rows and all summary totals. <br />
           <strong>Download/install is not directly observable.</strong> A registered
           push device is positive app evidence, but no token can also mean notification
-          permission was denied. Treat “no device signal” as unknown—not “not installed.”{" "}
-          Likewise, an enabled Auth account is a login prerequisite, but Supabase Auth
-          history cannot prove a youth used the mobile app: credential provisioning
-          checks create the same sign-in timestamp. Mobile login will remain explicitly
-          unmeasured until the app writes its own authenticated event.
+          permission was denied. Treat “no device signal” as unknown—not “not installed.” <br />
+          <strong>Authenticated after provisioning is a rollout proxy.</strong> Primary
+          accounts are compared with the 08 Aug 2026, 04:59 SAST credential release;
+          the ECD account batch is compared with 11 Aug 2026, 21:30 SAST after its CSV
+          completed. A later Auth event proves successful authentication after rollout,
+          but it does not identify the mobile app, platform, or device as the client.
         </p>
       </div>
 

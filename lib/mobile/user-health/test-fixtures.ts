@@ -20,6 +20,8 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
     total_users: 4,
     auth_ready: 3,
     signed_in_ever: 3,
+    authentication_measurable: 3,
+    authenticated_after_provisioning: 2,
     registered_devices: 2,
     seeded_expected: 2,
     seeded_data_ready: 1,
@@ -38,6 +40,8 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
         state: "ready",
         created_at: "2026-08-07T10:00:00.000Z",
         last_sign_in_at: "2026-08-11T05:55:00.000Z",
+        provisioning_cutoff_at: "2026-08-08T02:59:03.524181Z",
+        authenticated_after_provisioning: true,
       },
       app_device: {
         registered: true,
@@ -74,6 +78,8 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
         state: "ready",
         created_at: "2026-08-07T10:05:00.000Z",
         last_sign_in_at: "2026-08-10T06:05:00.000Z",
+        provisioning_cutoff_at: "2026-08-08T02:59:03.524181Z",
+        authenticated_after_provisioning: true,
       },
       app_device: {
         registered: false,
@@ -108,8 +114,10 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
       current_school: "Khayalethu ECD",
       auth: {
         state: "ready",
-        created_at: "2026-08-09T10:00:00.000Z",
-        last_sign_in_at: "2026-08-11T06:00:00.000Z",
+        created_at: "2026-08-11T19:19:00.000Z",
+        last_sign_in_at: "2026-08-11T19:19:05.000Z",
+        provisioning_cutoff_at: "2026-08-11T19:30:00.000Z",
+        authenticated_after_provisioning: false,
       },
       app_device: {
         registered: true,
@@ -146,6 +154,8 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
         state: "banned",
         created_at: "2026-08-07T10:10:00.000Z",
         last_sign_in_at: null,
+        provisioning_cutoff_at: null,
+        authenticated_after_provisioning: null,
       },
       app_device: {
         registered: false,

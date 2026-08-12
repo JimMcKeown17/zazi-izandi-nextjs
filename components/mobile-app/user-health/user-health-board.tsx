@@ -15,6 +15,7 @@ import {
 import {
   getUserAttentionReasons,
   getUserHealthState,
+  getProvisioningAuthenticationPresentation,
   hasSeededDataReady,
   type UserAttentionReason,
   type UserHealthState,
@@ -87,6 +88,12 @@ function AuthEvidence({ user }: { user: MobileUserHealthRow }) {
     banned: "Account banned",
     missing_email: "Email missing",
   } as const;
+  const authentication = getProvisioningAuthenticationPresentation(user);
+  const authenticationTone = {
+    proven: "text-emerald-700",
+    not_proven: "text-amber-700",
+    unmeasured: "text-slate-500",
+  } as const;
   return (
     <div>
       <p
@@ -97,14 +104,20 @@ function AuthEvidence({ user }: { user: MobileUserHealthRow }) {
       >
         {labels[user.auth.state]}
       </p>
+      <p className={cn("mt-1 text-xs font-semibold", authenticationTone[authentication.tone])}>
+        {authentication.label}
+      </p>
       <p className="mt-1 text-xs text-slate-500">
         Last Auth event: {formatTimestamp(user.auth.last_sign_in_at)}
       </p>
-      {user.auth.last_sign_in_at ? (
-        <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
-          May be a provisioning check; not proof of an app login
+      {user.auth.provisioning_cutoff_at ? (
+        <p className="mt-1 text-[11px] text-slate-400">
+          Cutoff: {formatTimestamp(user.auth.provisioning_cutoff_at)} SAST
         </p>
       ) : null}
+      <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+        {authentication.detail}
+      </p>
     </div>
   );
 }
@@ -325,7 +338,7 @@ export function UserHealthBoard({
                 <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.09em] text-slate-500">
                   <th className="px-4 py-3">Youth identity</th>
                   <th className="px-4 py-3">Health</th>
-                  <th className="px-4 py-3">Auth evidence</th>
+                  <th className="px-4 py-3">Auth / login</th>
                   <th className="px-4 py-3">Device signal</th>
                   <th className="px-4 py-3">Server data</th>
                   <th className="px-4 py-3">App activity</th>
@@ -387,7 +400,7 @@ export function UserHealthBoard({
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-lg bg-slate-50 p-3">
                     <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                      Auth evidence
+                      Auth / login
                     </p>
                     <AuthEvidence user={user} />
                   </div>

@@ -29,11 +29,11 @@ export function UserHealthSummary({ data }: { data: MobileUserHealthResponse }) 
       tone: "blue" as const,
     },
     {
-      label: "Mobile logins",
-      value: "Not tracked",
-      detail: "Auth history includes provisioning checks; app-only telemetry is required",
+      label: "Authenticated after provisioning",
+      value: `${data.summary.authenticated_after_provisioning} / ${data.summary.authentication_measurable}`,
+      detail: "Successful Auth event after the credential-release cutoff; not app/device proof",
       icon: LogIn,
-      tone: "amber" as const,
+      tone: "green" as const,
     },
     {
       label: "Device signals",

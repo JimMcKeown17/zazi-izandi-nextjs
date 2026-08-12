@@ -13,6 +13,12 @@ export type UserHealthState =
   | "not_started"
   | "needs_attention";
 
+export interface ProvisioningAuthenticationPresentation {
+  label: string;
+  detail: string;
+  tone: "proven" | "not_proven" | "unmeasured";
+}
+
 export function hasSeededDataReady(user: MobileUserHealthRow): boolean {
   return (
     user.data.expectation === "seeded" &&
@@ -54,6 +60,35 @@ export function getUserAttentionReasons(
 export function getUserHealthState(user: MobileUserHealthRow): UserHealthState {
   if (getUserAttentionReasons(user).length > 0) return "needs_attention";
   if (hasRecentAppActivity(user)) return "active";
-  if (user.app_device.registered) return "onboarding";
+  if (
+    user.auth.authenticated_after_provisioning === true ||
+    user.app_device.registered
+  ) {
+    return "onboarding";
+  }
   return "not_started";
+}
+
+export function getProvisioningAuthenticationPresentation(
+  user: MobileUserHealthRow
+): ProvisioningAuthenticationPresentation {
+  if (user.auth.authenticated_after_provisioning === true) {
+    return {
+      label: "Authenticated after provisioning",
+      detail: "Auth proof; app and device are not identified",
+      tone: "proven",
+    };
+  }
+  if (user.auth.authenticated_after_provisioning === false) {
+    return {
+      label: "No authentication after provisioning",
+      detail: "No Auth event has crossed the rollout cutoff",
+      tone: "not_proven",
+    };
+  }
+  return {
+    label: "Post-provisioning authentication unmeasured",
+    detail: "No trusted rollout cutoff applies to this account",
+    tone: "unmeasured",
+  };
 }

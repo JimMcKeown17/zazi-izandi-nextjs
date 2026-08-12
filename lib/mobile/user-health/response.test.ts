@@ -21,13 +21,35 @@ test("health-board summaries and device evidence must reconcile", async () => {
     ...VALID_MOBILE_USER_HEALTH_PAYLOAD,
     summary: {
       ...VALID_MOBILE_USER_HEALTH_PAYLOAD.summary,
-      signed_in_ever: 99,
+      authenticated_after_provisioning: 99,
     },
   };
   assert.equal(
     (
       await decodeMobileUserHealthResponse(
         new Response(JSON.stringify(invalidSummary), { status: 200 })
+      )
+    ).ok,
+    false
+  );
+
+  const invalidAuthenticationEvidence = {
+    ...VALID_MOBILE_USER_HEALTH_PAYLOAD,
+    users: [
+      {
+        ...VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0],
+        auth: {
+          ...VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0].auth,
+          authenticated_after_provisioning: false,
+        },
+      },
+      ...VALID_MOBILE_USER_HEALTH_PAYLOAD.users.slice(1),
+    ],
+  };
+  assert.equal(
+    (
+      await decodeMobileUserHealthResponse(
+        new Response(JSON.stringify(invalidAuthenticationEvidence), { status: 200 })
       )
     ).ok,
     false

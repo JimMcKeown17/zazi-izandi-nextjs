@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getProvisioningAuthenticationPresentation,
   getUserAttentionReasons,
   getUserHealthState,
   hasSeededDataReady,
@@ -29,7 +30,7 @@ test("auth blocks take precedence over absence of activity", () => {
   assert.equal(getUserHealthState(blocked), "needs_attention");
 });
 
-test("an Auth timestamp alone is not mobile-app onboarding evidence", () => {
+test("post-provisioning authentication advances an otherwise healthy user to onboarding", () => {
   const authOnly = {
     ...VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0],
     app_device: {
@@ -49,5 +50,42 @@ test("an Auth timestamp alone is not mobile-app onboarding evidence", () => {
     },
   };
 
-  assert.equal(getUserHealthState(authOnly), "not_started");
+  assert.equal(getUserHealthState(authOnly), "onboarding");
+  assert.deepEqual(getProvisioningAuthenticationPresentation(authOnly), {
+    label: "Authenticated after provisioning",
+    detail: "Auth proof; app and device are not identified",
+    tone: "proven",
+  });
+});
+
+test("a provisioning-check timestamp does not advance the health state", () => {
+  const preCutoff = {
+    ...VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0],
+    auth: {
+      ...VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0].auth,
+      last_sign_in_at: "2026-08-08T02:58:00.000Z",
+      authenticated_after_provisioning: false,
+    },
+    app_device: {
+      registered: false,
+      platform: null,
+      app_version: null,
+      last_seen_at: null,
+    },
+    activity: {
+      clock_entries: 0,
+      sessions: 0,
+      app_assessments: 0,
+      last_clock_in_at: null,
+      last_session_at: null,
+      last_app_assessment_at: null,
+      last_activity_at: null,
+    },
+  };
+
+  assert.equal(getUserHealthState(preCutoff), "not_started");
+  assert.equal(
+    getProvisioningAuthenticationPresentation(preCutoff).label,
+    "No authentication after provisioning"
+  );
 });

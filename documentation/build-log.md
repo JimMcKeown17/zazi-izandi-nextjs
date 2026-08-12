@@ -1,5 +1,26 @@
 # Zazi iZandi Website Build Log
 
+## 2026-08-12 — Post-provisioning authentication proxy added
+
+- Replaced the temporary "Mobile logins — Not tracked" card with the narrower,
+  operationally useful "Authenticated after provisioning" measure. Primary
+  rollout users are compared with the immutable 08 Aug 2026, 04:59 SAST
+  credential-release artifact; the 27-account ECD creation batch is compared
+  with 11 Aug 2026, 21:30 SAST, ten minutes after its credentials CSV finished.
+  Accounts outside those two known cohorts remain explicitly unmeasured.
+- Django owns the classification and returns `true`, `false`, or `null` plus
+  the applied cutoff per user. Next.js validates the timestamp relationship and
+  summary reconciliation before rendering it. A proven post-cutoff Auth event
+  advances an otherwise healthy account to Onboarding; the automated
+  provisioning grant does not.
+- The Auth/Login column now distinguishes authenticated, not-yet-authenticated,
+  and unmeasured accounts and shows both the latest Auth event and SAST cutoff.
+  The copy consistently states that this is successful-authentication evidence,
+  not proof that the mobile app or a particular device was the client.
+- A sanitized production-shaped calculation over the real-user population
+  yielded Primary 62/152, ECD 0/27, and 62/179 combined. Focused frontend
+  contract, rendering, and state tests pass 31/31; focused ESLint is clean.
+
 ## 2026-08-12 — Auth history separated from mobile-login evidence
 
 - Removed the false "Signed in" percentage from User health. Supabase Auth

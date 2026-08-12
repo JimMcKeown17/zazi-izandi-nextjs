@@ -21,6 +21,8 @@ const userHealthRowSchema = z.object({
     state: z.enum(["ready", "unconfirmed", "banned", "missing_email"]),
     created_at: absoluteTimestamp,
     last_sign_in_at: absoluteTimestamp.nullable(),
+    provisioning_cutoff_at: absoluteTimestamp.nullable(),
+    authenticated_after_provisioning: z.boolean().nullable(),
   }),
   app_device: z.object({
     registered: z.boolean(),
@@ -63,6 +65,8 @@ export const mobileUserHealthSchema = z
       total_users: count,
       auth_ready: count,
       signed_in_ever: count,
+      authentication_measurable: count,
+      authenticated_after_provisioning: count,
       registered_devices: count,
       seeded_expected: count,
       seeded_data_ready: count,
@@ -82,6 +86,29 @@ export const mobileUserHealthSchema = z
         });
       }
       userIds.add(user.user_id);
+
+      const cutoffAt = user.auth.provisioning_cutoff_at;
+      const authenticationResult = user.auth.authenticated_after_provisioning;
+      if (cutoffAt === null) {
+        if (authenticationResult !== null) {
+          context.addIssue({
+            code: "custom",
+            path: ["users", index, "auth", "authenticated_after_provisioning"],
+            message: "unmeasured authentication must not have a result",
+          });
+        }
+      } else {
+        const expectedAuthenticationResult =
+          user.auth.last_sign_in_at !== null &&
+          new Date(user.auth.last_sign_in_at) > new Date(cutoffAt);
+        if (authenticationResult !== expectedAuthenticationResult) {
+          context.addIssue({
+            code: "custom",
+            path: ["users", index, "auth", "authenticated_after_provisioning"],
+            message: "authentication result must match the rollout cutoff",
+          });
+        }
+      }
 
       const deviceEvidenceComplete =
         user.app_device.platform !== null &&
@@ -108,6 +135,12 @@ export const mobileUserHealthSchema = z
         .length,
       signed_in_ever: value.users.filter(
         (user) => user.auth.last_sign_in_at !== null
+      ).length,
+      authentication_measurable: value.users.filter(
+        (user) => user.auth.authenticated_after_provisioning !== null
+      ).length,
+      authenticated_after_provisioning: value.users.filter(
+        (user) => user.auth.authenticated_after_provisioning === true
       ).length,
       registered_devices: value.users.filter(
         (user) => user.app_device.registered
