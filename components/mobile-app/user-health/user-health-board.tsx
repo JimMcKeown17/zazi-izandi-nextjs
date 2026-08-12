@@ -14,25 +14,37 @@ import {
   Smartphone,
 } from "lucide-react";
 
+import { UserHealthWaveFunnel } from "@/components/mobile-app/user-health/user-health-wave-funnel";
 import { getEmploymentStatusDisplay } from "@/lib/mobile/presentation";
 import {
   buildChaseListCsv,
   buildChaseListText,
   type ChaseListContext,
 } from "@/lib/mobile/user-health/export";
+import { buildFunnelCounts } from "@/lib/mobile/user-health/funnel";
 import {
   ATTENTION_LABELS,
   BLOCKER_PLAYBOOK,
   getActivityStage,
   getProvisioningAuthenticationPresentation,
   getUserAttentionReasons,
+  hasRecentAppActivity,
   hasSeededDataReady,
+  isQuiet,
   selectBoardRows,
   type ActivityStage,
   type UserHealthPredicate,
   type UserHealthSortKey,
 } from "@/lib/mobile/user-health/presentation";
-import type { MobileUserHealthRow } from "@/lib/mobile/user-health/types";
+import type {
+  MobileRolloutWave,
+  MobileUserHealthRow,
+} from "@/lib/mobile/user-health/types";
+import {
+  filterRowsByWave,
+  findWaveOption,
+  type WaveSelection,
+} from "@/lib/mobile/user-health/wave";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 50;
@@ -45,11 +57,13 @@ const DATE_TIME_FORMAT = new Intl.DateTimeFormat("en-ZA", {
   minute: "2-digit",
   hour12: false,
 });
+const DATE_FORMAT = new Intl.DateTimeFormat("en-ZA", {
+  timeZone: "Africa/Johannesburg",
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
 
-const STAGE_LABELS: Record<Exclude<ActivityStage, "active">, string> = {
-  reached: "Onboarding",
-  not_started: "Not started",
-};
 const STAGE_STYLES: Record<ActivityStage, string> = {
   active: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   reached: "bg-blue-50 text-blue-700 ring-blue-200",
@@ -60,6 +74,7 @@ function syncUrl(next: {
   q: string;
   predicate: UserHealthPredicate;
   cohort: MobileUserHealthRow["data"]["expectation"] | "all";
+  wave: WaveSelection;
 }) {
   const url = new URL(window.location.href);
   const setOrDelete = (key: string, value: string, empty: string) => {
@@ -69,11 +84,16 @@ function syncUrl(next: {
   setOrDelete("q", next.q, "");
   setOrDelete("state", next.predicate, "all");
   setOrDelete("cohort", next.cohort, "all");
+  setOrDelete("wave", next.wave, "all");
   window.history.replaceState(null, "", url.toString());
 }
 
 function formatTimestamp(value: string | null): string {
   return value ? DATE_TIME_FORMAT.format(new Date(value)) : "No evidence yet";
+}
+
+function formatDate(value: string): string {
+  return DATE_FORMAT.format(new Date(value));
 }
 
 function buildClockLedgerHref(
@@ -90,9 +110,11 @@ function buildClockLedgerHref(
 function StageBadge({
   user,
   days,
+  lifetimeEvidence,
 }: {
   user: MobileUserHealthRow;
   days: number;
+  lifetimeEvidence: boolean;
 }) {
   const stage = getActivityStage(user);
   const Icon =
@@ -102,7 +124,15 @@ function StageBadge({
         ? Clock3
         : CircleDashed;
   const label =
-    stage === "active" ? `Active · ${days}d` : STAGE_LABELS[stage];
+    stage === "active"
+      ? lifetimeEvidence
+        ? "Activated"
+        : `Active · ${days}d`
+      : stage === "reached"
+        ? lifetimeEvidence
+          ? "Reached"
+          : "Onboarding"
+        : "Not started";
   return (
     <span
       className={cn(
@@ -112,6 +142,36 @@ function StageBadge({
     >
       <Icon className="h-3 w-3" /> {label}
     </span>
+  );
+}
+
+function StageEvidence({
+  user,
+  days,
+  lifetimeEvidence,
+}: {
+  user: MobileUserHealthRow;
+  days: number;
+  lifetimeEvidence: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <StageBadge
+        user={user}
+        days={days}
+        lifetimeEvidence={lifetimeEvidence}
+      />
+      {lifetimeEvidence && hasRecentAppActivity(user) ? (
+        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+          Active · {days}d
+        </span>
+      ) : null}
+      {lifetimeEvidence && isQuiet(user) ? (
+        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 ring-1 ring-inset ring-amber-200">
+          Quiet · {days}d
+        </span>
+      ) : null}
+    </div>
   );
 }
 
@@ -166,26 +226,42 @@ function AuthEvidence({ user }: { user: MobileUserHealthRow }) {
   );
 }
 
-function DeviceEvidence({ user }: { user: MobileUserHealthRow }) {
-  if (!user.app_device.registered) {
-    return (
-      <div>
-        <p className="text-xs font-semibold text-slate-500">No device signal</p>
-        <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
-          Not proof that the app is absent
-        </p>
-      </div>
-    );
-  }
+function DeviceEvidence({
+  user,
+  lifetimeEvidence,
+}: {
+  user: MobileUserHealthRow;
+  lifetimeEvidence: boolean;
+}) {
   return (
     <div>
-      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase text-violet-700">
-        <Smartphone className="h-3.5 w-3.5" /> {user.app_device.platform}
-        {user.app_device.app_version ? ` · v${user.app_device.app_version}` : ""}
-      </p>
-      <p className="mt-1 text-xs text-slate-500">
-        Seen {formatTimestamp(user.app_device.last_seen_at)}
-      </p>
+      {!user.app_device.registered ? (
+        <>
+          <p className="text-xs font-semibold text-slate-500">
+            No device signal
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+            Not proof that the app is absent
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase text-violet-700">
+            <Smartphone className="h-3.5 w-3.5" /> {user.app_device.platform}
+            {user.app_device.app_version
+              ? ` · v${user.app_device.app_version}`
+              : ""}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Seen {formatTimestamp(user.app_device.last_seen_at)}
+          </p>
+        </>
+      )}
+      {lifetimeEvidence && user.last_app_open_at ? (
+        <p className="mt-2 text-xs font-semibold text-blue-700">
+          Opened {formatDate(user.last_app_open_at)}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -311,6 +387,9 @@ export function UserHealthBoard({
   initialQuery = "",
   initialPredicate = "all",
   initialCohort = "all",
+  waveOptions = [],
+  initialWave = "all",
+  lifetimeEvidence = true,
 }: {
   users: MobileUserHealthRow[];
   days: number;
@@ -320,6 +399,9 @@ export function UserHealthBoard({
   initialQuery?: string;
   initialPredicate?: UserHealthPredicate;
   initialCohort?: MobileUserHealthRow["data"]["expectation"] | "all";
+  waveOptions?: MobileRolloutWave[];
+  initialWave?: WaveSelection;
+  lifetimeEvidence?: boolean;
 }) {
   const [query, setQuery] = useState(initialQuery);
   const [predicate, setPredicate] =
@@ -328,19 +410,26 @@ export function UserHealthBoard({
     MobileUserHealthRow["data"]["expectation"] | "all"
   >(initialCohort);
   const [sortKey, setSortKey] = useState<UserHealthSortKey>("urgency");
+  const [wave, setWave] = useState<WaveSelection>(initialWave);
   const [page, setPage] = useState(1);
   const [copyState, setCopyState] = useState<ChaseListCopyState>("idle");
 
+  const effectiveWave = lifetimeEvidence ? wave : "all";
+  const waveRows = useMemo(
+    () => filterRowsByWave(users, effectiveWave),
+    [effectiveWave, users]
+  );
   const rows = useMemo(
     () =>
-      selectBoardRows(users, {
+      selectBoardRows(waveRows, {
         query,
         predicate,
         cohort: expectationFilter,
         sortKey,
       }),
-    [expectationFilter, predicate, query, sortKey, users]
+    [expectationFilter, predicate, query, sortKey, waveRows]
   );
+  const funnelCounts = useMemo(() => buildFunnelCounts(waveRows), [waveRows]);
 
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
@@ -349,9 +438,12 @@ export function UserHealthBoard({
   const context = { days, generatedAt, schoolId, schoolName };
 
   const handleDownload = () => {
-    const blob = new Blob([buildChaseListCsv(rows, context)], {
-      type: "text/csv",
-    });
+    const blob = new Blob(
+      [buildChaseListCsv(rows, context, { partB: lifetimeEvidence })],
+      {
+        type: "text/csv",
+      }
+    );
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -371,7 +463,20 @@ export function UserHealthBoard({
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-[minmax(14rem,1fr)_10.5rem_10.5rem_10rem_minmax(13rem,auto)] lg:items-end">
+      {!lifetimeEvidence ? (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Lifetime rollout evidence is temporarily unavailable — showing the
+          window-scoped view.
+        </div>
+      ) : null}
+      <div
+        className={cn(
+          "grid gap-3 border-b border-slate-200 p-4 lg:items-end",
+          lifetimeEvidence
+            ? "lg:grid-cols-[minmax(14rem,1fr)_10.5rem_10.5rem_10.5rem_10rem_minmax(13rem,auto)]"
+            : "lg:grid-cols-[minmax(14rem,1fr)_10.5rem_10.5rem_10rem_minmax(13rem,auto)]"
+        )}
+      >
         <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Find an EA
           <span className="relative">
@@ -387,6 +492,7 @@ export function UserHealthBoard({
                   q: nextQuery,
                   predicate,
                   cohort: expectationFilter,
+                  wave: effectiveWave,
                 });
               }}
               placeholder="Name, email, or UUID"
@@ -406,14 +512,25 @@ export function UserHealthBoard({
                 q: query,
                 predicate: nextPredicate,
                 cohort: expectationFilter,
+                wave: effectiveWave,
               });
             }}
             className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-800 outline-none focus:border-primary"
           >
             <option value="all">All EAs</option>
             <option value="has_blockers">Has blockers</option>
-            <option value="active">Active in window</option>
-            <option value="reached">Onboarding</option>
+            <option value="active">Active · in window</option>
+            {lifetimeEvidence ? (
+              <option value="activated">Activated (ever)</option>
+            ) : null}
+            {lifetimeEvidence ? (
+              <option value="quiet">
+                Quiet (activated, silent in window)
+              </option>
+            ) : null}
+            <option value="reached">
+              {lifetimeEvidence ? "Reached" : "Onboarding"}
+            </option>
             <option value="not_started">Not started</option>
           </select>
         </label>
@@ -427,7 +544,12 @@ export function UserHealthBoard({
                 | "all";
               setExpectationFilter(nextCohort);
               setPage(1);
-              syncUrl({ q: query, predicate, cohort: nextCohort });
+              syncUrl({
+                q: query,
+                predicate,
+                cohort: nextCohort,
+                wave: effectiveWave,
+              });
             }}
             className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-800 outline-none focus:border-primary"
           >
@@ -437,6 +559,34 @@ export function UserHealthBoard({
             <option value="unknown">Unknown</option>
           </select>
         </label>
+        {lifetimeEvidence ? (
+          <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Rollout wave
+            <select
+              value={wave}
+              onChange={(event) => {
+                const nextWave = event.target.value as WaveSelection;
+                setWave(nextWave);
+                setPage(1);
+                syncUrl({
+                  q: query,
+                  predicate,
+                  cohort: expectationFilter,
+                  wave: nextWave,
+                });
+              }}
+              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-800 outline-none focus:border-primary"
+            >
+              <option value="all">All waves</option>
+              <option value="none">No wave</option>
+              {waveOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Sort by
           <select
@@ -456,7 +606,7 @@ export function UserHealthBoard({
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           <p className="w-full text-xs font-medium tabular-nums text-slate-500 lg:text-right">
             {rows.length.toLocaleString("en-ZA")} of{" "}
-            {users.length.toLocaleString("en-ZA")} users
+            {waveRows.length.toLocaleString("en-ZA")} users
           </p>
           <button
             type="button"
@@ -482,6 +632,17 @@ export function UserHealthBoard({
           </button>
         </div>
       </div>
+
+      {lifetimeEvidence && wave !== "all" ? (
+        <div className="border-b border-slate-200 bg-slate-50 p-4">
+          <UserHealthWaveFunnel
+            counts={funnelCounts}
+            days={days}
+            wave={findWaveOption(waveOptions, wave)}
+            generatedAt={generatedAt}
+          />
+        </div>
+      ) : null}
 
       {visibleUsers.length === 0 ? (
         <div className="px-6 py-14 text-center">
@@ -523,11 +684,20 @@ export function UserHealthBoard({
                       </p>
                     </td>
                     <td className="px-4 py-4">
-                      <StageBadge user={user} days={days} />
+                      <StageEvidence
+                        user={user}
+                        days={days}
+                        lifetimeEvidence={lifetimeEvidence}
+                      />
                       <AttentionReasons user={user} />
                     </td>
                     <td className="px-4 py-4"><AuthEvidence user={user} /></td>
-                    <td className="px-4 py-4"><DeviceEvidence user={user} /></td>
+                    <td className="px-4 py-4">
+                      <DeviceEvidence
+                        user={user}
+                        lifetimeEvidence={lifetimeEvidence}
+                      />
+                    </td>
                     <td className="px-4 py-4"><DataEvidence user={user} /></td>
                     <td className="px-4 py-4">
                       <ActivityEvidence
@@ -562,7 +732,11 @@ export function UserHealthBoard({
                     </p>
                   </div>
                   <div>
-                    <StageBadge user={user} days={days} />
+                    <StageEvidence
+                      user={user}
+                      days={days}
+                      lifetimeEvidence={lifetimeEvidence}
+                    />
                     <AttentionReasons user={user} />
                   </div>
                 </div>
@@ -578,7 +752,10 @@ export function UserHealthBoard({
                     <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                       Device signal
                     </p>
-                    <DeviceEvidence user={user} />
+                    <DeviceEvidence
+                      user={user}
+                      lifetimeEvidence={lifetimeEvidence}
+                    />
                   </div>
                   <div className="rounded-lg bg-slate-50 p-3">
                     <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">

@@ -11,6 +11,10 @@ import {
 } from "@/lib/mobile/user-health/devices";
 import type { UserHealthPredicate } from "@/lib/mobile/user-health/presentation";
 import type { MobileUserHealthRow } from "@/lib/mobile/user-health/types";
+import {
+  hasPartBCapability,
+  type WaveSelection,
+} from "@/lib/mobile/user-health/wave";
 
 interface UserHealthPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -30,12 +34,23 @@ const PREDICATES = [
   "all",
   "has_blockers",
   "active",
+  "activated",
+  "quiet",
   "reached",
   "not_started",
 ] as const;
 const COHORTS = ["all", "seeded", "self_setup", "unknown"] as const;
 
-function parsePredicate(value: string | undefined): UserHealthPredicate {
+function parsePredicate(
+  value: string | undefined,
+  lifetimeEvidence: boolean
+): UserHealthPredicate {
+  if (
+    !lifetimeEvidence &&
+    (value === "activated" || value === "quiet")
+  ) {
+    return "all";
+  }
   return (PREDICATES as readonly string[]).includes(value ?? "")
     ? (value as UserHealthPredicate)
     : "all";
@@ -47,6 +62,15 @@ function parseCohort(
   return (COHORTS as readonly string[]).includes(value ?? "")
     ? (value as (typeof COHORTS)[number])
     : "all";
+}
+
+function parseWave(
+  value: string | undefined,
+  waveOptionIds: readonly string[]
+): WaveSelection {
+  if (!value) return "all";
+  if (value === "none") return "none";
+  return waveOptionIds.includes(value) ? value : "all";
 }
 
 const GENERATED_FORMAT = new Intl.DateTimeFormat("en-ZA", {
@@ -62,7 +86,8 @@ export default async function MobileUserHealthPage({
   const days = parseDays(firstValue(params.days));
   const schoolId = firstValue(params.school_id) || null;
   const initialQuery = firstValue(params.q) ?? "";
-  const initialPredicate = parsePredicate(firstValue(params.state));
+  const initialPredicateValue = firstValue(params.state);
+  const initialWaveValue = firstValue(params.wave);
   const initialCohort = parseCohort(firstValue(params.cohort));
   const result = await getMobileUserHealth({ days, schoolId });
 
@@ -94,6 +119,18 @@ export default async function MobileUserHealthPage({
   }
 
   const { data } = result;
+  const lifetimeEvidence = hasPartBCapability(data);
+  const initialPredicate = parsePredicate(
+    initialPredicateValue,
+    lifetimeEvidence
+  );
+  const waveOptions = data.wave_options ?? [];
+  const initialWave = lifetimeEvidence
+    ? parseWave(
+        initialWaveValue,
+        waveOptions.map((option) => option.id)
+      )
+    : "all";
   const selectedSchool = data.school_options.find(
     (school) => school.id === data.applied_filters.school_id
   );
@@ -141,7 +178,7 @@ export default async function MobileUserHealthPage({
       <UserHealthSummary data={data} />
 
       <UserHealthBoard
-        key={`${data.days}|${data.applied_filters.school_id ?? ""}|${initialPredicate}|${initialCohort}|${initialQuery}`}
+        key={`${data.days}|${data.applied_filters.school_id ?? ""}|${initialPredicate}|${initialCohort}|${initialQuery}|${initialWave}|${lifetimeEvidence}`}
         users={data.users}
         days={data.days}
         generatedAt={data.generated_at}
@@ -150,9 +187,15 @@ export default async function MobileUserHealthPage({
         initialQuery={initialQuery}
         initialPredicate={initialPredicate}
         initialCohort={initialCohort}
+        waveOptions={waveOptions}
+        initialWave={initialWave}
+        lifetimeEvidence={lifetimeEvidence}
       />
 
-      <HowToReadPanel />
+      <HowToReadPanel
+        lifetimeEvidence={lifetimeEvidence}
+        days={data.days}
+      />
 
       <section className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">

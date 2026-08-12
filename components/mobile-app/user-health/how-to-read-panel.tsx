@@ -8,7 +8,13 @@ const ATTENTION_REASONS = Object.keys(
   ATTENTION_LABELS
 ) as UserAttentionReason[];
 
-export function HowToReadPanel() {
+export function HowToReadPanel({
+  lifetimeEvidence,
+  days = 30,
+}: {
+  lifetimeEvidence: boolean;
+  days?: number;
+}) {
   return (
     <details className="rounded-xl border border-slate-200 bg-white shadow-sm">
       <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-800">
@@ -23,14 +29,25 @@ export function HowToReadPanel() {
             addresses plus named staff-test identities, are excluded from both
             the EA rows and all summary totals.
           </p>
-          <p>
-            <strong className="text-slate-800">Device signals.</strong>{" "}
-            Download/install is not directly observable. A registered push
-            device is positive app evidence, but no token can also mean
-            notification permission was denied. Treat “no device signal” as
-            unknown—not “not installed.” A signal can disappear when a device is
-            lost or replaced—the stage tracks current evidence, not history.
-          </p>
+          {lifetimeEvidence ? (
+            <p>
+              <strong className="text-slate-800">Device signals.</strong>{" "}
+              Download/install is not directly observable. A registered push
+              device is positive app evidence, but no token can also mean
+              notification permission was denied. Treat “no device signal” as
+              unknown—not “not installed.” Reached includes devices whose push
+              token later died because the lifetime stage does not regress.
+            </p>
+          ) : (
+            <p>
+              <strong className="text-slate-800">Device signals.</strong>{" "}
+              Download/install is not directly observable. A registered push
+              device is positive app evidence, but no token can also mean
+              notification permission was denied. Treat “no device signal” as
+              unknown—not “not installed.” A signal can disappear when a device is
+              lost or replaced—the stage tracks current evidence, not history.
+            </p>
+          )}
           <p>
             <strong className="text-slate-800">
               Auth history &amp; provisioning.
@@ -49,14 +66,44 @@ export function HowToReadPanel() {
             device screen. A real signed-in app browse remains the strongest
             proof that a specific EA sees the expected children and groups.
           </p>
-          <p>
-            <strong className="text-slate-800">Windowing.</strong>{" "}
-            {"Activity numbers and 'last activity' cover only the selected window — changing the window changes them."}
-          </p>
+          {lifetimeEvidence ? (
+            <p>
+              <strong className="text-slate-800">
+                Stages and windowing.
+              </strong>{" "}
+              Activated means the EA has ever produced app activity. It can
+              never go backwards, and shrinking the window cannot demote them.
+              Reached includes accounts whose only proof is a signed-in app open.
+              Windowed claims live in separate indicators: Active · {days}d
+              means usage in the selected window, while Quiet · {days}d means
+              activated-ever but silent in that window. The Active filter and
+              tile are windowed and count the same users; the stage badge is
+              lifetime. They answer different questions.
+            </p>
+          ) : (
+            <p>
+              <strong className="text-slate-800">Windowing.</strong>{" "}
+              {"Activity numbers and 'last activity' cover only the selected window — changing the window changes them."}
+            </p>
+          )}
           <p>
             <strong className="text-slate-800">School filter.</strong>{" "}
             {"With no school selected, every real Auth account is listed, including EAs not yet on a roster; selecting a school narrows to rostered EAs, so totals are not comparable across that toggle."}
           </p>
+          {lifetimeEvidence ? (
+            <p>
+              <strong className="text-slate-800">Wave scope.</strong> The wave
+              filter scopes both the board and the evidence strip to one rollout
+              wave. “Day n” counts whole days since launch in SAST. “No wave”
+              shows accounts not assigned to any wave.
+            </p>
+          ) : null}
+          {lifetimeEvidence ? (
+            <p>
+              <strong className="text-slate-800">Opened evidence.</strong>{" "}
+              {`An "Opened" date is proof the app was opened by this signed-in account — it says the app reached them, not that they are teaching with it or still using it. Older app versions don't send it, so a missing date is not proof of absence.`}
+            </p>
+          ) : null}
         </div>
 
         <div className="mt-5 border-t border-slate-100 pt-4">
