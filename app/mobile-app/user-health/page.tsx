@@ -119,7 +119,8 @@ export default async function MobileUserHealthPage({
         <Info className="mt-0.5 h-4 w-4 shrink-0" />
         <p>
           <strong>Population:</strong> Banned accounts and known synthetic accounts,
-          including <code>+fakedata</code> addresses and staff-test identities, are
+          including <code>+blank</code>, <code>+groups</code>, <code>+full</code>, and{" "}
+          <code>+fakedata</code> addresses plus named staff-test identities, are
           excluded from both the rows and all summary totals. <br />
           <strong>Download/install is not directly observable.</strong> A registered
           push device is positive app evidence, but no token can also mean notification
