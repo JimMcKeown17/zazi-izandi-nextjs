@@ -1467,33 +1467,33 @@ def _with_part_b_defaults(user):
 "last_app_open_at": None,
 ```
 
-**(g) `_build_user_health_payload`** — wrap every domain-derived user row with `_with_part_b_defaults(...)` at the point where domain rows are merged with auth evidence (the same place `_with_provisioning_auth_evidence` is applied — apply `_with_part_b_defaults` FIRST, then the auth wrapper, so ordering of dict keys stays stable). For SYNTHESIZED auth-only rows (the `_empty_domain_user` path), merge the matching supplemental entry so wave/evidence survive for accounts with no identity row (round-3 finding):
+**(g) `_build_user_health_payload`** — ⚠️ the RPC payload parameter inside THIS function is named **`domain_payload`** (the validator's parameter is `payload` — the snippets in (d) are correct as written; do not blindly reuse names across functions, and verify both against the live source before editing; round-4 finding — writing `payload` here is a `NameError` on every request, including legacy ones during the tolerate-first deploy). Wrap every domain-derived user row with `_with_part_b_defaults(...)` at the point where domain rows are merged with auth evidence (the same place `_with_provisioning_auth_evidence` is applied — apply `_with_part_b_defaults` FIRST, then the auth wrapper, so ordering of dict keys stays stable). Near the top of the function build:
 
 ```python
 supplemental_by_user_id = {
     entry["user_id"]: entry
-    for entry in payload.get("supplemental_users", [])
+    for entry in domain_payload.get("supplemental_users", [])
 }
 ```
 
-and where `_empty_domain_user(user_id, display_name)` is called, replace with:
+For SYNTHESIZED auth-only rows, extend the existing `_empty_domain_user` call site so wave/evidence survive for accounts with no identity row (round-3 finding) — the current code assigns the synthesized dict directly where a domain row is absent; refactor that assignment to:
 
 ```python
-base = _empty_domain_user(user_id, display_name)
+synthesized = _empty_domain_user(user_id, display_name)
 supplement = supplemental_by_user_id.get(user_id)
 if supplement is not None:
-    base.update(
+    synthesized.update(
         {key: value for key, value in supplement.items() if key != "user_id"}
     )
 ```
 
-Add to the returned top-level dict, after `"school_options"`:
+(keep the surrounding variable names of the actual call site — read it first; only the construction of the synthesized row changes). Add to the returned top-level dict, after `"school_options"`:
 
 ```python
-"wave_options": payload.get("wave_options", []),
+"wave_options": domain_payload.get("wave_options", []),
 ```
 
-(`supplemental_users` itself is NOT forwarded to the frontend — it is consumed here.)
+(`supplemental_users` itself is NOT forwarded to the frontend — it is consumed here.) Both the legacy-payload test and the auth-only supplemental test already exercise the full `fetch_user_health` path, so a naming slip here fails loudly in Step 4.
 
 - [ ] **Step 4: Run the suite to verify green**
 
@@ -2048,6 +2048,34 @@ test('normalizes missing version and non-mobile platforms to null', async () => 
     p_platform: null,
   });
 });
+
+test('an in-process account switch reports for the second user too', async () => {
+  // Round-4 finding: launch state is per USER, not per device. After
+  // user A records, a sign-out and login as user B must produce B's own
+  // evidence, not "already-reported".
+  const clientA = buildClient({ session: { user: { id: 'user-a' } } });
+  const first = await reportAppOpenOnce({ userId: 'user-a', client: clientA, constants, platform: 'ios' });
+  expect(first).toEqual({ reported: true });
+  const clientB = buildClient({ session: { user: { id: 'user-b' } } });
+  const second = await reportAppOpenOnce({ userId: 'user-b', client: clientB, constants, platform: 'ios' });
+  expect(second).toEqual({ reported: true });
+  expect(clientB.rpc).toHaveBeenCalledTimes(1);
+});
+
+test('a different user is not blocked by another user\'s in-flight attempt', async () => {
+  let settleA;
+  const pendingA = new Promise((resolve) => { settleA = resolve; });
+  const clientA = {
+    auth: { getSession: jest.fn().mockResolvedValue({ data: { session: { user: { id: 'user-a' } } } }) },
+    rpc: jest.fn().mockImplementationOnce(() => pendingA),
+  };
+  const clientB = buildClient({ session: { user: { id: 'user-b' } } });
+  const aAttempt = reportAppOpenOnce({ userId: 'user-a', client: clientA, constants, platform: 'ios' });
+  const bResult = await reportAppOpenOnce({ userId: 'user-b', client: clientB, constants, platform: 'ios' });
+  expect(bResult).toEqual({ reported: true });
+  settleA({ error: null });
+  await expect(aAttempt).resolves.toEqual({ reported: true });
+});
 ```
 
 `__tests__/AppOpenReporter.test.js` — the offline→live regression pinned at component level (adversarial-review round 1 finding: an effect keyed on `user.id`+`loading` alone never re-fires when an offline-restored user later gains a live session, because neither dep changes). Mock the auth context and the service module; drive rerenders with `react-test-renderer` (bundled with jest-expo — mirror whatever `__tests__/BootstrapGate.test.js` uses to render):
@@ -2137,14 +2165,17 @@ Expected: FAIL — modules missing.
 // network — the launch flag is only set on confirmed success, and the
 // reporter retries on app-foreground. The server-side 5-minute rate
 // bound absorbs any duplicate that slips through.
-let hasRecordedAppOpenThisLaunch = false;
-let isAppOpenAttemptInFlight = false;
-let hasQueuedRetry = false;
+// All state is keyed by userId: "once per launch" means once per launch
+// PER AUTHENTICATED USER — an in-process sign-out and login as another
+// account must produce that account's own evidence (round-4 finding).
+const recordedUserIds = new Set();
+const inFlightUserIds = new Set();
+const queuedRetryUserIds = new Set();
 
 export const resetAppOpenReportForTests = () => {
-  hasRecordedAppOpenThisLaunch = false;
-  isAppOpenAttemptInFlight = false;
-  hasQueuedRetry = false;
+  recordedUserIds.clear();
+  inFlightUserIds.clear();
+  queuedRetryUserIds.clear();
 };
 
 const resolveClient = (client) => client || require('./supabaseClient').supabase;
@@ -2161,20 +2192,21 @@ const resolvePlatform = (platform) => {
 };
 
 export const reportAppOpenOnce = async ({ userId, client, constants, platform } = {}) => {
-  if (hasRecordedAppOpenThisLaunch) {
-    return { reported: false, reason: 'already-reported' };
-  }
-  if (isAppOpenAttemptInFlight) {
-    // A trigger arriving mid-attempt (e.g. app foregrounded while the
-    // first RPC is still pending) is COALESCED, not dropped: if the
-    // in-flight attempt fails, one bounded follow-up runs afterwards.
-    hasQueuedRetry = true;
-    return { reported: false, reason: 'in-flight' };
-  }
   if (!userId) {
     return { reported: false, reason: 'no-user' };
   }
-  isAppOpenAttemptInFlight = true;
+  if (recordedUserIds.has(userId)) {
+    return { reported: false, reason: 'already-reported' };
+  }
+  if (inFlightUserIds.has(userId)) {
+    // A trigger arriving mid-attempt for the SAME user (e.g. app
+    // foregrounded while the first RPC is still pending) is COALESCED,
+    // not dropped: if the in-flight attempt fails, one bounded follow-up
+    // runs afterwards. A different user is never blocked by this guard.
+    queuedRetryUserIds.add(userId);
+    return { reported: false, reason: 'in-flight' };
+  }
+  inFlightUserIds.add(userId);
   let result;
   try {
     const supabaseClient = resolveClient(client);
@@ -2194,7 +2226,7 @@ export const reportAppOpenOnce = async ({ userId, client, constants, platform } 
       result = { reported: false, reason: 'error' }; // retryable
       return result;
     }
-    hasRecordedAppOpenThisLaunch = true;
+    recordedUserIds.add(userId);
     result = { reported: true };
     return result;
   } catch (error) {
@@ -2202,10 +2234,10 @@ export const reportAppOpenOnce = async ({ userId, client, constants, platform } 
     result = { reported: false, reason: 'error' }; // retryable
     return result;
   } finally {
-    isAppOpenAttemptInFlight = false;
-    if (hasQueuedRetry) {
-      hasQueuedRetry = false;
-      if (!hasRecordedAppOpenThisLaunch && result?.reason === 'error') {
+    inFlightUserIds.delete(userId);
+    if (queuedRetryUserIds.has(userId)) {
+      queuedRetryUserIds.delete(userId);
+      if (!recordedUserIds.has(userId) && result?.reason === 'error') {
         // One follow-up for the coalesced trigger; if it also fails, the
         // next foreground/session event is the retry trigger.
         reportAppOpenOnce({ userId, client, constants, platform });
@@ -2225,7 +2257,7 @@ import { AppState } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { reportAppOpenOnce } from '../services/appOpenEvents';
 
-// Renders nothing; records at most one app_open event per launch, once a
+// Renders nothing; records at most one app_open event per user per launch, once a
 // LIVE session exists (offline restore alone never fires — the effect
 // re-runs when the session arrives later in the same launch). App
 // foregrounding retries a launch whose first attempt failed offline; the
