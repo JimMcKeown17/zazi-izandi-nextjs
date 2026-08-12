@@ -802,10 +802,20 @@ WHERE identity.teampact_user_id IS NOT NULL
 --     -v manifest_path='manifests/zz-primary-2026-manifest.csv' \
 --     -f load-wave-manifest.sql
 --
--- Manifest: single-column CSV, no header; each row an auth user id (uuid)
--- or an email (matched lower-normalized).
+-- Manifest: plain text, one entry per line, no header; each line an auth
+-- user id (uuid) or an email (matched lower-normalized).
+--
+-- NOTE (round-5 adversarial finding): psql's \copy performs NO variable
+-- interpolation in its arguments, so `\copy ... FROM :'manifest_path'`
+-- would read a file literally named :'manifest_path'. Backquote
+-- expansion DOES interpolate variables, so the file is read client-side
+-- via `cat` and staged with a regular INSERT — same transaction, no
+-- \copy. A missing/unreadable file yields empty content and aborts as
+-- rollout_wave_load_empty_manifest.
 
 \set ON_ERROR_STOP on
+
+\set manifest_content `cat :'manifest_path'`
 
 BEGIN;
 
@@ -818,7 +828,10 @@ CREATE TEMP TABLE staged_manifest_entries (
   entry TEXT NOT NULL
 ) ON COMMIT DROP;
 
-\copy staged_manifest_entries (entry) FROM :'manifest_path' WITH (FORMAT csv, HEADER false)
+INSERT INTO staged_manifest_entries (entry)
+SELECT manifest.entry
+FROM pg_catalog.string_to_table(:'manifest_content', E'\n') AS manifest(entry)
+WHERE pg_catalog.btrim(manifest.entry) <> '';
 
 DO $load$
 DECLARE
@@ -1028,7 +1041,7 @@ Repo/branch: same as Task 1. Depends on Tasks 1–4.
 
 `scripts/rollout-waves-postgres-harness.cjs`, cloned structurally from `mobile-operational-reporting-postgres-harness.cjs` (same env vars `MOBILE_OPERATIONAL_REPORTING_DATABASE_URL` + `MOBILE_OPERATIONAL_REPORTING_DISPOSABLE_CONFIRM=I_UNDERSTAND_THIS_IS_DISPOSABLE`, same localhost-only refusal, same randomUUID fixture + zero-residue teardown). It must assert, in order:
 
-1. **Loader initial load:** write a temp manifest of 3 fixture auth users (2 by uuid, 1 by email), run `load-wave-manifest.sql` via psql for wave `Harness Wave A` / launch `2026-08-01`; assert 3 live rows, `source_note` recorded, wave row created.
+1. **Loader initial load:** write a temp manifest of 3 fixture auth users (2 by uuid, 1 by email) under a DYNAMICALLY named temp directory (`fs.mkdtempSync` — proves the manifest_path plumbing actually resolves, catching any literal-path/interpolation regression; round-5 finding), run `load-wave-manifest.sql` via psql for wave `Harness Wave A` / launch `2026-08-01`; assert 3 live rows, `source_note` recorded, wave row created.
 2. **Idempotent re-run:** same manifest again → NOTICE reports `inserted=0 superseded_absent=0`; still 3 live rows, still 3 total rows (no duplicate inserts).
 3. **Absent-member supersede:** manifest with only 2 of the 3 → 2 live, 1 superseded (superseded_at NOT NULL), 3 total rows.
 4. **Unresolved abort:** manifest containing a misspelled email → psql exits nonzero with `rollout_wave_load_unresolved_entries`; live membership unchanged.
@@ -1090,10 +1103,14 @@ Add to `api/tests_mobile_operational_reports.py`. Extend `user_health_domain_pay
 
 ```python
 def part_b_user_fields(*, wave=None):
+    # last_ever_activity_at must COVER the default fixture row's windowed
+    # last_activity_at (2026-08-11T10:00:00+00:00) or the new lifetime
+    # invariant rejects the "valid" fixture (round-5 adversarial finding).
+    # Equal is allowed; derive rather than guess if the fixture changes.
     return {
         "wave": wave,
         "first_ever_activity_at": "2026-05-01T08:00:00+00:00",
-        "last_ever_activity_at": "2026-08-10T11:30:00+00:00",
+        "last_ever_activity_at": "2026-08-11T10:00:00+00:00",
         "ever_registered_device": True,
         "first_app_open_at": "2026-08-09T06:45:00+00:00",
         "last_app_open_at": "2026-08-11T06:45:00+00:00",
@@ -1130,7 +1147,7 @@ def test_wave_lifetime_and_app_open_fields_pass_through(self):
     self.assertEqual(result["wave_options"], [primary_wave(), ecd_wave()])
     seeded = next(u for u in result["users"] if u["user_id"] == SEEDED_USER_ID)
     self.assertEqual(seeded["wave"], primary_wave())
-    self.assertEqual(seeded["last_ever_activity_at"], "2026-08-10T11:30:00+00:00")
+    self.assertEqual(seeded["last_ever_activity_at"], "2026-08-11T10:00:00+00:00")
     self.assertIs(seeded["ever_registered_device"], True)
     self.assertEqual(seeded["last_app_open_at"], "2026-08-11T06:45:00+00:00")
 
@@ -1166,6 +1183,19 @@ def test_wave_options_must_be_ordered_and_cover_user_waves(self):
             ):
                 fetch_user_health(days=30, school_id=None, client=client)
 
+def test_part_b_baseline_fixture_validates(self):
+    # Guard for the negative cases below: the UNMUTATED Part B payload
+    # must pass, so each negative case fails for its own mutation and
+    # not for a broken baseline (round-5 adversarial finding).
+    payload = user_health_domain_payload()
+    payload["users"][0].update(part_b_user_fields())
+    payload["wave_options"] = []
+    client = reporting_client(payload)
+
+    result = fetch_user_health(days=30, school_id=None, client=client)
+
+    self.assertEqual(result["wave_options"], [])
+
 def test_lifetime_and_app_open_invariants_fail_closed(self):
     def with_fields(**overrides):
         payload = user_health_domain_payload()
@@ -1173,25 +1203,42 @@ def test_lifetime_and_app_open_invariants_fail_closed(self):
         payload["wave_options"] = []
         return payload
 
+    # label -> (payload, expected substring of the sanitized error's CAUSE)
     cases = {
-        "lifetime pair mismatch": with_fields(first_ever_activity_at=None),
-        "lifetime order inverted": with_fields(
-            first_ever_activity_at="2026-08-11T00:00:00+00:00",
-            last_ever_activity_at="2026-05-01T00:00:00+00:00",
+        "lifetime pair mismatch": (
+            with_fields(first_ever_activity_at=None),
+            "lifetime pair mismatch",
         ),
-        "app_open pair mismatch": with_fields(last_app_open_at=None),
-        "windowed activity without lifetime cover": with_fields(
-            first_ever_activity_at=None, last_ever_activity_at=None
+        "lifetime order inverted": (
+            with_fields(
+                first_ever_activity_at="2026-08-11T00:00:00+00:00",
+                last_ever_activity_at="2026-05-01T00:00:00+00:00",
+            ),
+            "lifetime order inverted",
         ),
-        "registered device without ever flag": with_fields(ever_registered_device=False),
+        "app_open pair mismatch": (
+            with_fields(last_app_open_at=None),
+            "app_open pair mismatch",
+        ),
+        "windowed activity without lifetime cover": (
+            with_fields(first_ever_activity_at=None, last_ever_activity_at=None),
+            "lifetime must cover windowed activity",
+        ),
+        "registered device without ever flag": (
+            with_fields(ever_registered_device=False),
+            "registered device must imply ever registered",
+        ),
     }
-    for label, payload in cases.items():
+    for label, (payload, expected_cause) in cases.items():
         with self.subTest(label=label):
             client = reporting_client(payload)
             with self.assertRaisesRegex(
                 MobileReportingError, "^mobile reporting service unavailable$"
-            ):
+            ) as caught:
                 fetch_user_health(days=30, school_id=None, client=client)
+            # The public message is sanitized; the specific reason rides
+            # the exception chain. Pin it so each case proves ITS rule.
+            self.assertIn(expected_cause, str(caught.exception.__cause__))
 
 def test_lifetime_fields_are_independent_of_the_window(self):
     # Lifetime evidence with ZERO windowed activity must validate: the
@@ -1214,7 +1261,7 @@ def test_lifetime_fields_are_independent_of_the_window(self):
     result = fetch_user_health(days=7, school_id=None, client=client)
 
     row = next(u for u in result["users"] if u["user_id"] == SEEDED_USER_ID)
-    self.assertEqual(row["last_ever_activity_at"], "2026-08-10T11:30:00+00:00")
+    self.assertEqual(row["last_ever_activity_at"], "2026-08-11T10:00:00+00:00")
     self.assertEqual(row["activity"]["clock_entries"], 0)
 
 def test_auth_only_wave_member_keeps_wave_and_evidence(self):
@@ -1476,18 +1523,28 @@ supplemental_by_user_id = {
 }
 ```
 
-For SYNTHESIZED auth-only rows, extend the existing `_empty_domain_user` call site so wave/evidence survive for accounts with no identity row (round-3 finding) — the current code assigns the synthesized dict directly where a domain row is absent; refactor that assignment to:
+For SYNTHESIZED auth-only rows, rewrite the existing `_empty_domain_user` call site so wave/evidence survive for accounts with no identity row (round-3 finding). The live line is:
 
 ```python
-synthesized = _empty_domain_user(user_id, display_name)
-supplement = supplemental_by_user_id.get(user_id)
-if supplement is not None:
-    synthesized.update(
-        {key: value for key, value in supplement.items() if key != "user_id"}
-    )
+domain_user = domain_by_id.get(user_id) or _empty_domain_user(user_id, auth_user["display_name"])
 ```
 
-(keep the surrounding variable names of the actual call site — read it first; only the construction of the synthesized row changes). Add to the returned top-level dict, after `"school_options"`:
+Replace it with exactly:
+
+```python
+domain_user = domain_by_id.get(user_id)
+if domain_user is None:
+    domain_user = _empty_domain_user(user_id, auth_user["display_name"])
+    supplement = supplemental_by_user_id.get(user_id)
+    if supplement is not None:
+        domain_user.update(
+            {key: value
+             for key, value in supplement.items()
+             if key != "user_id"}
+        )
+```
+
+The SAME `domain_user` object then continues through the existing pipeline unchanged — `_with_part_b_defaults(domain_user)` first, then `_with_provisioning_auth_evidence(...)`, then the append to the users list — so the merged evidence reaches the response (the auth-only regression asserts it there). If the live line differs from the quoted form, stop and reconcile against the actual source before editing. Add to the returned top-level dict, after `"school_options"`:
 
 ```python
 "wave_options": domain_payload.get("wave_options", []),
