@@ -1,0 +1,1796 @@
+# Part B — Rollout Waves + app_open Event Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Make rollout waves first-class stored data (tables + transactional loader + RPC/wave filter through Django to the user-health board), turn the activity stage into a true lifetime ratchet, and ship the app-owned `app_open` event as the root fix for login evidence.
+
+**Architecture:** Four repos in a strict deploy order: Supabase migrations (tables + RPC extension) are read by Django (tolerant passthrough deployed FIRST), consumed by the Next.js user-health board (deployed LAST), and fed by the Expo app (`app_open` insert via OTA update). Wave membership is loaded by an authoritative one-transaction set-reconciliation script, never ad-hoc SQL.
+
+**Tech Stack:** Postgres 17 (Supabase, plpgsql RPCs, RLS) · Django 5.2 (jsonschema Draft 2020-12 validators, SimpleTestCase) · Next.js 16 / React 19 / TypeScript / Zod v4 / node:test · Expo SDK 54 / supabase-js v2 / Jest (jest-expo)
+
+## Global Constraints
+
+- **Deploy order that never breaks (do not reorder):** Django Part B (tolerates absent fields) → Supabase migrations → manifest sanity-check by Jim → wave loader → frontend → mobile OTA (`eas update`). Part A gates come first: Django `fix/mobile-report-real-users` deployed, then frontend `fix/mobile-report-real-users` and `feat/mobile-ops-usability` merged/deployed.
+- **Supabase house pattern** (every reporting migration): `SET search_path = ''` with every identifier schema-qualified (`public.*`, `pg_catalog.*` for builtins), `$function$` dollar-quoting, `REVOKE ALL … FROM PUBLIC, anon, authenticated, authenticator` + `GRANT EXECUTE … TO service_role` for functions, `COMMENT ON`, one trailing `NOTIFY pgrst, 'reload schema';` per file. Migration filenames match `^\d{14}_[a-z0-9_]+\.sql$` and must sort after `20260812120000`.
+- **The 2-arg legacy RPC overloads must not be touched.** Structural verifiers assert overload count = 2 per report function. Only `CREATE OR REPLACE` the 3-arg `mobile_user_health_domain(INTEGER, UUID, UUID[])`.
+- **Django `MOBILE_USER_HEALTH_DOMAIN_SCHEMA` keeps `additionalProperties: False` everywhere.** New fields are added to `properties` but NOT to `required` (tolerate-first). New cross-field invariants run only when the key is present in the raw RPC payload, and the count⟺timestamp 502 invariant continues to exclude all `_ever_`/app-open fields.
+- **PII:** wave manifests contain emails — they are generated into a gitignored directory and NEVER committed. `app_open` events carry only `user_id`, `event`, `app_version`, `platform`.
+- **Frontend stage predicate values (`all|has_blockers|active|reached|not_started`) keep their URL identities**; `quiet` is added. `hasRecentAppActivity` stays windowed (it feeds the server-summary reconciliation in `schema.ts` — changing it breaks every payload).
+- **Git:** feature branches; no Co-Authored-By/agent trailers; commit messages as given per task.
+- **Copy honesty:** "Activated" (durable, lifetime) and "Active · {days}d" (windowed) are different claims — never label a durable stage with a window and vice versa.
+- Jim's wave decisions (2026-08-12): waves **"ZZ Primary 2026"** (seeded cohort: `staff_identity_links.teampact_user_id IS NOT NULL`, ~152) and **"ZZ ECD 2026"** (auth accounts created 2026-08-11T19:18–19:20Z, ~27). Proposed launch dates **2026-08-08** and **2026-08-11** — Jim sanity-checks generated lists + dates BEFORE the loader runs. A Masifunde wave comes later; nothing may hardcode the two initial waves outside the manifests. Sentry tagging is DEFERRED. Filtered summary tiles are NOT approved — the wave funnel is computed from wave-narrowed rows only, never from search/stage-narrowed rows.
+
+## Repo / branch map
+
+| Role | Path | Base branch | Work branch |
+|---|---|---|---|
+| Supabase migrations + mobile app (same repo: `zazi-izandi-app`) | `/Users/jimmckeown/Development/zazi-mobile-clock-reporting-supabase` (worktree, currently `main`, clean) | `main` | `feat/rollout-waves-app-open` |
+| Django | `/Users/jimmckeown/Development/zazi-mobile-clock-reporting-django` (worktree, clean) | `fix/mobile-report-real-users` | `feat/mobile-rollout-waves` |
+| Next.js frontend | `/Users/jimmckeown/Development/zazi-mobile-clock-reporting-nextjs/.worktrees/mobile-ops` | `feat/mobile-ops-usability` | `feat/mobile-rollout-waves` |
+
+The Expo app code (Task 10) is edited in the SAME worktree/branch as the Supabase migrations — `zazi-mobile-clock-reporting-supabase` is a full checkout of `zazi-izandi-app`. Do not touch `/Users/jimmckeown/Development/zazi-izandi-app` (Jim's checkout, on `ops/demo-account-access-aug11`).
+
+Coordinator creates all three branches before dispatch:
+
+```bash
+git -C /Users/jimmckeown/Development/zazi-mobile-clock-reporting-supabase switch -c feat/rollout-waves-app-open main
+git -C /Users/jimmckeown/Development/zazi-mobile-clock-reporting-django switch -c feat/mobile-rollout-waves fix/mobile-report-real-users
+git -C /Users/jimmckeown/Development/zazi-mobile-clock-reporting-nextjs/.worktrees/mobile-ops switch -c feat/mobile-rollout-waves feat/mobile-ops-usability
+```
+
+## Response contract after Part B (single source of truth for Tasks 3, 6, 7)
+
+Per user (added to today's user-health row; all six keys ALWAYS present in Django's response, `null` when unknown):
+
+```json
+{
+  "wave": {"id": "<uuid>", "name": "ZZ Primary 2026", "launch_date": "2026-08-08"},
+  "first_ever_activity_at": "2026-05-12T08:11:00+00:00",
+  "last_ever_activity_at": "2026-08-11T14:02:00+00:00",
+  "ever_registered_device": true,
+  "first_app_open_at": null,
+  "last_app_open_at": null
+}
+```
+
+Top level: `"wave_options": [{"id", "name", "launch_date"}, …]` ordered by `(launch_date, lower(name), id)`; `[]` when the RPC predates the migration.
+
+Semantics: `wave` is the live (`superseded_at IS NULL`) membership or `null`. `first/last_ever_activity_at` are the lifetime (un-windowed) LEAST/GREATEST over the same three activity sources as the windowed fields, and sit OUTSIDE the count⟺timestamp invariant. `ever_registered_device` is an EXISTS over `notification_push_tokens` INCLUDING invalidated rows. `first/last_app_open_at` aggregate `app_events` rows with `event = 'app_open'`. In the tolerate window (Django deployed, migration not yet applied) all six per-user keys are `null` and `wave_options` is `[]`; `ever_registered_device: null` means "unknown", never "no".
+
+---
+
+### Task 1: Supabase migration — rollout wave tables + immutability guard
+
+**Files:**
+- Create: `supabase/migrations/20260813090000_app_rollout_waves.sql`
+- Create: `__tests__/rolloutWavesAppOpenSqlContract.test.js` (started here, extended in Tasks 2–3)
+
+Repo: `/Users/jimmckeown/Development/zazi-mobile-clock-reporting-supabase`, branch `feat/rollout-waves-app-open`.
+
+**Interfaces:**
+- Produces: tables `public.app_rollout_waves(id, name, launch_date, notes)` and `public.app_rollout_wave_members(id, user_id, wave_id, assigned_at, superseded_at, source_note)`; trigger `app_rollout_wave_members_immutable`; partial unique index `app_rollout_wave_members_live_user_idx`. Tasks 3–5 depend on these exact names.
+
+- [ ] **Step 1: Write the failing SQL-contract test**
+
+Create `__tests__/rolloutWavesAppOpenSqlContract.test.js` following the style of `__tests__/mobileRealUserReportingSqlContract.test.js` (read it first for the file-loading helper):
+
+```js
+const fs = require('fs');
+const path = require('path');
+
+const readMigration = (name) =>
+  fs.readFileSync(
+    path.join(__dirname, '..', 'supabase', 'migrations', name),
+    'utf8'
+  );
+
+describe('rollout wave tables migration contract', () => {
+  const sql = () => readMigration('20260813090000_app_rollout_waves.sql');
+
+  test('creates both tables with append-only member columns', () => {
+    const text = sql();
+    expect(text).toMatch(/CREATE TABLE public\.app_rollout_waves \(/);
+    expect(text).toMatch(/name TEXT NOT NULL UNIQUE/);
+    expect(text).toMatch(/launch_date DATE NOT NULL/);
+    expect(text).toMatch(/CREATE TABLE public\.app_rollout_wave_members \(/);
+    expect(text).toMatch(/wave_id UUID NOT NULL REFERENCES public\.app_rollout_waves\(id\) ON DELETE RESTRICT/);
+    expect(text).toMatch(/source_note TEXT NOT NULL/);
+  });
+
+  test('enforces exactly one live assignment per user', () => {
+    expect(sql()).toMatch(
+      /CREATE UNIQUE INDEX app_rollout_wave_members_live_user_idx\s+ON public\.app_rollout_wave_members \(user_id\)\s+WHERE superseded_at IS NULL/
+    );
+  });
+
+  test('guards history with a BEFORE UPDATE OR DELETE trigger', () => {
+    const text = sql();
+    expect(text).toMatch(/CREATE FUNCTION public\.app_rollout_wave_members_guard\(\)/);
+    expect(text).toMatch(/BEFORE UPDATE OR DELETE ON public\.app_rollout_wave_members/);
+    expect(text).toMatch(/app_rollout_wave_members_rows_are_append_only/);
+    expect(text).toMatch(/app_rollout_wave_members_only_supersede_transition_allowed/);
+  });
+
+  test('locks both tables to service-role reporting posture', () => {
+    const text = sql();
+    expect(text).toMatch(/ALTER TABLE public\.app_rollout_waves ENABLE ROW LEVEL SECURITY/);
+    expect(text).toMatch(/ALTER TABLE public\.app_rollout_wave_members ENABLE ROW LEVEL SECURITY/);
+    expect(text).toMatch(/REVOKE ALL ON TABLE public\.app_rollout_waves FROM PUBLIC, anon, authenticated/);
+    expect(text).toMatch(/REVOKE ALL ON TABLE public\.app_rollout_wave_members FROM PUBLIC, anon, authenticated/);
+    expect(text).not.toMatch(/CREATE POLICY/); // no policies: service_role bypasses RLS
+  });
+});
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run from the worktree root: `npm test -- __tests__/rolloutWavesAppOpenSqlContract.test.js`
+Expected: FAIL — migration file does not exist. (If `node_modules` is missing in this worktree, run `npm ci` once first.)
+
+- [ ] **Step 3: Write the migration**
+
+`supabase/migrations/20260813090000_app_rollout_waves.sql` — the DDL is the reviewed Part B contract, verbatim, plus the guard trigger:
+
+```sql
+-- Rollout waves become first-class data (Part B).
+-- Membership rows are append-only: reassignment closes the old row via
+-- superseded_at and inserts a new one, so historical wave denominators
+-- stay reconstructable. Loads run only through the reconciling loader
+-- (scripts/rollout-waves/load-wave-manifest.sql), never ad-hoc SQL.
+
+CREATE TABLE public.app_rollout_waves (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  launch_date DATE NOT NULL,
+  notes TEXT
+);
+
+CREATE TABLE public.app_rollout_wave_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL,
+  wave_id UUID NOT NULL REFERENCES public.app_rollout_waves(id) ON DELETE RESTRICT,
+  assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  superseded_at TIMESTAMPTZ,
+  source_note TEXT NOT NULL
+);
+
+-- exactly one live assignment per EA
+CREATE UNIQUE INDEX app_rollout_wave_members_live_user_idx
+  ON public.app_rollout_wave_members (user_id)
+  WHERE superseded_at IS NULL;
+CREATE INDEX app_rollout_wave_members_wave_id_idx
+  ON public.app_rollout_wave_members (wave_id);
+
+-- Historical rows are immutable; the only permitted change is closing a
+-- live row (superseded_at NULL -> timestamp). Cheap insurance against
+-- ad-hoc SQL; concurrent-loader locking is deliberately omitted because
+-- a single operator runs these loads.
+CREATE FUNCTION public.app_rollout_wave_members_guard()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = ''
+AS $function$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'app_rollout_wave_members_rows_are_append_only';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id
+    OR NEW.user_id IS DISTINCT FROM OLD.user_id
+    OR NEW.wave_id IS DISTINCT FROM OLD.wave_id
+    OR NEW.assigned_at IS DISTINCT FROM OLD.assigned_at
+    OR NEW.source_note IS DISTINCT FROM OLD.source_note
+    OR OLD.superseded_at IS NOT NULL
+    OR NEW.superseded_at IS NULL
+  THEN
+    RAISE EXCEPTION 'app_rollout_wave_members_only_supersede_transition_allowed';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+CREATE TRIGGER app_rollout_wave_members_immutable
+  BEFORE UPDATE OR DELETE ON public.app_rollout_wave_members
+  FOR EACH ROW EXECUTE FUNCTION public.app_rollout_wave_members_guard();
+
+ALTER TABLE public.app_rollout_waves ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_rollout_wave_members ENABLE ROW LEVEL SECURITY;
+-- no policies: service-role reporting access only, same posture as the RPCs
+
+REVOKE ALL ON TABLE public.app_rollout_waves FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.app_rollout_wave_members FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE public.app_rollout_waves TO service_role;
+GRANT ALL ON TABLE public.app_rollout_wave_members TO service_role;
+
+COMMENT ON TABLE public.app_rollout_waves IS
+  'Named rollout waves (launch cohorts) for the mobile app; read by mobile_user_health_domain.';
+COMMENT ON TABLE public.app_rollout_wave_members IS
+  'Append-only wave membership; live rows have superseded_at IS NULL. Loaded only via the reconciling loader.';
+
+NOTIFY pgrst, 'reload schema';
+```
+
+Note the guard function deliberately has no REVOKE/GRANT lines: trigger functions execute as the table operation's role automatically and are not client-callable RPCs, but DO revoke direct execute anyway to keep the posture uniform:
+
+```sql
+REVOKE ALL ON FUNCTION public.app_rollout_wave_members_guard()
+  FROM PUBLIC, anon, authenticated, authenticator;
+```
+
+(Place this immediately after the function definition, before `CREATE TRIGGER`.)
+
+- [ ] **Step 4: Run the contract test to verify it passes**
+
+Run: `npm test -- __tests__/rolloutWavesAppOpenSqlContract.test.js`
+Expected: PASS (4 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add supabase/migrations/20260813090000_app_rollout_waves.sql __tests__/rolloutWavesAppOpenSqlContract.test.js
+git commit -m "feat(waves): add rollout wave tables with append-only membership"
+```
+
+---
+
+### Task 2: Supabase migration — app_events table
+
+**Files:**
+- Create: `supabase/migrations/20260813091000_app_events.sql`
+- Modify: `__tests__/rolloutWavesAppOpenSqlContract.test.js` (append a describe block)
+
+Repo/branch: same as Task 1.
+
+**Interfaces:**
+- Produces: table `public.app_events(id, user_id, event, app_version, platform, occurred_at)` with authenticated-INSERT-own RLS. Task 3's RPC and Task 10's client insert depend on these exact column names.
+
+- [ ] **Step 1: Append the failing contract tests**
+
+```js
+describe('app_events migration contract', () => {
+  const sql = () => readMigration('20260813091000_app_events.sql');
+
+  test('creates the events table with constrained event and platform', () => {
+    const text = sql();
+    expect(text).toMatch(/CREATE TABLE public\.app_events \(/);
+    expect(text).toMatch(/user_id UUID NOT NULL REFERENCES auth\.users\(id\) ON DELETE CASCADE/);
+    expect(text).toMatch(/CHECK \(event IN \('app_open'\)\)/);
+    expect(text).toMatch(/CHECK \(platform IN \('ios', 'android'\)\)/);
+    expect(text).toMatch(/occurred_at TIMESTAMPTZ NOT NULL DEFAULT now\(\)/);
+  });
+
+  test('authenticated users may only insert their own events and never read', () => {
+    const text = sql();
+    expect(text).toMatch(/ALTER TABLE public\.app_events ENABLE ROW LEVEL SECURITY/);
+    expect(text).toMatch(/CREATE POLICY app_events_authenticated_insert_own/);
+    expect(text).toMatch(/FOR INSERT/);
+    expect(text).toMatch(/WITH CHECK \(\(SELECT auth\.uid\(\)\) = user_id\)/);
+    expect(text).not.toMatch(/FOR SELECT/);
+    expect(text).toMatch(/GRANT INSERT \(user_id, event, app_version, platform\) ON TABLE public\.app_events TO authenticated/);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify the new block fails**
+
+Run: `npm test -- __tests__/rolloutWavesAppOpenSqlContract.test.js`
+Expected: FAIL — `20260813091000_app_events.sql` missing; Task 1 tests still pass.
+
+- [ ] **Step 3: Write the migration**
+
+```sql
+-- App-owned lifecycle events (root fix for mobile login evidence).
+-- Clients insert exactly their own rows; all reads are service-role only.
+
+CREATE TABLE public.app_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  event TEXT NOT NULL CHECK (event IN ('app_open')),
+  app_version TEXT,
+  platform TEXT CHECK (platform IN ('ios', 'android')),
+  occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Serves the per-user first/last aggregation in mobile_user_health_domain
+-- and doubles as the FK index for the auth.users cascade.
+CREATE INDEX app_events_user_event_occurred_idx
+  ON public.app_events (user_id, event, occurred_at DESC);
+
+ALTER TABLE public.app_events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY app_events_authenticated_insert_own
+  ON public.app_events
+  FOR INSERT
+  TO authenticated
+  WITH CHECK ((SELECT auth.uid()) = user_id);
+-- no SELECT/UPDATE/DELETE policies: reads are service-role only
+
+REVOKE ALL ON TABLE public.app_events FROM PUBLIC, anon, authenticated;
+-- Column-scoped INSERT: clients cannot set id or occurred_at (defaults apply).
+GRANT INSERT (user_id, event, app_version, platform) ON TABLE public.app_events TO authenticated;
+GRANT ALL ON TABLE public.app_events TO service_role;
+
+COMMENT ON TABLE public.app_events IS
+  'Client-emitted app lifecycle events (app_open). Insert-only for authenticated users on their own user_id; read via service-role reporting only.';
+
+NOTIFY pgrst, 'reload schema';
+```
+
+- [ ] **Step 4: Run the contract test to verify it passes**
+
+Run: `npm test -- __tests__/rolloutWavesAppOpenSqlContract.test.js`
+Expected: PASS (6 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add supabase/migrations/20260813091000_app_events.sql __tests__/rolloutWavesAppOpenSqlContract.test.js
+git commit -m "feat(events): add insert-only app_events table for app_open evidence"
+```
+
+---
+
+### Task 3: Supabase migration — extend `mobile_user_health_domain` (waves, lifetime, app_open)
+
+**Files:**
+- Create: `supabase/migrations/20260813092000_mobile_user_health_waves_lifetime.sql`
+- Modify: `__tests__/rolloutWavesAppOpenSqlContract.test.js` (append a describe block)
+- Read first: `supabase/migrations/20260812120000_mobile_reporting_real_user_population.sql` (the current 3-arg function body to copy)
+
+Repo/branch: same as Task 1. Depends on Tasks 1–2 (reads their tables).
+
+**Interfaces:**
+- Produces: `CREATE OR REPLACE FUNCTION public.mobile_user_health_domain(p_days INTEGER, p_school_id UUID, p_included_user_ids UUID[])` whose per-user JSON adds the six keys and whose top level adds `wave_options`, exactly per the "Response contract after Part B" section above. Tasks 5 and 6 depend on this shape.
+
+- [ ] **Step 1: Append the failing contract tests**
+
+```js
+describe('user-health RPC extension contract', () => {
+  const sql = () => readMigration('20260813092000_mobile_user_health_waves_lifetime.sql');
+
+  test('replaces only the 3-arg overload and never drops functions', () => {
+    const text = sql();
+    expect(text).toMatch(/CREATE OR REPLACE FUNCTION public\.mobile_user_health_domain\(\s*p_days INTEGER,\s*p_school_id UUID,\s*p_included_user_ids UUID\[\]\s*\)/);
+    expect(text).not.toMatch(/DROP FUNCTION/i);
+    expect((text.match(/CREATE OR REPLACE FUNCTION/g) || []).length).toBe(1);
+  });
+
+  test('joins live wave membership and exposes wave_options', () => {
+    const text = sql();
+    expect(text).toMatch(/FROM public\.app_rollout_wave_members AS member/);
+    expect(text).toMatch(/WHERE member\.superseded_at IS NULL/);
+    expect(text).toMatch(/'wave_options', wave_options\.value/);
+    expect(text).toMatch(/ORDER BY wave\.launch_date, pg_catalog\.lower\(wave\.name\), wave\.id/);
+  });
+
+  test('lifetime evidence is unwindowed and device history includes invalidated tokens', () => {
+    const text = sql();
+    expect(text).toMatch(/'first_ever_activity_at', health\.first_ever_activity_at/);
+    expect(text).toMatch(/'last_ever_activity_at', health\.last_ever_activity_at/);
+    expect(text).toMatch(/'ever_registered_device', health\.ever_registered_device/);
+    expect(text).toMatch(/'first_app_open_at', health\.first_app_open_at/);
+    expect(text).toMatch(/'last_app_open_at', health\.last_app_open_at/);
+    // ever_device CTE must NOT filter invalidated_at
+    const everDevice = text.match(/ever_device AS \(([\s\S]*?)\),/);
+    expect(everDevice).not.toBeNull();
+    expect(everDevice[1]).not.toMatch(/invalidated_at/);
+    // lifetime CTEs must not reference the report window bounds
+    const lifetimeClock = text.match(/lifetime_clock_activity AS \(([\s\S]*?)\),/);
+    expect(lifetimeClock[1]).not.toMatch(/v_start_at|v_end_at/);
+  });
+
+  test('keeps the service-role-only grant posture', () => {
+    const text = sql();
+    expect(text).toMatch(/REVOKE ALL ON FUNCTION public\.mobile_user_health_domain\(INTEGER, UUID, UUID\[\]\)\s+FROM PUBLIC, anon, authenticated, authenticator/);
+    expect(text).toMatch(/GRANT EXECUTE ON FUNCTION public\.mobile_user_health_domain\(INTEGER, UUID, UUID\[\]\)\s+TO service_role/);
+    expect(text).toMatch(/NOTIFY pgrst, 'reload schema';/);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify the new block fails**
+
+Run: `npm test -- __tests__/rolloutWavesAppOpenSqlContract.test.js`
+Expected: FAIL on the new describe block only.
+
+- [ ] **Step 3: Write the migration**
+
+Copy the ENTIRE `mobile_user_health_domain(INTEGER, UUID, UUID[])` function from `20260812120000_mobile_reporting_real_user_population.sql` (from its leading comment `-- Mobile-app onboarding and operational-health domain evidence.` through its `NOTIFY`) into the new file, change `CREATE FUNCTION` to `CREATE OR REPLACE FUNCTION`, and apply exactly these edits (everything else stays byte-identical):
+
+**(a)** After the `identity_population` CTE, insert five new CTEs (before `class_counts`):
+
+```sql
+    wave_membership AS (
+      SELECT
+        member.user_id,
+        wave.id AS wave_id,
+        wave.name AS wave_name,
+        wave.launch_date AS wave_launch_date
+      FROM public.app_rollout_wave_members AS member
+      JOIN public.app_rollout_waves AS wave
+        ON wave.id = member.wave_id
+      WHERE member.superseded_at IS NULL
+    ),
+    lifetime_clock_activity AS (
+      SELECT
+        entry.user_id,
+        MIN(entry.sign_in_time) AS first_at,
+        MAX(entry.sign_in_time) AS last_at
+      FROM public.time_entries AS entry
+      GROUP BY entry.user_id
+    ),
+    lifetime_session_activity AS (
+      SELECT
+        session_row.user_id,
+        MIN(
+          COALESCE(
+            session_row.started_at,
+            session_row.created_at,
+            session_row.session_date::TIMESTAMP
+              AT TIME ZONE 'Africa/Johannesburg'
+          )
+        ) AS first_at,
+        MAX(
+          COALESCE(
+            session_row.started_at,
+            session_row.created_at,
+            session_row.session_date::TIMESTAMP
+              AT TIME ZONE 'Africa/Johannesburg'
+          )
+        ) AS last_at
+      FROM public.sessions AS session_row
+      WHERE session_row.session_type = 'Literacy Coach'
+      GROUP BY session_row.user_id
+    ),
+    lifetime_assessment_activity AS (
+      SELECT
+        assessment.user_id,
+        MIN(assessment.created_at) AS first_at,
+        MAX(assessment.created_at) AS last_at
+      FROM public.assessments AS assessment
+      WHERE assessment.capture_mode IS NOT NULL
+      GROUP BY assessment.user_id
+    ),
+    ever_device AS (
+      -- Includes invalidated tokens: a token that later died still proves
+      -- the app was once installed.
+      SELECT DISTINCT push_token_row.user_id
+      FROM public.notification_push_tokens AS push_token_row
+    ),
+    app_open_activity AS (
+      SELECT
+        app_event.user_id,
+        MIN(app_event.occurred_at) AS first_app_open_at,
+        MAX(app_event.occurred_at) AS last_app_open_at
+      FROM public.app_events AS app_event
+      WHERE app_event.event = 'app_open'
+      GROUP BY app_event.user_id
+    ),
+```
+
+**(b)** In the `health_rows` CTE select list, after `last_activity_at`, add:
+
+```sql
+        wave_link.wave_id,
+        wave_link.wave_name,
+        wave_link.wave_launch_date,
+        LEAST(
+          lifetime_clock.first_at,
+          lifetime_session.first_at,
+          lifetime_assessment.first_at
+        ) AS first_ever_activity_at,
+        GREATEST(
+          lifetime_clock.last_at,
+          lifetime_session.last_at,
+          lifetime_assessment.last_at
+        ) AS last_ever_activity_at,
+        ever_device.user_id IS NOT NULL AS ever_registered_device,
+        app_open.first_app_open_at,
+        app_open.last_app_open_at
+```
+
+and after the existing `LEFT JOIN LATERAL (…) AS push_token ON TRUE`, add:
+
+```sql
+      LEFT JOIN wave_membership AS wave_link
+        ON wave_link.user_id = identity.user_id
+      LEFT JOIN lifetime_clock_activity AS lifetime_clock
+        ON lifetime_clock.user_id = identity.user_id
+      LEFT JOIN lifetime_session_activity AS lifetime_session
+        ON lifetime_session.user_id = identity.user_id
+      LEFT JOIN lifetime_assessment_activity AS lifetime_assessment
+        ON lifetime_assessment.user_id = identity.user_id
+      LEFT JOIN ever_device
+        ON ever_device.user_id = identity.user_id
+      LEFT JOIN app_open_activity AS app_open
+        ON app_open.user_id = identity.user_id
+```
+
+(`LEAST`/`GREATEST` are written bare, never `pg_catalog.`-qualified: they are grammar constructs, not functions — qualifying them is a syntax error, and they are safe under `search_path = ''` because grammar constructs do not resolve via search_path. The existing windowed `GREATEST(` call in this same function is the precedent; `LEAST`/`GREATEST` also ignore NULL arguments, so a user with only clock history still gets lifetime bounds and all-NULL yields NULL.)
+
+**(c)** In `users_json`'s `jsonb_build_object`, after the `'activity'` object, add six keys:
+
+```sql
+            'wave', CASE
+              WHEN health.wave_id IS NULL THEN NULL::JSONB
+              ELSE pg_catalog.jsonb_build_object(
+                'id', health.wave_id,
+                'name', health.wave_name,
+                'launch_date', health.wave_launch_date
+              )
+            END,
+            'first_ever_activity_at', health.first_ever_activity_at,
+            'last_ever_activity_at', health.last_ever_activity_at,
+            'ever_registered_device', health.ever_registered_device,
+            'first_app_open_at', health.first_app_open_at,
+            'last_app_open_at', health.last_app_open_at
+```
+
+**(d)** Add a `wave_options` CTE next to `school_options`:
+
+```sql
+    wave_options AS (
+      SELECT COALESCE(
+        pg_catalog.jsonb_agg(
+          pg_catalog.jsonb_build_object(
+            'id', wave.id,
+            'name', wave.name,
+            'launch_date', wave.launch_date
+          )
+          ORDER BY wave.launch_date, pg_catalog.lower(wave.name), wave.id
+        ),
+        '[]'::JSONB
+      ) AS value
+      FROM public.app_rollout_waves AS wave
+    )
+```
+
+and in the final `jsonb_build_object`, after `'school_options', school_options.value,` add `'wave_options', wave_options.value,` plus `CROSS JOIN wave_options` in the final FROM.
+
+**(e)** Update the function's `COMMENT ON` to:
+
+```sql
+COMMENT ON FUNCTION public.mobile_user_health_domain(INTEGER, UUID, UUID[]) IS
+  'Current-school mobile onboarding data/device/activity evidence with rollout wave, lifetime activity, and app_open aggregates; Django joins GoTrue auth state by UUID.';
+```
+
+Keep the REVOKE/GRANT block and the trailing `NOTIFY pgrst, 'reload schema';` (REVOKE/GRANT are re-stated verbatim; `CREATE OR REPLACE` preserves ACLs but the house files state them explicitly).
+
+- [ ] **Step 4: Run the contract test to verify it passes**
+
+Run: `npm test -- __tests__/rolloutWavesAppOpenSqlContract.test.js`
+Expected: PASS (all describe blocks).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add supabase/migrations/20260813092000_mobile_user_health_waves_lifetime.sql __tests__/rolloutWavesAppOpenSqlContract.test.js
+git commit -m "feat(waves): extend user-health RPC with wave, lifetime, and app_open evidence"
+```
+
+---
+
+### Task 4: Wave manifest generator + reconciling loader scripts
+
+**Files:**
+- Create: `scripts/rollout-waves/generate-wave-manifests.sql`
+- Create: `scripts/rollout-waves/load-wave-manifest.sql`
+- Create: `scripts/rollout-waves/README.md`
+- Modify: `.gitignore` (add `scripts/rollout-waves/manifests/`)
+
+Repo/branch: same as Task 1. No Jest cycle here (pure SQL scripts); behavioral proof happens in Task 5's harness, which exercises the loader end-to-end. The deliverable of this task is the exact SQL below on disk.
+
+**Interfaces:**
+- Consumes: tables from Task 1.
+- Produces: `load-wave-manifest.sql` invoked as
+  `psql "$DB_URL" -v wave_name='…' -v launch_date='YYYY-MM-DD' -v source_note='…' -v allow_moves='false' -v manifest_path='…csv' -f scripts/rollout-waves/load-wave-manifest.sql`
+  with a single-column CSV of auth user ids or emails (no header). Task 5 and the deploy runbook call it exactly this way.
+
+- [ ] **Step 1: Write the generator**
+
+`scripts/rollout-waves/generate-wave-manifests.sql` (read-only; run with `psql "$DB_URL" -f …` from `scripts/rollout-waves/`, writes into gitignored `manifests/`):
+
+```sql
+-- Generate the two initial wave manifests FROM existing data for Jim's
+-- sanity check. Read-only. Outputs land in scripts/rollout-waves/manifests/
+-- (gitignored: manifests contain emails).
+--
+--   ZZ Primary 2026 = seeded cohort (staff_identity_links.teampact_user_id IS NOT NULL)
+--   ZZ ECD 2026     = auth accounts created in the ECD provisioning batch
+--                     window 2026-08-11T19:18:00Z .. 2026-08-11T19:20:00Z
+-- These are the same signals Django's _provisioning_cutoff_at() uses.
+
+\set ON_ERROR_STOP on
+
+\echo '--- ZZ Primary 2026 (expected ~152) ---'
+SELECT COUNT(*) AS primary_count
+FROM public.staff_identity_links AS identity
+JOIN auth.users AS auth_user ON auth_user.id = identity.user_id
+WHERE identity.teampact_user_id IS NOT NULL;
+
+\echo '--- ZZ ECD 2026 (expected ~27) ---'
+SELECT COUNT(*) AS ecd_count
+FROM auth.users AS auth_user
+WHERE auth_user.created_at >= '2026-08-11T19:18:00Z'
+  AND auth_user.created_at <= '2026-08-11T19:20:00Z';
+
+\echo '--- overlap check (must be 0) ---'
+SELECT COUNT(*) AS overlap_count
+FROM public.staff_identity_links AS identity
+JOIN auth.users AS auth_user ON auth_user.id = identity.user_id
+WHERE identity.teampact_user_id IS NOT NULL
+  AND auth_user.created_at >= '2026-08-11T19:18:00Z'
+  AND auth_user.created_at <= '2026-08-11T19:20:00Z';
+
+-- Loader inputs: one auth user id per line, no header.
+\copy (SELECT identity.user_id FROM public.staff_identity_links AS identity JOIN auth.users AS auth_user ON auth_user.id = identity.user_id WHERE identity.teampact_user_id IS NOT NULL ORDER BY identity.user_id) TO 'manifests/zz-primary-2026-manifest.csv' WITH (FORMAT csv)
+\copy (SELECT auth_user.id FROM auth.users AS auth_user WHERE auth_user.created_at >= '2026-08-11T19:18:00Z' AND auth_user.created_at <= '2026-08-11T19:20:00Z' ORDER BY auth_user.id) TO 'manifests/zz-ecd-2026-manifest.csv' WITH (FORMAT csv)
+
+-- Human review files for Jim (id, email, display name).
+\copy (SELECT auth_user.id, auth_user.email, COALESCE(NULLIF(pg_catalog.btrim(identity.display_name), ''), pg_catalog.concat_ws(' ', identity.first_name, identity.last_name)) AS display_name FROM public.staff_identity_links AS identity JOIN auth.users AS auth_user ON auth_user.id = identity.user_id WHERE identity.teampact_user_id IS NOT NULL ORDER BY pg_catalog.lower(auth_user.email)) TO 'manifests/zz-primary-2026-review.csv' WITH (FORMAT csv, HEADER true)
+\copy (SELECT auth_user.id, auth_user.email, COALESCE(NULLIF(pg_catalog.btrim(identity.display_name), ''), pg_catalog.concat_ws(' ', identity.first_name, identity.last_name)) AS display_name FROM auth.users AS auth_user LEFT JOIN public.staff_identity_links AS identity ON identity.user_id = auth_user.id WHERE auth_user.created_at >= '2026-08-11T19:18:00Z' AND auth_user.created_at <= '2026-08-11T19:20:00Z' ORDER BY pg_catalog.lower(auth_user.email)) TO 'manifests/zz-ecd-2026-review.csv' WITH (FORMAT csv, HEADER true)
+
+\echo 'Wrote manifests/ (4 files). Review the *-review.csv files with Jim before loading.'
+```
+
+- [ ] **Step 2: Write the loader**
+
+`scripts/rollout-waves/load-wave-manifest.sql` — authoritative bidirectional set reconciliation in ONE transaction (the reviewed contract, verbatim intent):
+
+```sql
+-- Authoritative wave membership load. A manifest for wave W declares W's
+-- COMPLETE membership. One transaction: stage -> resolve (abort on any
+-- zero/ambiguous/duplicate entry) -> reconcile BOTH directions (insert
+-- missing live rows; supersede live rows absent from staging; move rows
+-- live in another wave only when allow_moves=true) -> assert live set ==
+-- staged set exactly. A misspelled email or stale member fails or
+-- surfaces in the same load, never silently skewing a denominator.
+--
+-- Usage:
+--   psql "$DB_URL" \
+--     -v wave_name='ZZ Primary 2026' \
+--     -v launch_date='2026-08-08' \
+--     -v source_note='manifest 2026-08-13 zz-primary-2026-manifest.csv' \
+--     -v allow_moves='false' \
+--     -v manifest_path='manifests/zz-primary-2026-manifest.csv' \
+--     -f load-wave-manifest.sql
+--
+-- Manifest: single-column CSV, no header; each row an auth user id (uuid)
+-- or an email (matched lower-normalized).
+
+\set ON_ERROR_STOP on
+
+BEGIN;
+
+SELECT set_config('rollout.wave_name', :'wave_name', true);
+SELECT set_config('rollout.launch_date', :'launch_date', true);
+SELECT set_config('rollout.source_note', :'source_note', true);
+SELECT set_config('rollout.allow_moves', :'allow_moves', true);
+
+CREATE TEMP TABLE staged_manifest_entries (
+  entry TEXT NOT NULL
+) ON COMMIT DROP;
+
+\copy staged_manifest_entries (entry) FROM :'manifest_path' WITH (FORMAT csv, HEADER false)
+
+DO $load$
+DECLARE
+  v_wave_name TEXT := current_setting('rollout.wave_name');
+  v_launch_date DATE := current_setting('rollout.launch_date')::DATE;
+  v_source_note TEXT := current_setting('rollout.source_note');
+  v_allow_moves BOOLEAN := current_setting('rollout.allow_moves')::BOOLEAN;
+  v_wave_id UUID;
+  v_staged_count INTEGER;
+  v_inserted INTEGER;
+  v_superseded INTEGER;
+  v_moved INTEGER;
+  v_bad RECORD;
+BEGIN
+  IF v_source_note IS NULL OR btrim(v_source_note) = '' THEN
+    RAISE EXCEPTION 'rollout_wave_load_source_note_required';
+  END IF;
+
+  -- Wave row: create on first load; on later loads the launch_date must match.
+  SELECT wave.id INTO v_wave_id
+  FROM public.app_rollout_waves AS wave
+  WHERE wave.name = v_wave_name;
+  IF v_wave_id IS NULL THEN
+    INSERT INTO public.app_rollout_waves (name, launch_date)
+    VALUES (v_wave_name, v_launch_date)
+    RETURNING id INTO v_wave_id;
+    RAISE NOTICE 'created wave "%" (%) launch_date=%',
+      v_wave_name, v_wave_id, v_launch_date;
+  ELSIF NOT EXISTS (
+    SELECT 1 FROM public.app_rollout_waves AS wave
+    WHERE wave.id = v_wave_id AND wave.launch_date = v_launch_date
+  ) THEN
+    RAISE EXCEPTION 'rollout_wave_load_launch_date_mismatch for wave "%"', v_wave_name;
+  END IF;
+
+  CREATE TEMP TABLE staged_normalized ON COMMIT DROP AS
+  SELECT DISTINCT btrim(stage.entry) AS entry
+  FROM staged_manifest_entries AS stage
+  WHERE btrim(stage.entry) <> '';
+
+  SELECT COUNT(*) INTO v_staged_count FROM staged_normalized;
+  IF v_staged_count = 0 THEN
+    RAISE EXCEPTION 'rollout_wave_load_empty_manifest';
+  END IF;
+
+  -- Resolve every entry against auth.users by id (compared as text, so a
+  -- malformed uuid simply fails to match) or lower-normalized email.
+  CREATE TEMP TABLE staged_resolved ON COMMIT DROP AS
+  SELECT
+    staged.entry,
+    resolved.user_id,
+    resolved.match_count
+  FROM staged_normalized AS staged
+  CROSS JOIN LATERAL (
+    SELECT
+      (MIN(auth_user.id::TEXT))::UUID AS user_id,
+      COUNT(*)::INTEGER AS match_count
+    FROM auth.users AS auth_user
+    WHERE auth_user.id::TEXT = lower(staged.entry)
+       OR lower(auth_user.email) = lower(staged.entry)
+  ) AS resolved;
+
+  FOR v_bad IN
+    SELECT bad.entry, bad.match_count
+    FROM staged_resolved AS bad
+    WHERE bad.match_count <> 1
+    ORDER BY bad.entry
+  LOOP
+    RAISE WARNING 'unresolved manifest entry "%" (matched % accounts)',
+      v_bad.entry, v_bad.match_count;
+  END LOOP;
+  IF EXISTS (SELECT 1 FROM staged_resolved WHERE match_count <> 1) THEN
+    RAISE EXCEPTION 'rollout_wave_load_unresolved_entries';
+  END IF;
+
+  IF EXISTS (
+    SELECT resolved.user_id
+    FROM staged_resolved AS resolved
+    GROUP BY resolved.user_id
+    HAVING COUNT(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'rollout_wave_load_duplicate_users_in_manifest';
+  END IF;
+
+  -- Members live in a DIFFERENT wave require an explicit move flag.
+  IF NOT v_allow_moves AND EXISTS (
+    SELECT 1
+    FROM public.app_rollout_wave_members AS member
+    JOIN staged_resolved AS staged ON staged.user_id = member.user_id
+    WHERE member.superseded_at IS NULL
+      AND member.wave_id <> v_wave_id
+  ) THEN
+    RAISE EXCEPTION
+      'rollout_wave_load_members_live_in_other_wave (rerun with -v allow_moves=true to move them)';
+  END IF;
+
+  UPDATE public.app_rollout_wave_members AS member
+  SET superseded_at = now()
+  FROM staged_resolved AS staged
+  WHERE member.user_id = staged.user_id
+    AND member.superseded_at IS NULL
+    AND member.wave_id <> v_wave_id;
+  GET DIAGNOSTICS v_moved = ROW_COUNT;
+
+  -- Reconcile direction 1: a removed EA must stop counting, loudly.
+  UPDATE public.app_rollout_wave_members AS member
+  SET superseded_at = now()
+  WHERE member.wave_id = v_wave_id
+    AND member.superseded_at IS NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM staged_resolved AS staged
+      WHERE staged.user_id = member.user_id
+    );
+  GET DIAGNOSTICS v_superseded = ROW_COUNT;
+
+  -- Reconcile direction 2: insert live rows for staged users not yet live in W.
+  INSERT INTO public.app_rollout_wave_members (user_id, wave_id, source_note)
+  SELECT staged.user_id, v_wave_id, v_source_note
+  FROM staged_resolved AS staged
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.app_rollout_wave_members AS member
+    WHERE member.user_id = staged.user_id
+      AND member.wave_id = v_wave_id
+      AND member.superseded_at IS NULL
+  );
+  GET DIAGNOSTICS v_inserted = ROW_COUNT;
+
+  -- Final assert: live membership of W equals the staged set exactly.
+  IF EXISTS (
+    (SELECT member.user_id
+     FROM public.app_rollout_wave_members AS member
+     WHERE member.wave_id = v_wave_id AND member.superseded_at IS NULL
+     EXCEPT
+     SELECT staged.user_id FROM staged_resolved AS staged)
+    UNION ALL
+    (SELECT staged.user_id FROM staged_resolved AS staged
+     EXCEPT
+     SELECT member.user_id
+     FROM public.app_rollout_wave_members AS member
+     WHERE member.wave_id = v_wave_id AND member.superseded_at IS NULL)
+  ) THEN
+    RAISE EXCEPTION 'rollout_wave_load_reconciliation_mismatch';
+  END IF;
+
+  RAISE NOTICE 'wave "%": staged=% inserted=% superseded_absent=% moved_from_other_waves=%',
+    v_wave_name, v_staged_count, v_inserted, v_superseded, v_moved;
+END;
+$load$;
+
+COMMIT;
+```
+
+- [ ] **Step 3: Write the README and gitignore entry**
+
+`scripts/rollout-waves/README.md`: document the two scripts' usage exactly as their headers show, the deploy-order rule (loader runs only AFTER the Task 1 migration is applied and AFTER Jim signs off the review CSVs + launch dates), the re-run semantics (loader is idempotent for an unchanged manifest: 0 inserted / 0 superseded), and the move semantics (`allow_moves=true` supersedes the other wave's row and inserts into the target — history preserved). Append `scripts/rollout-waves/manifests/` to the repo `.gitignore` with a comment `# wave manifests contain emails — never commit`.
+
+- [ ] **Step 4: Syntax-smoke the loader locally**
+
+If the local Supabase stack is running (`supabase status` from the worktree; else skip — Task 5 proves behavior): run the loader against the local DB with a throwaway one-line manifest of a nonexistent email and confirm it aborts with `rollout_wave_load_unresolved_entries` and leaves no rows:
+
+```bash
+cd scripts/rollout-waves && mkdir -p manifests
+echo 'nobody@example.invalid' > manifests/smoke.csv
+psql postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+  -v wave_name='Smoke Wave' -v launch_date='2026-01-01' \
+  -v source_note='smoke' -v allow_moves='false' \
+  -v manifest_path='manifests/smoke.csv' -f load-wave-manifest.sql
+```
+
+Expected: ERROR `rollout_wave_load_unresolved_entries` (transaction rolled back — `SELECT COUNT(*) FROM public.app_rollout_waves WHERE name = 'Smoke Wave'` returns 0). Delete `manifests/smoke.csv`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/rollout-waves/ .gitignore
+git commit -m "feat(waves): add manifest generator and reconciling wave loader"
+```
+
+---
+
+### Task 5: Postgres behavioral harness + post-apply verification for waves/app_events
+
+**Files:**
+- Create: `scripts/rollout-waves-postgres-harness.cjs`
+- Create: `supabase/verification/rollout-waves-post-apply-verification.sql`
+- Modify: `scripts/wave2-combined-postgres-release-harness.cjs` (register the new harness after the `MOBILE_OPERATIONAL_REPORTING` entry, same descriptor pattern)
+- Read first: `scripts/mobile-operational-reporting-postgres-harness.cjs` (the model to follow: psql spawn helper, localhost refusal, env-var gating, fixture style, JSON summary line)
+
+Repo/branch: same as Task 1. Depends on Tasks 1–4.
+
+**Interfaces:**
+- Consumes: tables (Task 1), app_events (Task 2), RPC (Task 3), loader (Task 4) — all by their exact names.
+- Produces: `MOBILE_ROLLOUT_WAVES` descriptor in the combined harness; a green run is the behavioral gate for the whole Supabase stack of this plan.
+
+- [ ] **Step 1: Write the harness**
+
+`scripts/rollout-waves-postgres-harness.cjs`, cloned structurally from `mobile-operational-reporting-postgres-harness.cjs` (same env vars `MOBILE_OPERATIONAL_REPORTING_DATABASE_URL` + `MOBILE_OPERATIONAL_REPORTING_DISPOSABLE_CONFIRM=I_UNDERSTAND_THIS_IS_DISPOSABLE`, same localhost-only refusal, same randomUUID fixture + zero-residue teardown). It must assert, in order:
+
+1. **Loader initial load:** write a temp manifest of 3 fixture auth users (2 by uuid, 1 by email), run `load-wave-manifest.sql` via psql for wave `Harness Wave A` / launch `2026-08-01`; assert 3 live rows, `source_note` recorded, wave row created.
+2. **Idempotent re-run:** same manifest again → NOTICE reports `inserted=0 superseded_absent=0`; still 3 live rows, still 3 total rows (no duplicate inserts).
+3. **Absent-member supersede:** manifest with only 2 of the 3 → 2 live, 1 superseded (superseded_at NOT NULL), 3 total rows.
+4. **Unresolved abort:** manifest containing a misspelled email → psql exits nonzero with `rollout_wave_load_unresolved_entries`; live membership unchanged.
+5. **Ambiguity abort:** manifest containing an email held by two fixture auth users (create the duplicate-email pair in the fixture; GoTrue does not enforce email uniqueness at the SQL layer) → abort `rollout_wave_load_unresolved_entries`.
+6. **Cross-wave guard:** load one of Wave A's users into `Harness Wave B` with `allow_moves=false` → abort `rollout_wave_load_members_live_in_other_wave`; with `allow_moves=true` → user moves (A row superseded, B row live), and Wave A's next full-manifest load must be run to keep A reconciled (assert the loader's final-assert catches A now being stale only when A is reloaded — i.e. reload A's original manifest and expect `rollout_wave_load_reconciliation_mismatch` NOT to fire; the moved user is simply superseded-absent on that reload).
+7. **Immutability trigger:** direct `UPDATE … SET assigned_at = now()` on a live row → error `app_rollout_wave_members_only_supersede_transition_allowed`; `DELETE` → `app_rollout_wave_members_rows_are_append_only`; `UPDATE … SET superseded_at = NULL` on a superseded row → error; `UPDATE … SET superseded_at = now()` on a live row → allowed.
+8. **app_events RLS:** using `SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claim.sub = '<fixture uuid>'` (mirror how the existing harness asserts "authenticated execution is denied"), INSERT with matching `user_id` succeeds; INSERT with a different `user_id` fails; `SELECT` as authenticated fails (no policy/privilege); `SELECT` as service path (default role) succeeds.
+9. **RPC fields:** seed `app_events` rows (two `app_open` for one user), an invalidated push token for a second user (`invalidated_at = now()`, no live token), lifetime activity older than the window (a `time_entries` row 60 days back), then call `mobile_user_health_domain(7, NULL, ARRAY[…])` and assert for the relevant users: `wave.name = 'Harness Wave A'`; `wave_options` lists both harness waves ordered by launch_date; user with no wave has `"wave": null`; `first/last_app_open_at` match the seeded min/max; invalidated-token user has `app_device.registered = false` but `ever_registered_device = true`; out-of-window-activity user has `activity.clock_entries = 0` (windowed) but non-null `first/last_ever_activity_at`; `last_ever_activity_at >= last_activity_at` for every user with windowed activity.
+10. **Zero residue** after teardown (including `app_events`, `app_rollout_waves`, `app_rollout_wave_members`).
+
+Emit the same single JSON summary line shape as the sibling harness.
+
+- [ ] **Step 2: Write the post-apply verification SQL**
+
+`supabase/verification/rollout-waves-post-apply-verification.sql`, mirroring `mobile-operational-reporting-post-apply-verification.sql` (a `BEGIN;`-only script of `DO` assertions that never commits): assert both wave tables exist with RLS enabled and zero policies; `app_events` exists with RLS enabled and exactly one policy named `app_events_authenticated_insert_own` with command `INSERT`; the partial unique index and the wave_id index exist; the trigger `app_rollout_wave_members_immutable` exists with `tgtype` covering UPDATE and DELETE; `mobile_user_health_domain` still has exactly 2 overloads, and the 3-arg overload's `prosrc` contains `app_rollout_wave_members`, `app_events`, and `wave_options` (proves the replace landed); authenticated has INSERT (column-scoped) but not SELECT on `app_events`; authenticated has no privileges on the wave tables.
+
+- [ ] **Step 3: Register in the combined harness**
+
+In `scripts/wave2-combined-postgres-release-harness.cjs`, add a descriptor entry after `MOBILE_OPERATIONAL_REPORTING` (copy its shape exactly): `descriptorKey: 'MOBILE_ROLLOUT_WAVES'`, script `rollout-waves-postgres-harness.cjs`, and add `supabase/verification/rollout-waves-post-apply-verification.sql` to the post-apply verification list where the two existing verification files run.
+
+- [ ] **Step 4: Run the proof**
+
+Run: `npm run verify:wave2:combined-postgres` with the env the repo documents for it (`WAVE2_RELEASE_ADMIN_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres`, `WAVE2_RELEASE_DATABASE_NAME=wave2_release_check`, `WAVE2_RELEASE_DISPOSABLE_CONFIRM` per the script's required value — read the script header for exact names; start the local stack with `supabase start` first if needed).
+Expected: exit 0; the new `MOBILE_ROLLOUT_WAVES` section green; existing sections still green (proves the migration chain including the three new files applies cleanly from scratch and nothing regressed).
+
+- [ ] **Step 5: Run the full repo contract suite**
+
+Run: `npm test -- __tests__/rolloutWavesAppOpenSqlContract.test.js __tests__/mobileRealUserReportingSqlContract.test.js __tests__/mobileOperationalReportingSqlContract.test.js __tests__/mobileSessionsActivitySqlContract.test.js`
+Expected: PASS — the pre-existing contract suites must not regress.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add scripts/rollout-waves-postgres-harness.cjs supabase/verification/rollout-waves-post-apply-verification.sql scripts/wave2-combined-postgres-release-harness.cjs
+git commit -m "test(waves): behavioral harness and post-apply verification for waves and app_events"
+```
+
+---
+
+### Task 6: Django — tolerant passthrough of wave/lifetime/app_open fields
+
+**Files:**
+- Modify: `api/mobile/reports.py` (schema `$defs` ~line 481, top-level schema ~line 594, `_validate_health_domain_payload` ~line 668, `_empty_domain_user` ~line 847, `_build_user_health_payload` ~line 949)
+- Modify: `api/tests_mobile_operational_reports.py` (fixture builders ~line 84, `MobileUserHealthReportTests` ~line 259)
+- Modify: `documentation/mobile-app-reporting-configuration.md` (prose contract, ~lines 70–95)
+
+Repo: `/Users/jimmckeown/Development/zazi-mobile-clock-reporting-django`, branch `feat/mobile-rollout-waves`.
+
+**Interfaces:**
+- Consumes: the RPC shape from Task 3 (may be absent — tolerate-first).
+- Produces: the "Response contract after Part B" exactly — every user row always carries the six keys (null when unknown), top level always carries `wave_options` (default `[]`). Task 7's zod schema depends on this.
+
+- [ ] **Step 1: Write the failing tests**
+
+Add to `api/tests_mobile_operational_reports.py`. Extend `user_health_domain_payload()` with an OPTIONAL richer builder rather than changing the default (the default builder becomes the "legacy RPC" fixture — that asymmetry is itself a test asset). Add module constant `WAVE_PRIMARY_ID = "aaaaaaaa-0000-4000-8000-000000000001"` and `WAVE_ECD_ID = "aaaaaaaa-0000-4000-8000-000000000002"`. New builder:
+
+```python
+def part_b_user_fields(*, wave=None):
+    return {
+        "wave": wave,
+        "first_ever_activity_at": "2026-05-01T08:00:00+00:00",
+        "last_ever_activity_at": "2026-08-10T11:30:00+00:00",
+        "ever_registered_device": True,
+        "first_app_open_at": "2026-08-09T06:45:00+00:00",
+        "last_app_open_at": "2026-08-11T06:45:00+00:00",
+    }
+
+
+def primary_wave():
+    return {
+        "id": WAVE_PRIMARY_ID,
+        "name": "ZZ Primary 2026",
+        "launch_date": "2026-08-08",
+    }
+
+
+def ecd_wave():
+    return {
+        "id": WAVE_ECD_ID,
+        "name": "ZZ ECD 2026",
+        "launch_date": "2026-08-11",
+    }
+```
+
+New tests (all in `MobileUserHealthReportTests`; use the existing `reporting_client(...)` fake and `assertRaisesRegex(MobileReportingError, "^mobile reporting service unavailable$")` convention):
+
+```python
+def test_wave_lifetime_and_app_open_fields_pass_through(self):
+    payload = user_health_domain_payload()
+    payload["users"][0].update(part_b_user_fields(wave=primary_wave()))
+    payload["wave_options"] = [primary_wave(), ecd_wave()]
+    client = reporting_client(payload)
+
+    result = fetch_user_health(days=30, school_id=None, client=client)
+
+    self.assertEqual(result["wave_options"], [primary_wave(), ecd_wave()])
+    seeded = next(u for u in result["users"] if u["user_id"] == SEEDED_USER_ID)
+    self.assertEqual(seeded["wave"], primary_wave())
+    self.assertEqual(seeded["last_ever_activity_at"], "2026-08-10T11:30:00+00:00")
+    self.assertIs(seeded["ever_registered_device"], True)
+    self.assertEqual(seeded["last_app_open_at"], "2026-08-11T06:45:00+00:00")
+
+def test_legacy_domain_payload_normalizes_part_b_fields_to_null(self):
+    client = reporting_client(user_health_domain_payload())
+
+    result = fetch_user_health(days=30, school_id=None, client=client)
+
+    self.assertEqual(result["wave_options"], [])
+    for user in result["users"]:
+        self.assertIsNone(user["wave"])
+        self.assertIsNone(user["first_ever_activity_at"])
+        self.assertIsNone(user["last_ever_activity_at"])
+        self.assertIsNone(user["ever_registered_device"])
+        self.assertIsNone(user["first_app_open_at"])
+        self.assertIsNone(user["last_app_open_at"])
+
+def test_wave_options_must_be_ordered_and_cover_user_waves(self):
+    for mutate in (
+        lambda p: p.__setitem__("wave_options", [ecd_wave(), primary_wave()]),  # unordered
+        lambda p: p.__setitem__("wave_options", [primary_wave(), primary_wave()]),  # duplicate id
+        lambda p: (
+            p["users"][0].update(part_b_user_fields(wave=ecd_wave())),
+            p.__setitem__("wave_options", [primary_wave()]),  # user wave not in options
+        ),
+    ):
+        with self.subTest(mutate=mutate):
+            payload = user_health_domain_payload()
+            mutate(payload)
+            client = reporting_client(payload)
+            with self.assertRaisesRegex(
+                MobileReportingError, "^mobile reporting service unavailable$"
+            ):
+                fetch_user_health(days=30, school_id=None, client=client)
+
+def test_lifetime_and_app_open_invariants_fail_closed(self):
+    def with_fields(**overrides):
+        payload = user_health_domain_payload()
+        payload["users"][0].update({**part_b_user_fields(), **overrides})
+        payload["wave_options"] = []
+        return payload
+
+    cases = {
+        "lifetime pair mismatch": with_fields(first_ever_activity_at=None),
+        "lifetime order inverted": with_fields(
+            first_ever_activity_at="2026-08-11T00:00:00+00:00",
+            last_ever_activity_at="2026-05-01T00:00:00+00:00",
+        ),
+        "app_open pair mismatch": with_fields(last_app_open_at=None),
+        "windowed activity without lifetime cover": with_fields(
+            first_ever_activity_at=None, last_ever_activity_at=None
+        ),
+        "registered device without ever flag": with_fields(ever_registered_device=False),
+    }
+    for label, payload in cases.items():
+        with self.subTest(label=label):
+            client = reporting_client(payload)
+            with self.assertRaisesRegex(
+                MobileReportingError, "^mobile reporting service unavailable$"
+            ):
+                fetch_user_health(days=30, school_id=None, client=client)
+
+def test_lifetime_fields_are_independent_of_the_window(self):
+    # Lifetime evidence with ZERO windowed activity must validate: the
+    # _ever_ fields sit OUTSIDE the count<->timestamp invariant.
+    payload = user_health_domain_payload(days=7)
+    user = payload["users"][0]
+    user["activity"] = {
+        "clock_entries": 0,
+        "sessions": 0,
+        "app_assessments": 0,
+        "last_clock_in_at": None,
+        "last_session_at": None,
+        "last_app_assessment_at": None,
+        "last_activity_at": None,
+    }
+    user.update(part_b_user_fields())
+    payload["wave_options"] = []
+    client = reporting_client(payload)
+
+    result = fetch_user_health(days=7, school_id=None, client=client)
+
+    row = next(u for u in result["users"] if u["user_id"] == SEEDED_USER_ID)
+    self.assertEqual(row["last_ever_activity_at"], "2026-08-10T11:30:00+00:00")
+    self.assertEqual(row["activity"]["clock_entries"], 0)
+```
+
+Notes for the "windowed activity without lifetime cover" case: the default seeded fixture has windowed activity, so nulling the lifetime pair while the keys are PRESENT must 502 (windowed count > 0 requires a covering non-null `last_ever_activity_at` — but only when the key is present; the legacy test above proves absence stays valid). The "registered device without ever flag" case relies on the default fixture's `app_device.registered` being `True` — verify that when reading the builder; if it is False, flip the override to target a fixture user with a registered device.
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run:
+```bash
+cd /Users/jimmckeown/Development/zazi-mobile-clock-reporting-django
+/Users/jimmckeown/Development/Zazi_iZandi_Website_2025/venv/bin/python manage.py test api.tests_mobile_operational_reports.MobileUserHealthReportTests -v 2
+```
+Expected: the new tests FAIL (schema rejects unknown properties → `MobileReportingError` raised where success expected, and KeyErrors on missing normalized keys); existing tests PASS.
+
+- [ ] **Step 3: Implement in `api/mobile/reports.py`**
+
+**(a) Schema `$defs`** — add:
+
+```python
+"wave": {
+    "type": "object",
+    "required": ["id", "name", "launch_date"],
+    "additionalProperties": False,
+    "properties": {
+        "id": {"$ref": "#/$defs/uuid"},
+        "name": {"type": "string", "minLength": 1},
+        "launch_date": {"type": "string", "format": "date"},
+    },
+},
+"nullable_wave": {"anyOf": [{"$ref": "#/$defs/wave"}, {"type": "null"}]},
+```
+
+**(b) `domain_user` properties** — add (do NOT touch `required`):
+
+```python
+"wave": {"$ref": "#/$defs/nullable_wave"},
+"first_ever_activity_at": {"$ref": "#/$defs/nullable_timestamp"},
+"last_ever_activity_at": {"$ref": "#/$defs/nullable_timestamp"},
+"ever_registered_device": {"type": "boolean"},
+"first_app_open_at": {"$ref": "#/$defs/nullable_timestamp"},
+"last_app_open_at": {"$ref": "#/$defs/nullable_timestamp"},
+```
+
+**(c) Top-level properties** — add (not required):
+
+```python
+"wave_options": {
+    "type": "array",
+    "items": {"$ref": "#/$defs/wave"},
+},
+```
+
+**(d) `_validate_health_domain_payload`** — inside the per-user loop, after the existing `last activity mismatch` check, add presence-conditional invariants (the count⟺timestamp invariant above stays untouched — add the comment `# The count<->timestamp invariant deliberately excludes the _ever_ /` `# app_open lifetime fields: they are unwindowed by design.`):
+
+```python
+if ("first_ever_activity_at" in user) != ("last_ever_activity_at" in user):
+    raise ValueError("lifetime fields must ship together")
+if "last_ever_activity_at" in user:
+    first_ever = user["first_ever_activity_at"]
+    last_ever = user["last_ever_activity_at"]
+    if (first_ever is None) != (last_ever is None):
+        raise ValueError("lifetime pair mismatch")
+    if first_ever is not None and (
+        _parse_timestamp(first_ever) > _parse_timestamp(last_ever)
+    ):
+        raise ValueError("lifetime order inverted")
+    if expected_last_activity is not None and (
+        last_ever is None
+        or _parse_timestamp(last_ever) < expected_last_activity
+    ):
+        raise ValueError("lifetime must cover windowed activity")
+if "ever_registered_device" in user:
+    if user["app_device"]["registered"] and user["ever_registered_device"] is not True:
+        raise ValueError("registered device must imply ever registered")
+if ("first_app_open_at" in user) != ("last_app_open_at" in user):
+    raise ValueError("app_open fields must ship together")
+if "last_app_open_at" in user:
+    first_open = user["first_app_open_at"]
+    last_open = user["last_app_open_at"]
+    if (first_open is None) != (last_open is None):
+        raise ValueError("app_open pair mismatch")
+    if first_open is not None and (
+        _parse_timestamp(first_open) > _parse_timestamp(last_open)
+    ):
+        raise ValueError("app_open order inverted")
+```
+
+After the user loop, add the top-level wave checks:
+
+```python
+if "wave_options" in payload:
+    wave_options = payload["wave_options"]
+    option_ids = [option["id"] for option in wave_options]
+    if len(option_ids) != len(set(option_ids)):
+        raise ValueError("duplicate wave option")
+    launch_dates = [
+        datetime.date.fromisoformat(option["launch_date"])
+        for option in wave_options
+    ]
+    if launch_dates != sorted(launch_dates):
+        raise ValueError("wave options out of order")
+    known_wave_ids = set(option_ids)
+    for user in payload["users"]:
+        wave = user.get("wave")
+        if wave is not None and wave["id"] not in known_wave_ids:
+            raise ValueError("user wave missing from wave_options")
+else:
+    for user in payload["users"]:
+        if user.get("wave") is not None:
+            raise ValueError("user wave present without wave_options")
+```
+
+(Import `datetime` if the module does not already import it — check the imports at the top of `reports.py` and follow its existing style, e.g. `from datetime import date` → `date.fromisoformat`.)
+
+**(e) Normalization helper** — add next to `_empty_domain_user`:
+
+```python
+def _with_part_b_defaults(user):
+    return {
+        **user,
+        "wave": user.get("wave"),
+        "first_ever_activity_at": user.get("first_ever_activity_at"),
+        "last_ever_activity_at": user.get("last_ever_activity_at"),
+        "ever_registered_device": user.get("ever_registered_device"),
+        "first_app_open_at": user.get("first_app_open_at"),
+        "last_app_open_at": user.get("last_app_open_at"),
+    }
+```
+
+**(f) `_empty_domain_user`** — add the six keys with `None` values (after `"current_school": "Unattributed",`):
+
+```python
+"wave": None,
+"first_ever_activity_at": None,
+"last_ever_activity_at": None,
+"ever_registered_device": None,
+"first_app_open_at": None,
+"last_app_open_at": None,
+```
+
+**(g) `_build_user_health_payload`** — wrap every domain-derived user row with `_with_part_b_defaults(...)` at the point where domain rows are merged with auth evidence (the same place `_with_provisioning_auth_evidence` is applied — apply `_with_part_b_defaults` FIRST, then the auth wrapper, so ordering of dict keys stays stable), and add to the returned top-level dict, after `"school_options"`:
+
+```python
+"wave_options": payload.get("wave_options", []),
+```
+
+- [ ] **Step 4: Run the suite to verify green**
+
+Run: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025/venv/bin/python manage.py test api.tests_mobile_operational_reports -v 2`
+Expected: PASS, including all pre-existing tests (the summary in `test_health_report_joins_auth_and_domain_users_and_recomputes_summary` is unchanged — summaries do not read the new fields).
+
+Also run the sibling mobile suite to prove no contract drift: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025/venv/bin/python manage.py test api.tests_mobile_reports -v 2` → PASS.
+
+- [ ] **Step 5: Update the prose contract**
+
+In `documentation/mobile-app-reporting-configuration.md`, extend the user-health section: list the six new per-user fields + `wave_options` with the exact semantics from the "Response contract after Part B" block (including "null means unknown during the tolerate window, never 'no'"), and REPLACE the sentence claiming `last_sign_in_at` alone cannot prove a mobile-app login with: it still cannot — but `first/last_app_open_at` (client-emitted `app_events`) now CAN prove the app was opened by a signed-in user, once the mobile OTA ships; absence of app_open evidence is not absence of use for devices that have not yet applied the OTA update.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add api/mobile/reports.py api/tests_mobile_operational_reports.py documentation/mobile-app-reporting-configuration.md
+git commit -m "feat(api): tolerate and pass through wave, lifetime, and app_open evidence"
+```
+
+---
+
+### Task 7: Frontend — schema, types, fixtures for the new contract
+
+**Files:**
+- Modify: `lib/mobile/user-health/schema.ts`, `lib/mobile/user-health/types.ts`, `lib/mobile/user-health/test-fixtures.ts`
+- Modify: `lib/mobile/user-health/response.test.ts` (or wherever schema acceptance is pinned — check `response.test.ts` + `presentation.test.ts` imports of the fixture)
+
+Repo: `/Users/jimmckeown/Development/zazi-mobile-clock-reporting-nextjs/.worktrees/mobile-ops`, branch `feat/mobile-rollout-waves`.
+
+**Interfaces:**
+- Consumes: Django's normalized contract (Task 6): six per-user keys always present but nullable; `wave_options` always present (possibly `[]`). Model them as OPTIONAL+nullable in zod anyway (`.nullable().optional()`) so a not-yet-redeployed Django cannot 502 the board.
+- Produces: `MobileRolloutWave` type `{id: string; name: string; launch_date: string}`; `MobileUserHealthRow` gains `wave?: MobileRolloutWave | null; first_ever_activity_at?: string | null; last_ever_activity_at?: string | null; ever_registered_device?: boolean | null; first_app_open_at?: string | null; last_app_open_at?: string | null`; `MobileUserHealthResponse` gains `wave_options?: MobileRolloutWave[]`. Tasks 8–9 import these names.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `response.test.ts` (follow its existing decode-success/decode-failure pattern with `VALID_MOBILE_USER_HEALTH_PAYLOAD`):
+
+```ts
+test("accepts wave, lifetime, and app_open fields", () => {
+  const payload = structuredClone(VALID_MOBILE_USER_HEALTH_PAYLOAD);
+  payload.wave_options = [
+    { id: "aaaaaaaa-0000-4000-8000-000000000001", name: "ZZ Primary 2026", launch_date: "2026-08-08" },
+  ];
+  payload.users[0].wave = payload.wave_options[0];
+  payload.users[0].first_ever_activity_at = "2026-05-01T08:00:00+00:00";
+  payload.users[0].last_ever_activity_at = payload.users[0].activity.last_activity_at
+    ?? "2026-08-10T11:30:00+00:00";
+  payload.users[0].ever_registered_device = true;
+  // decode via the module's existing decode helper; assert success
+});
+
+test("accepts the pre-wave legacy payload unchanged", () => {
+  // VALID_MOBILE_USER_HEALTH_PAYLOAD without any new key must still decode
+});
+
+test("rejects inverted lifetime bounds", () => {
+  // first_ever_activity_at after last_ever_activity_at -> decode failure
+});
+
+test("rejects a user wave missing from wave_options", () => {
+  // user.wave set, wave_options: [] -> decode failure
+});
+
+test("rejects a registered device that claims never-registered", () => {
+  // app_device.registered true + ever_registered_device false -> failure
+});
+```
+
+Write these as real tests against the module's actual decode/validate entry point (`decodeMobileUserHealthResponse` takes a Response — check how existing tests build one, or use `mobileUserHealthSchema.safeParse` directly as `schema.ts` tests do).
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run: `npm run test:mobile`
+Expected: new tests FAIL (zod strict object rejects unknown keys → "accepts" tests fail; "rejects" tests fail because parse currently succeeds/fails for the wrong reason).
+
+- [ ] **Step 3: Implement**
+
+`types.ts`:
+
+```ts
+export interface MobileRolloutWave {
+  id: string;
+  name: string;
+  launch_date: string;
+}
+```
+
+plus the optional fields on `MobileUserHealthRow` / `MobileUserHealthResponse` exactly as the Interfaces block above.
+
+`schema.ts`:
+
+```ts
+const waveSchema = z.object({
+  id: uuid,
+  name: z.string().min(1),
+  launch_date: z.iso.date(),
+});
+```
+
+Per-user additions: `wave: waveSchema.nullable().optional()`, the four timestamps as `absoluteTimestamp.nullable().optional()`, `ever_registered_device: z.boolean().nullable().optional()`. Top level: `wave_options: z.array(waveSchema).optional()`.
+
+In the `superRefine`, add per-user checks mirroring Django (Task 6d) — pair-nullity and ordering for the lifetime pair and app_open pair; `last_activity_at` (when non-null) must be `<=` `last_ever_activity_at` when the lifetime key is present non-null, and windowed activity with a present-but-null lifetime pair is an issue; `app_device.registered && ever_registered_device === false` is an issue; every non-null `user.wave.id` must appear in `wave_options` when `wave_options` is present, and `wave_options` must be sorted by `(launch_date, name.toLowerCase(), id)` with unique ids. Issue paths follow the existing style (`["users", index, "last_ever_activity_at"]` etc.).
+
+`test-fixtures.ts`: extend `VALID_MOBILE_USER_HEALTH_PAYLOAD` — add `wave_options` with the two waves ("ZZ Primary 2026" 2026-08-08, "ZZ ECD 2026" 2026-08-11) and give each of the 4 users coherent new fields (at least: one user in Primary wave with lifetime activity matching their windowed activity, one in ECD, one with `wave: null`, one with `ever_registered_device: true` but `app_device.registered: false` and empty windowed activity but non-null lifetime bounds — that user is the future "quiet + token-died" fixture for Tasks 8–9). Keep the summary block reconciling (the new fields do not enter any summary count — but Task 8 CHANGES stage semantics, and `needs_attention`/`active_in_window` reconciliation only uses `getUserAttentionReasons`/`hasRecentAppActivity`, which do not change; verify no fixture change breaks reconciliation).
+
+- [ ] **Step 4: Run the gates**
+
+Run: `npm run test:mobile` → PASS. `npx tsc --noEmit --incremental false` → clean. `npx eslint lib/mobile/user-health` → clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/mobile/user-health/schema.ts lib/mobile/user-health/types.ts lib/mobile/user-health/test-fixtures.ts lib/mobile/user-health/response.test.ts
+git commit -m "feat(user-health): model wave, lifetime, and app_open contract fields"
+```
+
+---
+
+### Task 8: Frontend — lifetime ratchet stage, quiet predicate, wave day helper
+
+**Files:**
+- Modify: `lib/mobile/user-health/presentation.ts`, `lib/mobile/user-health/presentation.test.ts`
+- Modify: `lib/mobile/user-health/funnel.ts`, `lib/mobile/user-health/funnel.test.ts`
+- Create: `lib/mobile/user-health/wave.ts`, `lib/mobile/user-health/wave.test.ts`
+
+Repo/branch: same as Task 7. Depends on Task 7's types.
+
+**Interfaces:**
+- Consumes: Task 7's optional fields.
+- Produces: `hasEverUsedApp(user)`, `hasEverRegisteredDevice(user)`, `isQuiet(user)` in `presentation.ts`; `UserHealthPredicate` union gains `"quiet"`; `FunnelCounts` gains `activated_ever: number` and `device_signal` becomes ratcheted; `getWaveDayNumber(launchDate: string, generatedAt: string): number` and `filterRowsByWave(users, wave: "all" | "none" | string)` in `wave.ts`. Task 9 imports all of these.
+
+- [ ] **Step 1: Write the failing tests**
+
+`presentation.test.ts` additions (build rows via the existing local row-builder helpers in that file — read them first):
+
+```ts
+test("stage is a lifetime ratchet: shrinking the window cannot regress active", () => {
+  // Row with zero windowed activity counts + null windowed timestamps but
+  // last_ever_activity_at set -> getActivityStage === "active"
+});
+
+test("stage is a lifetime ratchet: token invalidation cannot regress reached", () => {
+  // app_device.registered false, ever_registered_device true, no auth proof,
+  // no activity -> getActivityStage === "reached"
+});
+
+test("legacy rows without lifetime fields keep their windowed stage", () => {
+  // No new fields at all: windowed activity -> active; registered device -> reached
+});
+
+test("quiet means activated ever but silent in the window", () => {
+  // last_ever_activity_at set + zero windowed counts -> isQuiet true
+  // windowed activity present -> isQuiet false
+  // never activated -> isQuiet false
+});
+
+test("quiet predicate filters rows", () => {
+  // matchesUserHealthPredicate(row, "quiet") mirrors isQuiet
+});
+```
+
+`funnel.test.ts`: extend the surviving reconciliation test's expectations: `activated_ever` counts rows where `hasEverUsedApp`, `device_signal` counts rows where `hasEverRegisteredDevice` (assert specifically that the fixture user with `ever_registered_device: true` + `registered: false` is counted).
+
+`wave.test.ts`:
+
+```ts
+import { strict as assert } from "node:assert";
+import { test } from "node:test";
+import { getWaveDayNumber, filterRowsByWave } from "./wave";
+
+test("wave day number is whole days between launch and generated_at in SAST", () => {
+  assert.equal(getWaveDayNumber("2026-08-08", "2026-08-12T10:00:00+02:00"), 4);
+  // SAST rollover: 23:30 UTC on the 11th is already the 12th in SAST
+  assert.equal(getWaveDayNumber("2026-08-08", "2026-08-11T23:30:00+00:00"), 4);
+  assert.equal(getWaveDayNumber("2026-08-08", "2026-08-08T06:00:00+02:00"), 0);
+  assert.equal(getWaveDayNumber("2026-08-20", "2026-08-12T10:00:00+02:00"), -8);
+});
+
+test("filterRowsByWave narrows to a wave, to no-wave, or passes all", () => {
+  // rows from the shared fixture: "all" -> identity; "none" -> wave == null;
+  // "<wave id>" -> wave?.id matches
+});
+```
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run: `npm run test:mobile` → new tests FAIL (`wave.ts` missing; ratchet not implemented). NOTE: `test:mobile`'s glob `lib/mobile/*/*.test.ts` already covers `wave.test.ts` — no script change needed.
+
+- [ ] **Step 3: Implement**
+
+`presentation.ts` — replace the stage internals, keeping every exported name:
+
+```ts
+export function hasEverUsedApp(user: MobileUserHealthRow): boolean {
+  return (
+    hasUsageEvidenceInWindow(user) ||
+    (user.last_ever_activity_at ?? null) !== null
+  );
+}
+
+export function hasEverRegisteredDevice(user: MobileUserHealthRow): boolean {
+  return user.ever_registered_device === true || user.app_device.registered;
+}
+
+export function isQuiet(user: MobileUserHealthRow): boolean {
+  return hasEverUsedApp(user) && !hasRecentAppActivity(user);
+}
+
+export function getActivityStage(user: MobileUserHealthRow): ActivityStage {
+  if (hasEverUsedApp(user)) return "active";
+  if (hasEverRegisteredDevice(user)) return "reached";
+  if (user.auth.authenticated_after_provisioning) return "reached";
+  return "not_started";
+}
+```
+
+`UserHealthPredicate` gains `"quiet"`; `matchesUserHealthPredicate` adds `if (predicate === "quiet") return isQuiet(user);` BEFORE the stage-equality fallthrough. `hasRecentAppActivity` and `hasUsageEvidenceInWindow` stay exactly as they are (summary reconciliation depends on them).
+
+`funnel.ts` — `FunnelCounts` gains `activated_ever: number`; the loop counts `hasEverUsedApp(user)` into it and switches the `device_signal` increment to `hasEverRegisteredDevice(user)` (import both from `./presentation`; delete the drift-prone inline active arithmetic in favor of `hasRecentAppActivity(user)` while in the file — same semantics, one source of truth). Update the header comment: the strip is now the wave-scoped instrument with durable axes.
+
+`wave.ts`:
+
+```ts
+import type { MobileRolloutWave, MobileUserHealthRow } from "./types";
+
+export type WaveSelection = "all" | "none" | string;
+
+const SAST_DATE_FORMAT = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Africa/Johannesburg",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+// Whole days between the wave launch date and generated_at, both read as
+// SAST calendar dates. Launch day is day 0. Negative before launch.
+export function getWaveDayNumber(launchDate: string, generatedAt: string): number {
+  const generatedSastDate = SAST_DATE_FORMAT.format(new Date(generatedAt));
+  return Math.round(
+    (Date.parse(generatedSastDate) - Date.parse(launchDate)) / MS_PER_DAY
+  );
+}
+
+export function filterRowsByWave(
+  users: MobileUserHealthRow[],
+  wave: WaveSelection
+): MobileUserHealthRow[] {
+  if (wave === "all") return users;
+  if (wave === "none") return users.filter((user) => (user.wave ?? null) === null);
+  return users.filter((user) => user.wave?.id === wave);
+}
+
+export function findWaveOption(
+  waveOptions: MobileRolloutWave[] | undefined,
+  wave: WaveSelection
+): MobileRolloutWave | null {
+  if (wave === "all" || wave === "none") return null;
+  return waveOptions?.find((option) => option.id === wave) ?? null;
+}
+```
+
+(`en-CA` formats as `YYYY-MM-DD`; `Date.parse` of a bare date is UTC midnight on both sides, so the difference is exact whole days.)
+
+- [ ] **Step 4: Run the gates**
+
+Run: `npm run test:mobile` → PASS, including the two pinned ratchet regressions. `npx tsc --noEmit --incremental false` → clean. `npx eslint lib/mobile/user-health` → clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/mobile/user-health/presentation.ts lib/mobile/user-health/presentation.test.ts lib/mobile/user-health/funnel.ts lib/mobile/user-health/funnel.test.ts lib/mobile/user-health/wave.ts lib/mobile/user-health/wave.test.ts
+git commit -m "feat(user-health): lifetime ratchet stage, quiet predicate, wave helpers"
+```
+
+---
+
+### Task 9: Frontend — wave filter UI, wave-scoped funnel, CSV/copy, honesty copy
+
+**Files:**
+- Modify: `components/mobile-app/user-health/user-health-board.tsx`
+- Create: `components/mobile-app/user-health/user-health-wave-funnel.tsx`
+- Modify: `app/mobile-app/user-health/page.tsx`
+- Modify: `lib/mobile/user-health/export.ts`, `lib/mobile/user-health/export.test.ts`
+- Modify: `components/mobile-app/user-health/how-to-read-panel.tsx`
+- Modify: `lib/mobile/user-health/board-copy.test.ts` (stage label assertions)
+- Read first: `git show a1a72bb:components/mobile-app/user-health/user-health-funnel.tsx` (the deleted strip — reuse its row rendering)
+
+Repo/branch: same as Task 7. Depends on Tasks 7–8.
+
+**Interfaces:**
+- Consumes: `filterRowsByWave`, `findWaveOption`, `getWaveDayNumber`, `WaveSelection`, `isQuiet`, `FunnelCounts.activated_ever`, `buildFunnelCounts`.
+- Produces: URL param `wave` (`none` or a wave id; absent = all); `UserHealthBoard` props gain `waveOptions: MobileRolloutWave[]` and `initialWave: WaveSelection`; CSV gains three columns.
+
+- [ ] **Step 1: Write the failing tests**
+
+`export.test.ts`: extend the CSV assertions — header gains `wave_name,quiet,last_ever_activity_at` (appended after the existing final column); a row in a wave carries its wave name; a quiet row carries `true`; rows without the fields carry empty string / `false` / empty string respectively. Follow the file's existing exact-string assertion style.
+
+`board-copy.test.ts` (this file renders the board via `renderToStaticMarkup`): add — board rendered with `waveOptions` shows a wave `<select>` including "All waves", "No wave", and each wave name; rendering with `initialWave` set to the Primary wave id shows the context chip text `ZZ Primary 2026 · launched 2026-08-08 · day 4` (fixture `generated_at` must make the day number 4 — set `generatedAt` accordingly) and renders the funnel section with the wave-scoped counts; a quiet row shows the `Quiet` indicator; the stage badge for an activated row reads `Activated`, never `Active · 30d`.
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run: `npm run test:mobile` → new assertions FAIL.
+
+- [ ] **Step 3: Implement**
+
+**Board (`user-health-board.tsx`):**
+- Props: add `waveOptions: MobileRolloutWave[]` (default `[]`) and `initialWave: WaveSelection` (default `"all"`).
+- State: `wave` (a `WaveSelection`), initialized from `initialWave`; every change calls `setPage(1)` and extends `syncUrl` to write/delete the `wave` URL param (delete when `"all"`, same pattern as the existing `q`/`state`/`cohort` params).
+- Row pipeline: `const waveRows = filterRowsByWave(users, wave);` then feed `waveRows` (not `users`) into the existing `selectBoardRows(waveRows, selection)` call. The funnel is computed from `waveRows` ONLY — never from the search/stage-filtered rows (filtered tiles are explicitly not approved).
+- Wave control: a `<select>` alongside the existing stage/cohort selects with options `All waves` (`all`), `No wave` (`none`), and one per `waveOptions` entry labeled `{name}` — reuse the exact classNames of the neighboring selects.
+- Context chip + funnel: when `wave !== "all"`, render above the table:
+
+```tsx
+{wave !== "all" ? (
+  <UserHealthWaveFunnel
+    counts={buildFunnelCounts(waveRows)}
+    days={days}
+    wave={findWaveOption(waveOptions, wave)}
+    generatedAt={generatedAt}
+  />
+) : null}
+```
+
+- Quiet: add `Quiet` to the predicate `<select>` (label `Quiet (activated, silent in window)`), and render a per-row indicator badge `Quiet · {days}d` next to the stage badge when `isQuiet(user)`.
+- Stage labels: change the displayed stage badge text for `active` to `Activated` (grep the board for the current active-stage label rendering — Part A shipped it as window-suffixed; the window suffix moves to the Quiet/recency indicator, which is the only windowed claim left on the row).
+
+**Wave funnel (`user-health-wave-funnel.tsx`):** new server-compatible component (no hooks), props:
+
+```ts
+interface UserHealthWaveFunnelProps {
+  counts: FunnelCounts;
+  days: number;
+  wave: MobileRolloutWave | null; // null when the "No wave" subset is shown
+  generatedAt: string;
+}
+```
+
+Recreate the deleted strip's bar-row rendering (`git show a1a72bb:components/mobile-app/user-health/user-health-funnel.tsx`) with rows: `Accounts` (`counts.accounts`), `Auth ready`, `Device signal (ever)` (`counts.device_signal`), `Activated (ever)` (`counts.activated_ever`), `Active · {days}d` (`counts.active_in_window`) — each `count · share%` of `counts.accounts` with the same `Math.max(accounts, 1)` guard; keep the two footer lines (logged-in-after-provisioning over measurable with the "Not measured" branch, seeded-ready over seeded-expected). Header: when `wave` is non-null render `{wave.name} · launched {wave.launch_date} · day {getWaveDayNumber(wave.launch_date, generatedAt)}` (when the day number is negative render `{wave.name} · launches {wave.launch_date}`); when `wave` is null render `No wave · {counts.accounts} accounts`.
+
+**Page (`page.tsx`):** parse the `wave` param — `parseWave(value, waveOptionIds)` returns `"all"` when absent/unknown, `"none"`, or a validated wave id; pass `waveOptions={data.wave_options ?? []}` and `initialWave` to `UserHealthBoard`; add the wave value to the board remount key string.
+
+**CSV (`export.ts`):** append three columns `wave_name` (`user.wave?.name ?? ""`), `quiet` (`isQuiet(user) ? "true" : "false"`), `last_ever_activity_at` (`?? ""`), threaded through the existing quote/injection-guard pipeline. `buildChaseListText` gains a ` · quiet` marker on quiet rows (match the file's existing line-composition style).
+
+**How-to panel (`how-to-read-panel.tsx`):** update the stage explanation: stages are now durable — `Activated` means the EA has EVER produced app activity (it can never go backwards; shrinking the window cannot demote anyone); `Reached` includes devices whose push token later died (`ever_registered_device`); the windowed claim lives in the separate `Quiet · {days}d` indicator, meaning activated-ever but no activity in the selected window. Add a wave paragraph: the wave filter scopes the board and the evidence strip to one rollout wave; `day n` counts whole days since launch in SAST; "No wave" shows accounts not assigned to any wave. Add an app_open note: once the app update ships, `app opens` become direct evidence of signed-in use; older app versions do not emit it, so its absence is not proof of absence.
+
+- [ ] **Step 4: Run the gates**
+
+Run: `npm run test:mobile` → PASS. `npx tsc --noEmit --incremental false` → clean. `npx eslint app/mobile-app components/mobile-app lib/mobile/user-health` → clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add components/mobile-app/user-health/ app/mobile-app/user-health/page.tsx lib/mobile/user-health/export.ts lib/mobile/user-health/export.test.ts lib/mobile/user-health/board-copy.test.ts
+git commit -m "feat(user-health): wave filter with wave-scoped evidence strip and quiet indicator"
+```
+
+---
+
+### Task 10: Mobile app — app_open emitter
+
+**Files:**
+- Create: `src/services/appOpenEvents.js`
+- Create: `src/components/AppOpenReporter.js`
+- Modify: `App.js` (mount the reporter inside `AuthProvider`)
+- Create: `__tests__/appOpenEvents.test.js`
+- Read first: `src/services/notifications/notificationRegistration.js` (the injectable-deps house style to copy), `src/context/NotificationsContext.js:333-357` (the auth-keyed effect pattern), `src/context/AuthContext.js` (confirm what `useAuth()` exposes)
+
+Repo: `/Users/jimmckeown/Development/zazi-mobile-clock-reporting-supabase` (same checkout of `zazi-izandi-app`), branch `feat/rollout-waves-app-open`. Depends on Task 2 for the table contract only (code ships independently; a failed insert against a not-yet-migrated DB is swallowed by design).
+
+**Interfaces:**
+- Consumes: `public.app_events` columns `user_id, event, app_version, platform` (Task 2).
+- Produces: `reportAppOpenOnce({ userId, client, constants, platform })` → `Promise<{reported: boolean, reason?: string}>`; `resetAppOpenReportForTests()`.
+
+- [ ] **Step 1: Write the failing tests**
+
+`__tests__/appOpenEvents.test.js` (jest; inject all deps — never import the real supabase client, mirroring `notificationRegistration`'s test style):
+
+```js
+import {
+  reportAppOpenOnce,
+  resetAppOpenReportForTests,
+} from '../src/services/appOpenEvents';
+
+const buildClient = ({ session = { user: { id: 'user-1' } }, insertError = null } = {}) => {
+  const insert = jest.fn().mockResolvedValue({ error: insertError });
+  return {
+    auth: { getSession: jest.fn().mockResolvedValue({ data: { session } }) },
+    from: jest.fn(() => ({ insert })),
+    __insert: insert,
+  };
+};
+
+const constants = { expoConfig: { version: '1.1.1' } };
+
+beforeEach(() => resetAppOpenReportForTests());
+
+test('inserts one app_open row for the signed-in user', async () => {
+  const client = buildClient();
+  const result = await reportAppOpenOnce({
+    userId: 'user-1', client, constants, platform: 'ios',
+  });
+  expect(result).toEqual({ reported: true });
+  expect(client.from).toHaveBeenCalledWith('app_events');
+  expect(client.__insert).toHaveBeenCalledWith({
+    user_id: 'user-1',
+    event: 'app_open',
+    app_version: '1.1.1',
+    platform: 'ios',
+  });
+});
+
+test('reports at most once per launch', async () => {
+  const client = buildClient();
+  await reportAppOpenOnce({ userId: 'user-1', client, constants, platform: 'ios' });
+  const second = await reportAppOpenOnce({ userId: 'user-1', client, constants, platform: 'ios' });
+  expect(second).toEqual({ reported: false, reason: 'already-reported' });
+  expect(client.__insert).toHaveBeenCalledTimes(1);
+});
+
+test('skips when there is no live session (offline restore)', async () => {
+  const client = buildClient({ session: null });
+  const result = await reportAppOpenOnce({ userId: 'user-1', client, constants, platform: 'ios' });
+  expect(result).toEqual({ reported: false, reason: 'no-session' });
+  expect(client.__insert).not.toHaveBeenCalled();
+});
+
+test('skips when the session belongs to a different user', async () => {
+  const client = buildClient({ session: { user: { id: 'someone-else' } } });
+  const result = await reportAppOpenOnce({ userId: 'user-1', client, constants, platform: 'ios' });
+  expect(result).toEqual({ reported: false, reason: 'no-session' });
+});
+
+test('swallows insert failures', async () => {
+  const client = buildClient({ insertError: { message: 'relation does not exist' } });
+  const result = await reportAppOpenOnce({ userId: 'user-1', client, constants, platform: 'ios' });
+  expect(result).toEqual({ reported: false, reason: 'error' });
+});
+
+test('does not retry after a failure within the same launch', async () => {
+  const failing = buildClient({ insertError: { message: 'nope' } });
+  await reportAppOpenOnce({ userId: 'user-1', client: failing, constants, platform: 'ios' });
+  const retry = await reportAppOpenOnce({ userId: 'user-1', client: buildClient(), constants, platform: 'ios' });
+  expect(retry).toEqual({ reported: false, reason: 'already-reported' });
+});
+
+test('normalizes missing version and non-mobile platforms to null', async () => {
+  const client = buildClient();
+  await reportAppOpenOnce({ userId: 'user-1', client, constants: {}, platform: 'web' });
+  expect(client.__insert).toHaveBeenCalledWith({
+    user_id: 'user-1', event: 'app_open', app_version: null, platform: null,
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run from the worktree root: `npm test -- appOpenEvents`
+Expected: FAIL — module missing.
+
+- [ ] **Step 3: Implement the service**
+
+`src/services/appOpenEvents.js`:
+
+```js
+// One fire-and-forget app_open event per cold start, emitted after auth
+// restore. No PII beyond user_id / app version / platform; every failure
+// is swallowed — evidence collection must never affect app behavior.
+let hasReportedAppOpenThisLaunch = false;
+
+export const resetAppOpenReportForTests = () => {
+  hasReportedAppOpenThisLaunch = false;
+};
+
+const resolveClient = (client) => client || require('./supabaseClient').supabase;
+
+const resolveAppVersion = (constants) => {
+  const resolved = constants || require('expo-constants').default;
+  const version = resolved?.expoConfig?.version;
+  return typeof version === 'string' && version.trim() ? version.trim() : null;
+};
+
+const resolvePlatform = (platform) => {
+  const resolved = platform || require('react-native').Platform.OS;
+  return resolved === 'ios' || resolved === 'android' ? resolved : null;
+};
+
+export const reportAppOpenOnce = async ({ userId, client, constants, platform } = {}) => {
+  if (hasReportedAppOpenThisLaunch) {
+    return { reported: false, reason: 'already-reported' };
+  }
+  if (!userId) {
+    return { reported: false, reason: 'no-user' };
+  }
+  try {
+    const supabaseClient = resolveClient(client);
+    const { data: { session } = {} } = await supabaseClient.auth.getSession();
+    if (!session?.user?.id || session.user.id !== userId) {
+      // Offline restore keeps user without a live session; RLS would
+      // reject the insert anyway. Try again next launch.
+      return { reported: false, reason: 'no-session' };
+    }
+    hasReportedAppOpenThisLaunch = true;
+    const { error } = await supabaseClient.from('app_events').insert({
+      user_id: userId,
+      event: 'app_open',
+      app_version: resolveAppVersion(constants),
+      platform: resolvePlatform(platform),
+    });
+    if (error) {
+      console.log('[AppOpen] insert failed:', error?.message);
+      return { reported: false, reason: 'error' };
+    }
+    return { reported: true };
+  } catch (error) {
+    hasReportedAppOpenThisLaunch = true;
+    console.log('[AppOpen] unexpected failure:', error?.message);
+    return { reported: false, reason: 'error' };
+  }
+};
+```
+
+(Note the flag is set only once a live session is confirmed — a launch that starts offline and later signs in still reports; after any attempt, failures are terminal for the launch.)
+
+- [ ] **Step 4: Implement the reporter and mount it**
+
+`src/components/AppOpenReporter.js`:
+
+```js
+import { useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { reportAppOpenOnce } from '../services/appOpenEvents';
+
+// Renders nothing; emits at most one app_open event per launch once auth
+// has restored a known user.
+const AppOpenReporter = () => {
+  const { user, loading } = useAuth();
+  const userId = user?.id || null;
+
+  useEffect(() => {
+    if (loading || !userId) return;
+    reportAppOpenOnce({ userId });
+  }, [loading, userId]);
+
+  return null;
+};
+
+export default AppOpenReporter;
+```
+
+(Confirm `useAuth()` exposes `user` and `loading` — `AppNavigator.js:421` already destructures exactly these.) Mount it in `App.js` directly inside `AuthProvider`, as a sibling rendered alongside the existing children (provider order is load-bearing — do not reorder anything; add `<AppOpenReporter />` immediately before the navigator subtree inside the innermost point that is below `AuthProvider`).
+
+- [ ] **Step 5: Run the gates**
+
+Run: `npm test -- appOpenEvents` → PASS. Then the neighbor suites that mount App-level trees: `npm test -- AuthContext BootstrapGate` → PASS (catches a bad mount). Then `npm run lint` → clean.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/services/appOpenEvents.js src/components/AppOpenReporter.js App.js __tests__/appOpenEvents.test.js
+git commit -m "feat(events): emit one app_open event per launch after auth restore"
+```
+
+---
+
+### Task 11: Deploy runbook (coordinator + Jim; no code)
+
+Nothing here is dispatched to an implementer. The coordinator walks this with Jim, in order, each step gated on the previous:
+
+- [ ] **0. Part A gates (unchanged, critical):** Django `fix/mobile-report-real-users` deployed on Render → frontend `fix/mobile-report-real-users` then `feat/mobile-ops-usability` merged to `main` and deployed on Vercel. Remind Jim of the outstanding manual browser checklist in `.superpowers/sdd/2026-08-11-mobile-ops-usability/progress.md` (items 1–6 + version-card reflow) before the production merge.
+- [ ] **1. Django Part B:** merge `feat/mobile-rollout-waves` → `fix/mobile-report-real-users` (or directly to `main` if Part A already merged), deploy on Render. Safe: all new fields tolerated-absent.
+- [ ] **2. Supabase migrations:** merge `feat/rollout-waves-app-open` to `main` (app repo), apply the three migrations to hosted (`supabase db push` from the linked worktree — same flow as `20260812120000`), then run `supabase/verification/rollout-waves-post-apply-verification.sql` against hosted and record the output in the repo build log.
+- [ ] **3. Manifests — JIM GATE:** run `generate-wave-manifests.sql` against hosted (read-only), send Jim the two `*-review.csv` files + counts + the proposed launch dates (**2026-08-08** Primary, **2026-08-11** ECD). STOP until Jim confirms lists and dates.
+- [ ] **4. Loader:** run `load-wave-manifest.sql` for ZZ Primary 2026 then ZZ ECD 2026 with `allow_moves=false`, `source_note='manifest <today's date> <file>'`. Paste both load-report NOTICE lines to Jim. Verify: board's `wave_options` shows both waves; per-wave live counts match the manifests.
+- [ ] **5. Frontend:** merge `feat/mobile-rollout-waves` → `main`, deploy. Verify wave filter + strip on production data.
+- [ ] **6. Mobile OTA:** merge `feat/rollout-waves-app-open` is already in `main` (step 2); from Jim's app checkout on `main`, `npm run eas:update` (production channel; the script enforces branch `main` + up-to-date). `runtimeVersion.policy: appVersion` means the update reaches runtime `1.1.1` — check the EAS dashboard for any other live runtime/channel (e.g. `wave2-canary`) and publish per live runtime/channel as needed. Devices emit `app_open` from launch N+1.
+- [ ] **7. Docs:** record the deploy in the app repo `documentation/build-log.md` house style; note in the frontend how-to panel review that app_open evidence begins at OTA date (already written in Task 9's copy).
+
+---
+
+## Verification gates (every code task, coordinator re-runs before commit)
+
+| Repo | Gates |
+|---|---|
+| Supabase/app worktree | `npm test -- __tests__/<touched>.test.js`; Task 5 additionally the combined postgres harness |
+| Django | `manage.py test api.tests_mobile_operational_reports api.tests_mobile_reports -v 2` via the 2025 venv python |
+| Frontend | `npm run test:mobile` && `npx tsc --noEmit --incremental false` && scoped `npx eslint` |
+| Mobile app | `npm test -- appOpenEvents AuthContext BootstrapGate` && `npm run lint` |
+
+Codex sandbox notes (from Part A): forwarders cannot write the linked-worktree git index — the coordinator re-runs gates and commits with the exact message given per task. If `npx tsx`/`npm run test:mobile` hits sandbox IPC EPERM inside codex, `node --import tsx --test lib/mobile/*.test.ts lib/mobile/*/*.test.ts` is the accepted equivalent; plain `npx tsc --noEmit` can fail on a stale incremental cache — always pass `--incremental false`.
+
+## Task dependency order
+
+1 → 2 → 3 → 4 → 5 (Supabase chain, sequential) · 6 (Django, independent of 1–5) · 7 → 8 → 9 (frontend chain, independent of 1–6) · 10 (mobile, after 2 lands for column names; code-independent otherwise) · 11 last, with Jim.
