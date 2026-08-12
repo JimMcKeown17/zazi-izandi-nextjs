@@ -38,6 +38,8 @@ export type UserHealthPredicate =
   | "all"
   | "has_blockers"
   | "active"
+  | "activated"
+  | "quiet"
   | "reached"
   | "not_started";
 
@@ -77,6 +79,25 @@ export function hasRecentAppActivity(user: MobileUserHealthRow): boolean {
   return hasUsageEvidenceInWindow(user);
 }
 
+export function hasEverUsedApp(user: MobileUserHealthRow): boolean {
+  return (
+    hasUsageEvidenceInWindow(user) ||
+    (user.last_ever_activity_at ?? null) !== null
+  );
+}
+
+export function hasEverRegisteredDevice(user: MobileUserHealthRow): boolean {
+  return user.ever_registered_device === true || user.app_device.registered;
+}
+
+export function isQuiet(user: MobileUserHealthRow): boolean {
+  return hasEverUsedApp(user) && !hasRecentAppActivity(user);
+}
+
+export function hasEverOpenedApp(user: MobileUserHealthRow): boolean {
+  return (user.last_app_open_at ?? null) !== null;
+}
+
 export function getUserAttentionReasons(
   user: MobileUserHealthRow
 ): UserAttentionReason[] {
@@ -98,8 +119,11 @@ export function getUserAttentionReasons(
 }
 
 export function getActivityStage(user: MobileUserHealthRow): ActivityStage {
-  if (hasUsageEvidenceInWindow(user)) return "active";
-  if (user.app_device.registered) return "reached";
+  if (hasEverUsedApp(user)) return "active";
+  if (hasEverRegisteredDevice(user)) return "reached";
+  // A signed-in app open proves reach even when no push token ever
+  // existed (e.g. notification permission denied) — round-8 finding.
+  if (hasEverOpenedApp(user)) return "reached";
   if (user.auth.authenticated_after_provisioning) return "reached";
   return "not_started";
 }
@@ -158,7 +182,13 @@ export function matchesUserHealthPredicate(
   if (predicate === "has_blockers") {
     return getUserAttentionReasons(user).length > 0;
   }
-  return getActivityStage(user) === predicate;
+  // WINDOWED: "active" is what the "Active · Nd" summary tile links to;
+  // its count and drill-down must reconcile with summary.active_in_window.
+  if (predicate === "active") return hasRecentAppActivity(user);
+  // LIFETIME: the durable stage axis.
+  if (predicate === "activated") return getActivityStage(user) === "active";
+  if (predicate === "quiet") return isQuiet(user);
+  return getActivityStage(user) === predicate; // "reached" | "not_started"
 }
 
 export function selectBoardRows(

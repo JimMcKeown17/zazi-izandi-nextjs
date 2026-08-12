@@ -6,13 +6,18 @@ import {
   getProvisioningAuthenticationPresentation,
   getUserAttentionReasons,
   hasSeededDataReady,
+  isQuiet,
   matchesUserHealthPredicate,
   selectBoardRows,
   sortUserHealthRows,
 } from "./presentation";
-import { VALID_MOBILE_USER_HEALTH_PAYLOAD } from "./test-fixtures";
+import {
+  LEGACY_MOBILE_USER_HEALTH_PAYLOAD,
+  VALID_MOBILE_USER_HEALTH_PAYLOAD,
+} from "./test-fixtures";
 
 const base = VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0];
+const legacyBase = LEGACY_MOBILE_USER_HEALTH_PAYLOAD.users[0];
 const noDevice = {
   registered: false as const,
   platform: null,
@@ -53,14 +58,14 @@ test("usage evidence in the window means active", () => {
 });
 
 test("without in-window activity, remaining reach evidence yields reached, not not_started", () => {
-  const outsideWindow = { ...base, activity: noActivity };
+  const outsideWindow = { ...legacyBase, activity: noActivity };
   assert.equal(getActivityStage(outsideWindow), "reached");
 });
 
-test("stage is current-evidence: an invalidated device token with no durable auth proof regresses to not_started", () => {
+test("legacy current evidence can regress when no lifetime fields exist", () => {
   const deviceLost = {
-    ...base,
-    auth: { ...base.auth, authenticated_after_provisioning: false },
+    ...legacyBase,
+    auth: { ...legacyBase.auth, authenticated_after_provisioning: false },
     app_device: noDevice,
     activity: noActivity,
   };
@@ -69,8 +74,8 @@ test("stage is current-evidence: an invalidated device token with no durable aut
 
 test("a provisioning-check timestamp alone does not advance the stage", () => {
   const preCutoff = {
-    ...base,
-    auth: { ...base.auth, authenticated_after_provisioning: false },
+    ...legacyBase,
+    auth: { ...legacyBase.auth, authenticated_after_provisioning: false },
     app_device: noDevice,
     activity: noActivity,
   };
@@ -78,14 +83,103 @@ test("a provisioning-check timestamp alone does not advance the stage", () => {
 });
 
 test("post-provisioning authentication or a device signal reaches the EA without proving usage", () => {
-  const authOnly = { ...base, app_device: noDevice, activity: noActivity };
+  const authOnly = {
+    ...legacyBase,
+    app_device: noDevice,
+    activity: noActivity,
+  };
   assert.equal(getActivityStage(authOnly), "reached");
   const deviceOnly = {
-    ...base,
-    auth: { ...base.auth, authenticated_after_provisioning: false },
+    ...legacyBase,
+    auth: {
+      ...legacyBase.auth,
+      authenticated_after_provisioning: false,
+    },
     activity: noActivity,
   };
   assert.equal(getActivityStage(deviceOnly), "reached");
+});
+
+test("stage is a lifetime ratchet: shrinking the window cannot regress active", () => {
+  const outsideWindow = {
+    ...base,
+    last_ever_activity_at: "2026-07-01T09:00:00.000Z",
+    ever_registered_device: false,
+    first_app_open_at: null,
+    last_app_open_at: null,
+    auth: { ...base.auth, authenticated_after_provisioning: false },
+    app_device: noDevice,
+    activity: noActivity,
+  };
+
+  assert.equal(getActivityStage(outsideWindow), "active");
+});
+
+test("stage is a lifetime ratchet: token invalidation cannot regress reached", () => {
+  const invalidatedDevice = {
+    ...base,
+    first_ever_activity_at: null,
+    last_ever_activity_at: null,
+    ever_registered_device: true,
+    first_app_open_at: null,
+    last_app_open_at: null,
+    auth: { ...base.auth, authenticated_after_provisioning: false },
+    app_device: noDevice,
+    activity: noActivity,
+  };
+
+  assert.equal(getActivityStage(invalidatedDevice), "reached");
+});
+
+test("a signed-in app open alone proves reached", () => {
+  const appOpenOnly = VALID_MOBILE_USER_HEALTH_PAYLOAD.users.find(
+    (user) => user.display_name === "Ayanda Ndlovu"
+  );
+  assert.ok(appOpenOnly);
+
+  assert.equal(getActivityStage(appOpenOnly), "reached");
+  assert.equal(matchesUserHealthPredicate(appOpenOnly, "active"), false);
+  assert.equal(matchesUserHealthPredicate(appOpenOnly, "activated"), false);
+});
+
+test("legacy rows without lifetime fields keep their windowed stage", () => {
+  assert.equal(getActivityStage(legacyBase), "active");
+  assert.equal(
+    getActivityStage({ ...legacyBase, activity: noActivity }),
+    "reached"
+  );
+});
+
+test("quiet means activated ever but silent in the window", () => {
+  const quiet = { ...base, activity: noActivity };
+  const windowedActive = base;
+  const neverActivated = VALID_MOBILE_USER_HEALTH_PAYLOAD.users[3];
+
+  assert.equal(isQuiet(quiet), true);
+  assert.equal(isQuiet(windowedActive), false);
+  assert.equal(isQuiet(neverActivated), false);
+});
+
+test("the active predicate stays windowed and excludes quiet rows", () => {
+  const quiet = { ...base, activity: noActivity };
+  assert.equal(matchesUserHealthPredicate(quiet, "active"), false);
+  assert.equal(matchesUserHealthPredicate(quiet, "activated"), true);
+  assert.equal(matchesUserHealthPredicate(quiet, "quiet"), true);
+
+  assert.equal(matchesUserHealthPredicate(base, "active"), true);
+  assert.equal(matchesUserHealthPredicate(base, "activated"), true);
+  assert.equal(matchesUserHealthPredicate(base, "quiet"), false);
+});
+
+test("the active predicate count reconciles with the summary tile count", () => {
+  const activeRows = VALID_MOBILE_USER_HEALTH_PAYLOAD.users.filter((user) =>
+    matchesUserHealthPredicate(user, "active")
+  );
+
+  assert.equal(
+    activeRows.length,
+    VALID_MOBILE_USER_HEALTH_PAYLOAD.summary.active_in_window
+  );
 });
 
 test("blockers are reported independently of the stage", () => {
