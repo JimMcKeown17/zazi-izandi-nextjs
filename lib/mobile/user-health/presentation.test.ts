@@ -7,6 +7,7 @@ import {
   getUserAttentionReasons,
   hasSeededDataReady,
   matchesUserHealthPredicate,
+  selectBoardRows,
   sortUserHealthRows,
 } from "./presentation";
 import { VALID_MOBILE_USER_HEALTH_PAYLOAD } from "./test-fixtures";
@@ -201,4 +202,26 @@ test("last_activity sort compares mixed offsets and fractional precision chronol
     ),
     ["Offset later", "Fraction later", "Fraction earlier", "Offset earlier"]
   );
+});
+
+test("selectBoardRows with the immediate query is what exports must use", () => {
+  const users = VALID_MOBILE_USER_HEALTH_PAYLOAD.users;
+  const narrowed = selectBoardRows(users, {
+    query: users[1].user_id,
+    predicate: "all",
+    cohort: "all",
+    sortKey: "urgency",
+  });
+  assert.deepEqual(narrowed.map((user) => user.user_id), [users[1].user_id]);
+});
+
+test("selectBoardRows applies query, predicate, cohort, and sort in one selection", () => {
+  const rows = selectBoardRows(VALID_MOBILE_USER_HEALTH_PAYLOAD.users, {
+    query: "example.org",
+    predicate: "has_blockers",
+    cohort: "seeded",
+    sortKey: "name",
+  });
+
+  assert.deepEqual(rows.map((user) => user.display_name), ["Lihle Jacobs"]);
 });

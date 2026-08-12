@@ -7,6 +7,14 @@ export type UserAttentionReason =
   | "seeded_groups_missing"
   | "seeded_memberships_incomplete";
 
+export const ATTENTION_LABELS: Record<UserAttentionReason, string> = {
+  auth_blocked: "Auth blocked",
+  seeded_classes_missing: "Class missing",
+  seeded_children_missing: "Children missing",
+  seeded_groups_missing: "Groups missing",
+  seeded_memberships_incomplete: "Group memberships incomplete",
+};
+
 export type ActivityStage = "not_started" | "reached" | "active";
 export type UserHealthSortKey =
   | "urgency"
@@ -19,6 +27,13 @@ export type UserHealthPredicate =
   | "active"
   | "reached"
   | "not_started";
+
+export interface BoardSelection {
+  query: string;
+  predicate: UserHealthPredicate;
+  cohort: MobileUserHealthRow["data"]["expectation"] | "all";
+  sortKey: UserHealthSortKey;
+}
 
 export interface ProvisioningAuthenticationPresentation {
   label: string;
@@ -131,6 +146,27 @@ export function matchesUserHealthPredicate(
     return getUserAttentionReasons(user).length > 0;
   }
   return getActivityStage(user) === predicate;
+}
+
+export function selectBoardRows(
+  users: MobileUserHealthRow[],
+  selection: BoardSelection
+): MobileUserHealthRow[] {
+  const needle = selection.query.trim().toLowerCase();
+  const filtered = users.filter((user) => {
+    const matchesQuery =
+      needle.length === 0 ||
+      user.display_name.toLowerCase().includes(needle) ||
+      (user.email?.toLowerCase().includes(needle) ?? false) ||
+      user.user_id.toLowerCase() === needle;
+    return (
+      matchesQuery &&
+      matchesUserHealthPredicate(user, selection.predicate) &&
+      (selection.cohort === "all" ||
+        user.data.expectation === selection.cohort)
+    );
+  });
+  return sortUserHealthRows(filtered, selection.sortKey);
 }
 
 export function getProvisioningAuthenticationPresentation(

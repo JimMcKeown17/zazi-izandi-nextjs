@@ -209,6 +209,9 @@ export default async function MobileUserHealthPage({
         key={`${initialPredicate}|${initialCohort}|${initialQuery}`}
         users={data.users}
         days={data.days}
+        generatedAt={data.generated_at}
+        schoolId={data.applied_filters.school_id}
+        schoolName={selectedSchool?.name ?? null}
         initialQuery={initialQuery}
         initialPredicate={initialPredicate}
         initialCohort={initialCohort}

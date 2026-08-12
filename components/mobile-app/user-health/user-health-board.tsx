@@ -1,26 +1,32 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   CircleDashed,
+  ClipboardCopy,
   Clock3,
+  Download,
   Search,
   Smartphone,
 } from "lucide-react";
 
 import { getEmploymentStatusDisplay } from "@/lib/mobile/presentation";
 import {
+  buildChaseListCsv,
+  buildChaseListText,
+  type ChaseListContext,
+} from "@/lib/mobile/user-health/export";
+import {
+  ATTENTION_LABELS,
   getActivityStage,
   getProvisioningAuthenticationPresentation,
   getUserAttentionReasons,
   hasSeededDataReady,
-  matchesUserHealthPredicate,
-  sortUserHealthRows,
+  selectBoardRows,
   type ActivityStage,
-  type UserAttentionReason,
   type UserHealthPredicate,
   type UserHealthSortKey,
 } from "@/lib/mobile/user-health/presentation";
@@ -37,14 +43,6 @@ const DATE_TIME_FORMAT = new Intl.DateTimeFormat("en-ZA", {
   minute: "2-digit",
   hour12: false,
 });
-
-const ATTENTION_LABELS: Record<UserAttentionReason, string> = {
-  auth_blocked: "Auth blocked",
-  seeded_classes_missing: "Class missing",
-  seeded_children_missing: "Children missing",
-  seeded_groups_missing: "Groups missing",
-  seeded_memberships_incomplete: "Group memberships incomplete",
-};
 
 const STAGE_LABELS: Record<Exclude<ActivityStage, "active">, string> = {
   reached: "Onboarding",
@@ -256,15 +254,45 @@ function AttentionReasons({ user }: { user: MobileUserHealthRow }) {
   );
 }
 
+type ChaseListCopyState = "idle" | "copying" | "copied" | "failed";
+
+export async function copyChaseListToClipboard(
+  rows: MobileUserHealthRow[],
+  context: ChaseListContext
+): Promise<Extract<ChaseListCopyState, "copied" | "failed">> {
+  try {
+    await navigator.clipboard.writeText(buildChaseListText(rows, context));
+    return "copied";
+  } catch {
+    return "failed";
+  }
+}
+
+function getSchoolSlug(schoolName: string | null): string {
+  if (schoolName === null) return "all-schools";
+  return (
+    schoolName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "school"
+  );
+}
+
 export function UserHealthBoard({
   users,
   days,
+  generatedAt,
+  schoolId,
+  schoolName,
   initialQuery = "",
   initialPredicate = "all",
   initialCohort = "all",
 }: {
   users: MobileUserHealthRow[];
   days: number;
+  generatedAt: string;
+  schoolId: string | null;
+  schoolName: string | null;
   initialQuery?: string;
   initialPredicate?: UserHealthPredicate;
   initialCohort?: MobileUserHealthRow["data"]["expectation"] | "all";
@@ -277,38 +305,49 @@ export function UserHealthBoard({
   >(initialCohort);
   const [sortKey, setSortKey] = useState<UserHealthSortKey>("urgency");
   const [page, setPage] = useState(1);
-  const deferredQuery = useDeferredValue(query.trim().toLowerCase());
+  const [copyState, setCopyState] = useState<ChaseListCopyState>("idle");
 
-  const filteredUsers = useMemo(
+  const rows = useMemo(
     () =>
-      users.filter((user) => {
-        const matchesQuery =
-          deferredQuery.length === 0 ||
-          user.display_name.toLowerCase().includes(deferredQuery) ||
-          (user.email?.toLowerCase().includes(deferredQuery) ?? false) ||
-          user.user_id.toLowerCase().includes(deferredQuery);
-        const matchesPredicate = matchesUserHealthPredicate(user, predicate);
-        const matchesExpectation =
-          expectationFilter === "all" ||
-          user.data.expectation === expectationFilter;
-        return matchesQuery && matchesPredicate && matchesExpectation;
+      selectBoardRows(users, {
+        query,
+        predicate,
+        cohort: expectationFilter,
+        sortKey,
       }),
-    [deferredQuery, expectationFilter, predicate, users]
+    [expectationFilter, predicate, query, sortKey, users]
   );
 
-  const sortedUsers = useMemo(
-    () => sortUserHealthRows(filteredUsers, sortKey),
-    [filteredUsers, sortKey]
-  );
-
-  const pageCount = Math.max(1, Math.ceil(sortedUsers.length / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
   const start = (safePage - 1) * PAGE_SIZE;
-  const visibleUsers = sortedUsers.slice(start, start + PAGE_SIZE);
+  const visibleUsers = rows.slice(start, start + PAGE_SIZE);
+  const context = { days, generatedAt, schoolId, schoolName };
+
+  const handleDownload = () => {
+    const blob = new Blob([buildChaseListCsv(rows, context)], {
+      type: "text/csv",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `user-health-chase-list-${days}d-${getSchoolSlug(schoolName)}-${generatedAt.slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCopy = async () => {
+    setCopyState("copying");
+    const result = await copyChaseListToClipboard(rows, context);
+    setCopyState(result);
+    if (result === "copied") {
+      window.setTimeout(() => setCopyState("idle"), 2_000);
+    }
+  };
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-[minmax(16rem,1fr)_12rem_12rem_12rem_auto] lg:items-end">
+      <div className="grid gap-3 border-b border-slate-200 p-4 lg:grid-cols-[minmax(14rem,1fr)_10.5rem_10.5rem_10rem_minmax(13rem,auto)] lg:items-end">
         <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Find a youth
           <span className="relative">
@@ -390,10 +429,34 @@ export function UserHealthBoard({
             <option value="school">School</option>
           </select>
         </label>
-        <p className="pb-2 text-xs font-medium tabular-nums text-slate-500">
-          {filteredUsers.length.toLocaleString("en-ZA")} of{" "}
-          {users.length.toLocaleString("en-ZA")} users
-        </p>
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          <p className="w-full text-xs font-medium tabular-nums text-slate-500 lg:text-right">
+            {rows.length.toLocaleString("en-ZA")} of{" "}
+            {users.length.toLocaleString("en-ZA")} users
+          </p>
+          <button
+            type="button"
+            onClick={handleDownload}
+            className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            <Download className="h-3.5 w-3.5" /> Download CSV
+          </button>
+          <button
+            type="button"
+            onClick={handleCopy}
+            disabled={copyState === "copying"}
+            className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md bg-primary px-2.5 text-xs font-semibold text-white shadow-sm hover:bg-primary/90 disabled:opacity-60"
+          >
+            <ClipboardCopy className="h-3.5 w-3.5" />
+            {copyState === "copying"
+              ? "Copying…"
+              : copyState === "copied"
+                ? "Copied ✓"
+                : copyState === "failed"
+                  ? "Copy failed — tap to retry"
+                  : "Copy list"}
+          </button>
+        </div>
       </div>
 
       {visibleUsers.length === 0 ? (
