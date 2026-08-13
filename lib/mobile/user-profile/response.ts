@@ -4,29 +4,41 @@ import type { MobileUserProfileResponse } from "./types";
 export type MobileUserProfileResult =
   | { ok: true; data: MobileUserProfileResponse }
   | { ok: false; status: 404; notFound: true }
+  | { ok: false; status: 422; dataQuality: true }
   | { ok: false; status: number; message: string };
 
-function isExactNotFoundPayload(payload: unknown): boolean {
+function isExactErrorPayload(payload: unknown, error: string): boolean {
   if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
     return false;
   }
   const record = payload as Record<string, unknown>;
-  return (
-    Object.keys(record).length === 1 && record.error === "user not found"
-  );
+  return Object.keys(record).length === 1 && record.error === error;
 }
 
 export async function decodeMobileUserProfileResponse(
   response: Response
 ): Promise<MobileUserProfileResult> {
   if (!response.ok) {
-    if (response.status === 404) {
+    if (response.status === 404 || response.status === 422) {
       try {
-        if (isExactNotFoundPayload(await response.json())) {
+        const payload: unknown = await response.json();
+        if (
+          response.status === 404 &&
+          isExactErrorPayload(payload, "user not found")
+        ) {
           return { ok: false, status: 404, notFound: true };
         }
+        if (
+          response.status === 422 &&
+          isExactErrorPayload(
+            payload,
+            "mobile reporting data integrity issue"
+          )
+        ) {
+          return { ok: false, status: 422, dataQuality: true };
+        }
       } catch {
-        // A route-level HTML or empty 404 is a service failure, not user absence.
+        // An HTML or empty error response is a service failure, not a stable user state.
       }
     }
     return {

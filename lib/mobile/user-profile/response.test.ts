@@ -26,6 +26,35 @@ test("only the exact endpoint 404 body maps to the not-found variant", async () 
   );
 });
 
+test("the exact integrity-error 422 maps to the data-quality variant", async () => {
+  assert.deepEqual(
+    await decodeMobileUserProfileResponse(
+      new Response(
+        JSON.stringify({ error: "mobile reporting data integrity issue" }),
+        { status: 422 }
+      )
+    ),
+    { ok: false, status: 422, dataQuality: true }
+  );
+});
+
+test("unknown 4xx and 5xx statuses remain generic service errors", async () => {
+  for (const status of [409, 500]) {
+    assert.deepEqual(
+      await decodeMobileUserProfileResponse(
+        new Response(JSON.stringify({ error: "unexpected failure" }), {
+          status,
+        })
+      ),
+      {
+        ok: false,
+        status,
+        message: "The user profile service could not return user data.",
+      }
+    );
+  }
+});
+
 test("route-level HTML and different-JSON 404 responses stay service errors", async () => {
   const expected = {
     ok: false,

@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { ClockHistoryTable } from "@/components/mobile-app/user-profile/clock-history-table";
 import { EvidencePanel } from "@/components/mobile-app/user-profile/evidence-panel";
 import { LifetimeSummary } from "@/components/mobile-app/user-profile/lifetime-summary";
+import { ProfileDataQuality } from "@/components/mobile-app/user-profile/profile-data-quality";
 import { ProfileHeader } from "@/components/mobile-app/user-profile/profile-header";
 import { ProfileHowToPanel } from "@/components/mobile-app/user-profile/profile-how-to-panel";
 import { ProfileNotFound } from "@/components/mobile-app/user-profile/profile-not-found";
@@ -24,6 +25,10 @@ export default async function MobileUserProfilePage({
 
   if (!result.ok && "notFound" in result) {
     return <ProfileNotFound />;
+  }
+
+  if (!result.ok && "dataQuality" in result) {
+    return <ProfileDataQuality />;
   }
 
   if (!result.ok) {

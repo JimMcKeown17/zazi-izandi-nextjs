@@ -42,6 +42,7 @@ export function WeekdaySessionStrip({
                 <span
                   data-session-cell="true"
                   data-count={count}
+                  role="img"
                   aria-label={`${date}: ${count} sessions`}
                   className={`mx-auto block h-9 w-9 rounded-md text-xs font-semibold leading-9 ${cellColor(count)} ${cellTextColor(count)}`}
                 >

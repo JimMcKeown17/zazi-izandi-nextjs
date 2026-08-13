@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ClockHistoryTable } from "@/components/mobile-app/user-profile/clock-history-table";
 import { EvidencePanel } from "@/components/mobile-app/user-profile/evidence-panel";
 import { LifetimeSummary } from "@/components/mobile-app/user-profile/lifetime-summary";
+import { ProfileDataQuality } from "@/components/mobile-app/user-profile/profile-data-quality";
 import { ProfileHeader } from "@/components/mobile-app/user-profile/profile-header";
 import { ProfileHowToPanel } from "@/components/mobile-app/user-profile/profile-how-to-panel";
 import { ProfileNotFound } from "@/components/mobile-app/user-profile/profile-not-found";
@@ -248,7 +249,7 @@ test("the weekday session strip renders all ten seeded dates and counts", () => 
   );
 
   assert.equal((html.match(/data-session-cell="true"/g) ?? []).length, 10);
-  assert.doesNotMatch(html, /role="img"/);
+  assert.equal((html.match(/role="img"/g) ?? []).length, 10);
   dates.forEach((date, index) => {
     assert.ok(html.includes(`aria-label="${date}: ${cells[index]} sessions"`));
     assert.ok(html.includes(`data-count="${cells[index]}"`));
@@ -337,6 +338,21 @@ test("malformed and unknown user ids share one indistinguishable not-found state
   assert.equal(malformedHtml, unknownUuidHtml);
   assert.match(malformedHtml, /data-testid="mobile-user-profile-not-found"/);
   assert.match(visibleText(malformedHtml), /User profile not found/);
+});
+
+test("the data-quality state explains the per-EA repair without outage wording", () => {
+  const html = renderToStaticMarkup(createElement(ProfileDataQuality));
+  const text = visibleText(html);
+
+  assert.match(html, /data-testid="mobile-user-profile-data-quality"/);
+  assert.match(text, /Profile data needs repair/);
+  assert.match(text, /clock history contains invalid entries/);
+  assert.match(text, /sign-out earlier than its sign-in/);
+  assert.match(text, /data problem with this EA's records/);
+  assert.match(text, /repair by the engineering team/);
+  assert.match(text, /Other EAs are unaffected/);
+  assert.doesNotMatch(text, /service unavailable|outage/i);
+  assert.doesNotMatch(text, /\b(?:RPC|invariant|mastered|learned)\b/i);
 });
 
 test("the sidebar exposes Users to capability holders in both nav variants and supports mobile overflow", () => {
