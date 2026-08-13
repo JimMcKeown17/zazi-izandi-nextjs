@@ -164,19 +164,24 @@ assignment. Confirmed mechanism:
   expectation CASE (roster school `school_type = 'ecd'` → self_setup) can
   never fire — every ECD EA renders "Unattributed" / "unknown".
 
-Fix direction (server-only; no app changes, no OTA, no mixed-fleet risk):
+Fix direction (server-only; no app changes, no OTA, no mixed-fleet risk).
+Design spec: docs/superpowers/specs/2026-08-13-assignment-projection-design.md
+(v2 after adversarial review round 1 — trigger/soft-close design withdrawn:
+the domain tables turned out to be the RLS authorization substrate and
+`unassigned_at` a device revocation signal, so v1 would have caused
+irreversible access loss; see the spec's "Why not triggers"):
 
-- [ ] Projection triggers on `staff_children` (and the class-ownership path)
-  that maintain the read model, plus an idempotent catch-up backfill.
-  Design considerations before build: map `staff_children` hard DELETE →
-  `unassigned_at` soft-close (preserves transfer history); SECURITY DEFINER
-  trigger function with pinned search_path per repo convention; verify the
-  group tables don't share the same drift pattern; inventory read-model
-  consumers (user-health v2, grouping/letter-mastery RPCs, in-flight per-EA
-  profile RPC) and expect their numbers to jump when the backfill lands —
-  tell the team beforehand; coordinate migration timestamps with the
-  `feat/ea-profile-rpc` workstream; postgres behavioral-harness coverage for
-  insert, delete-mapping, and idempotency.
+- [ ] Insert-only reconciliation: a SECURITY DEFINER
+  `reconcile_assignment_read_models()` function running three idempotent
+  INSERT…SELECT statements (canonical lock order, timestamp clamps), called
+  once in the migration as the catch-up backfill (854 + 34 + 40 rows,
+  measured authorization-neutral) and hourly via pg_cron thereafter; plus a
+  permanent drift-monitoring view. Never writes `unassigned_at` — it cannot
+  revoke access. Groups drift too (40 groups / 8 EAs), so all three domain
+  tables are covered. Unassignment/handover semantics are Phase 2, deferred,
+  and require app-side changes. Coordinate migration timestamps with the
+  `feat/ea-profile-rpc` workstream; brief the team that Server Data numbers
+  jump on deploy.
 - [ ] Populate `school_id` on the ECD roster rows (centres as schools), and
   derive expectation from rollout-wave membership (already joined in the
   RPC) instead of roster school type so cohort classification stops
