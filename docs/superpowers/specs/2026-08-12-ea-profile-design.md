@@ -110,7 +110,7 @@ The RPC returns the payload for ANY uuid (identity null when unknown); populatio
 
 ### Deploy order
 
-Additive RPC applied hosted first (same psql+ledger flow as Part B, post-apply verifier extended) → Django (new endpoint; nothing existing changes) → frontend. No tolerate-window complexity: the endpoint is new, with no legacy consumers; rollback of any layer = redeploy previous release.
+Forward: additive RPC applied hosted first (same psql+ledger flow as Part B, post-apply verifier extended) → Django (new endpoint; nothing existing changes) → frontend. **Rollback is REVERSE order**: frontend first, then Django — once the frontend ships, rolling Django back alone turns every profile request into a route-level 404, so the frontend must additionally treat only the endpoint's exact `{"error": "user not found"}` 404 body as not-found and map any other 404 (route/HTML/malformed) to the sanitized service-unavailable state. The applied RPC is additive and inert when uncalled — it is never "rolled back" by redeploying code; removing it would require a separately reviewed forward migration.
 
 ## Frontend
 
