@@ -141,27 +141,42 @@ opened-app). The redesign separates the species.
 
 Root-caused with read-only production queries after User health showed EAs
 with 13–17 app assessments but 0 classes / children / groups. Not a timing
-issue — both columns come from the same live RPC call. Confirmed mechanism:
+issue, and **not an app defect** — the mobile app faithfully writes every
+assignment. Confirmed mechanism:
 
-- The ECD self-setup flow creates classes and children (correct `created_by`,
-  children linked to classes) but **never writes `class_ea_assignments` /
-  `child_ea_assignments` rows** — 0 of the 27 ZZ ECD 2026 wave members have a
-  single assignment row, while 22 of 27 have created children. The v2
-  user-health RPC counts server data exclusively through the assignment
-  tables, so the entire self-setup cohort reads 0/0/0/0 no matter how much
-  real data they create. (`assessments.child_id` has no FK, so assessments
-  attach regardless.)
-- All 27 ECD roster rows have `school_id IS NULL`, so the expectation CASE
-  (roster school `school_type = 'ecd'` → self_setup) can never fire — every
-  ECD EA renders school "Unattributed" and expectation "unknown", escaping
-  the self-setup classification entirely.
+- The app's canonical mobile-writable assignment table is `staff_children`
+  (plus `classes.staff_id` for class ownership); `child_ea_assignments` /
+  `class_ea_assignments` are a **server-managed read model**, documented as
+  such in `offlineSync.js` ("never pushed up, never in the outbox"). The
+  2026-05-04 domain-refactor migration populated the read model with a
+  **one-time** `INSERT … SELECT … ON CONFLICT DO NOTHING` copy and installed
+  **no ongoing projection** — so every assignment written after that date
+  reaches `staff_children` and stops there. The TeamPact seed wrote the read
+  model directly, which masked the gap for seeded EAs.
+- Measured drift (2026-08-13, production): **854 child assignments across 35
+  EAs** missing from the read cache — including seeded EAs who added
+  children in-app after seeding, so this is not ECD-specific and grows
+  monotonically — plus **34 active classes across 33 EAs**. The v2
+  user-health RPC (and any other consumer of the read model) undercounts all
+  of it. 0 of 27 ZZ ECD wave members have any read-model row while 22 of 27
+  have created children.
+- Separately: all 27 ECD roster rows have `school_id IS NULL`, so the
+  expectation CASE (roster school `school_type = 'ecd'` → self_setup) can
+  never fire — every ECD EA renders "Unattributed" / "unknown".
 
-Fixes (decision needed on the first):
+Fix direction (server-only; no app changes, no OTA, no mixed-fleet risk):
 
-- [ ] Decide the ownership model for self-setup data and fix at that root:
-  either the app's self-setup flow should emit assignment rows (backfill the
-  existing ones), or the RPC's data counts should also traverse the
-  `created_by` ownership path for self-setup EAs. Cross-repo either way.
+- [ ] Projection triggers on `staff_children` (and the class-ownership path)
+  that maintain the read model, plus an idempotent catch-up backfill.
+  Design considerations before build: map `staff_children` hard DELETE →
+  `unassigned_at` soft-close (preserves transfer history); SECURITY DEFINER
+  trigger function with pinned search_path per repo convention; verify the
+  group tables don't share the same drift pattern; inventory read-model
+  consumers (user-health v2, grouping/letter-mastery RPCs, in-flight per-EA
+  profile RPC) and expect their numbers to jump when the backfill lands —
+  tell the team beforehand; coordinate migration timestamps with the
+  `feat/ea-profile-rpc` workstream; postgres behavioral-harness coverage for
+  insert, delete-mapping, and idempotency.
 - [ ] Populate `school_id` on the ECD roster rows (centres as schools), and
   derive expectation from rollout-wave membership (already joined in the
   RPC) instead of roster school type so cohort classification stops
