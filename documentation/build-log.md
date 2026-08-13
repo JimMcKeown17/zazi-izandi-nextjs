@@ -1,5 +1,29 @@
 # Zazi iZandi Website Build Log
 
+## 2026-08-13 — Part B rollout waves and app_open live end to end
+
+- The full Part B stack is deployed: Supabase wave tables with an immutability
+  guard, the rate-bounded `record_app_open` RPC, and the new
+  `mobile_user_health_domain_v2` function (the 3-arg v1 remains untouched as
+  the rollback target); Django passes wave, lifetime, and app_open fields
+  through tolerantly; and this frontend renders the rollout-wave filter,
+  wave-scoped evidence panel, lifetime-ratchet stage, and quiet predicate.
+  The app_open emitter reached existing installs via an EAS OTA update.
+- Waves loaded: ZZ Primary 2026 (152 seeded EAs, launched 2026-08-08) and
+  ZZ ECD 2026 (27 self-setup EAs, 2026-08-11).
+- Live production readings on 2026-08-13 (ZZ Primary, day 5): 121/152 (80%)
+  authenticated after provisioning — up from 62/152 on 2026-08-12 — 88 (58%)
+  activated ever, 64 (42%) reporting app_open, 18 (12%) ever-registered push
+  devices. Cross-page reconciliation holds: 89 distinct EAs clocked in on
+  13 Aug, 94 clocked in over 30 days, 61 submitted teaching sessions, and the
+  109 Active·30d tile is the union of clock/session/assessment activity over
+  all 179 accounts.
+- Known reading hazards observed during review (drives the "wave panel v2"
+  roadmap section): opened-app is instrument coverage (OTA penetration), not
+  adoption, yet sits beside adoption bars; summary tiles are population-wide
+  while the board honors the cohort/wave filter; the two 100% precondition
+  bars add noise.
+
 ## 2026-08-12 — Post-provisioning authentication proxy added
 
 - Replaced the temporary "Mobile logins — Not tracked" card with the narrower,
