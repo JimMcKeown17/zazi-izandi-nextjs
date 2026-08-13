@@ -6,7 +6,7 @@ import {
   hasRecentAppActivity,
   isQuiet,
 } from "./presentation";
-import type { MobileUserHealthRow } from "./types";
+import type { MobileRolloutWave, MobileUserHealthRow } from "./types";
 
 function csvCell(value: string | null): string {
   const raw = value ?? "";
@@ -25,6 +25,7 @@ export interface ChaseListContext {
   generatedAt: string;
   schoolId: string | null;
   schoolName: string | null;
+  wave?: MobileRolloutWave | "none";
 }
 
 export interface ChaseListOptions {
@@ -57,7 +58,7 @@ function buildLegacyChaseListCsv(
       user.email,
       user.current_school,
       user.employment_status,
-      getActivityStage(user),
+      getLegacyWindowedStage(user),
       describeBlockers(user),
       user.activity.last_activity_at,
       String(context.days),
@@ -159,7 +160,13 @@ export function buildChaseListText(
   options: ChaseListOptions = { partB: true }
 ): string {
   const scope = context.schoolName ?? "all schools";
-  const header = `User health chase list · last ${context.days} days · ${scope} · generated ${context.generatedAt}`;
+  const waveScope =
+    context.wave === "none"
+      ? " · no wave"
+      : context.wave
+        ? ` · wave ${context.wave.name}`
+        : "";
+  const header = `User health chase list · last ${context.days} days · ${scope}${waveScope} · generated ${context.generatedAt}`;
   const lines = rows.map((user) => {
     const evidence =
       options.partB === false

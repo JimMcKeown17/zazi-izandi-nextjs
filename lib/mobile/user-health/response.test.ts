@@ -240,7 +240,7 @@ test("rejects a user wave missing from wave_options", () => {
   assert.equal(mobileUserHealthSchema.safeParse(payload).success, false);
 });
 
-test("rejects duplicate and canonically unsorted wave_options", () => {
+test("rejects duplicate wave_option ids", () => {
   const duplicatePayload = structuredClone(
     VALID_MOBILE_USER_HEALTH_PAYLOAD
   ) as MobileUserHealthResponse;
@@ -249,6 +249,13 @@ test("rejects duplicate and canonically unsorted wave_options", () => {
   }
   duplicatePayload.wave_options = [primaryWave, primaryWave];
 
+  assert.equal(
+    mobileUserHealthSchema.safeParse(duplicatePayload).success,
+    false
+  );
+});
+
+test("accepts unique wave_options regardless of payload ordering", () => {
   const unsortedPayload = structuredClone(
     VALID_MOBILE_USER_HEALTH_PAYLOAD
   ) as MobileUserHealthResponse;
@@ -276,16 +283,12 @@ test("rejects duplicate and canonically unsorted wave_options", () => {
   ];
 
   assert.equal(
-    mobileUserHealthSchema.safeParse(duplicatePayload).success,
-    false
-  );
-  assert.equal(
     mobileUserHealthSchema.safeParse(unsortedPayload).success,
-    false
+    true
   );
   assert.equal(
     mobileUserHealthSchema.safeParse(idUnsortedPayload).success,
-    false
+    true
   );
 });
 

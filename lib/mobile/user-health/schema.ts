@@ -15,17 +15,6 @@ const waveSchema = z.object({
   launch_date: z.iso.date(),
 });
 
-function compareWaves(
-  left: z.infer<typeof waveSchema>,
-  right: z.infer<typeof waveSchema>
-): number {
-  return (
-    left.launch_date.localeCompare(right.launch_date) ||
-    left.name.toLowerCase().localeCompare(right.name.toLowerCase()) ||
-    left.id.localeCompare(right.id)
-  );
-}
-
 const userHealthRowSchema = z.object({
   user_id: uuid,
   display_name: z.string().min(1),
@@ -100,7 +89,7 @@ export const mobileUserHealthSchema = z
   })
   .superRefine((value, context) => {
     const waveIds = new Set<string>();
-    value.wave_options?.forEach((wave, index, waves) => {
+    value.wave_options?.forEach((wave, index) => {
       if (waveIds.has(wave.id)) {
         context.addIssue({
           code: "custom",
@@ -109,15 +98,6 @@ export const mobileUserHealthSchema = z
         });
       }
       waveIds.add(wave.id);
-
-      const previousWave = waves[index - 1];
-      if (previousWave && compareWaves(previousWave, wave) > 0) {
-        context.addIssue({
-          code: "custom",
-          path: ["wave_options", index],
-          message: "wave options must use canonical ordering",
-        });
-      }
     });
 
     const userIds = new Set<string>();

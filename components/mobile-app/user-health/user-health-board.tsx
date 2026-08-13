@@ -65,6 +65,23 @@ const DATE_FORMAT = new Intl.DateTimeFormat("en-ZA", {
   year: "numeric",
 });
 
+function compareStrings(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function compareWaveOptions(
+  left: MobileRolloutWave,
+  right: MobileRolloutWave
+): number {
+  return (
+    compareStrings(left.launch_date, right.launch_date) ||
+    compareStrings(left.name.toLowerCase(), right.name.toLowerCase()) ||
+    compareStrings(left.id, right.id)
+  );
+}
+
 const STAGE_STYLES: Record<ActivityStage, string> = {
   active: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   reached: "bg-blue-50 text-blue-700 ring-blue-200",
@@ -418,7 +435,12 @@ export function UserHealthBoard({
   const [page, setPage] = useState(1);
   const [copyState, setCopyState] = useState<ChaseListCopyState>("idle");
 
+  const sortedWaveOptions = useMemo(
+    () => [...waveOptions].sort(compareWaveOptions),
+    [waveOptions]
+  );
   const effectiveWave = lifetimeEvidence ? wave : "all";
+  const selectedWave = findWaveOption(sortedWaveOptions, effectiveWave);
   const waveRows = useMemo(
     () => filterRowsByWave(users, effectiveWave),
     [effectiveWave, users]
@@ -439,7 +461,13 @@ export function UserHealthBoard({
   const safePage = Math.min(page, pageCount);
   const start = (safePage - 1) * PAGE_SIZE;
   const visibleUsers = rows.slice(start, start + PAGE_SIZE);
-  const context = { days, generatedAt, schoolId, schoolName };
+  const context: ChaseListContext = {
+    days,
+    generatedAt,
+    schoolId,
+    schoolName,
+    wave: effectiveWave === "none" ? "none" : (selectedWave ?? undefined),
+  };
 
   const handleDownload = () => {
     const blob = new Blob(
@@ -585,7 +613,7 @@ export function UserHealthBoard({
             >
               <option value="all">All waves</option>
               <option value="none">No wave</option>
-              {waveOptions.map((option) => (
+              {sortedWaveOptions.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.name}
                 </option>
@@ -644,7 +672,7 @@ export function UserHealthBoard({
           <UserHealthWaveFunnel
             counts={funnelCounts}
             days={days}
-            wave={findWaveOption(waveOptions, wave)}
+            wave={selectedWave}
             generatedAt={generatedAt}
           />
         </div>

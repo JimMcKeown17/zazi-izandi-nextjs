@@ -106,9 +106,54 @@ test("the board exposes wave choices and a wave-scoped evidence funnel", () => {
     /ZZ Primary 2026 · launched 2026-08-08 · day 4/
   );
   assert.match(primaryText, /Accounts .* 2 · 100%/);
-  assert.match(primaryText, /Opened app \(ever\) 1 · 50%/);
+  assert.match(primaryText, /Opened app \(ever\).*?1 · 50%/);
+  assert.match(
+    primaryText,
+    /only newer app versions report this — absence is unknown, not 'never opened'/
+  );
   assert.match(primaryText, /Activated \(ever\) 2 · 100%/);
   assert.match(primaryText, /Active · 30d 1 · 50%/);
+});
+
+test("wave choices are rendered by launch date, case-folded name, then id", () => {
+  const outOfOrderWaveOptions: MobileRolloutWave[] = [
+    {
+      id: "aaaaaaaa-0000-4000-8000-000000000004",
+      name: "Aardvark",
+      launch_date: "2026-08-12",
+    },
+    {
+      id: "aaaaaaaa-0000-4000-8000-000000000002",
+      name: "alpha",
+      launch_date: "2026-08-10",
+    },
+    {
+      id: "aaaaaaaa-0000-4000-8000-000000000003",
+      name: "Beta",
+      launch_date: "2026-08-10",
+    },
+    {
+      id: "aaaaaaaa-0000-4000-8000-000000000001",
+      name: "ALPHA",
+      launch_date: "2026-08-10",
+    },
+  ];
+  const html = renderBoard({ waveOptions: outOfOrderWaveOptions });
+  const expectedIds = [
+    "aaaaaaaa-0000-4000-8000-000000000001",
+    "aaaaaaaa-0000-4000-8000-000000000002",
+    "aaaaaaaa-0000-4000-8000-000000000003",
+    "aaaaaaaa-0000-4000-8000-000000000004",
+  ];
+  const renderedPositions = expectedIds.map((id) =>
+    html.indexOf(`value="${id}"`)
+  );
+
+  assert.ok(renderedPositions.every((position) => position >= 0));
+  assert.deepEqual(
+    renderedPositions,
+    [...renderedPositions].sort((left, right) => left - right)
+  );
 });
 
 test("durable stages and windowed indicators are labelled as separate claims", () => {

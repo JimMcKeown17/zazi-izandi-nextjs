@@ -96,6 +96,15 @@ test("the degraded CSV branch preserves the exact pre-Part-B header", () => {
   assert.equal(csv.split("\r\n")[0], LEGACY_HEADER);
 });
 
+test("the degraded CSV exports the legacy windowed stage for a Part B row", () => {
+  const quiet = VALID_MOBILE_USER_HEALTH_PAYLOAD.users[1];
+  const [record] = csvRecords(
+    buildChaseListCsv([quiet], context, { partB: false })
+  );
+
+  assert.equal(record.status_in_window, "reached");
+});
+
 test("exports differing only in window or only in school scope stay distinguishable", () => {
   const users = VALID_MOBILE_USER_HEALTH_PAYLOAD.users;
   const sevenDay = buildChaseListCsv(users, { ...context, days: 7 });
@@ -145,6 +154,27 @@ test("a zero-row copy remains self-describing", () => {
   assert.match(text, /last 30 days/i);
   assert.match(text, /all schools/i);
   assert.match(text, new RegExp(VALID_MOBILE_USER_HEALTH_PAYLOAD.generated_at));
+});
+
+test("copy headers identify an active wave filter in both export modes", () => {
+  const wave = VALID_MOBILE_USER_HEALTH_PAYLOAD.wave_options[0];
+  const waveContext = { ...context, wave };
+  const noWaveContext = { ...context, wave: "none" as const };
+
+  for (const partB of [true, false]) {
+    const waveHeader = buildChaseListText([], waveContext, { partB }).split(
+      "\n"
+    )[0];
+    const noWaveHeader = buildChaseListText([], noWaveContext, {
+      partB,
+    }).split("\n")[0];
+
+    assert.match(waveHeader, /· wave ZZ Primary 2026 · generated/);
+    assert.match(noWaveHeader, /· no wave · generated/);
+  }
+
+  const allWavesHeader = buildChaseListText([], context).split("\n")[0];
+  assert.doesNotMatch(allWavesHeader, /· wave |· no wave /);
 });
 
 test("a blocked-but-active EA shows both axes in copied text", () => {

@@ -15,14 +15,16 @@ export function UserHealthWaveFunnel({
   wave,
   generatedAt,
 }: UserHealthWaveFunnelProps) {
-  const dayNumber = wave
-    ? getWaveDayNumber(wave.launch_date, generatedAt)
-    : null;
-  const heading = wave
-    ? dayNumber !== null && dayNumber >= 0
-      ? `${wave.name} · launched ${wave.launch_date} · day ${dayNumber}`
-      : `${wave.name} · launches ${wave.launch_date}`
-    : `No wave · ${counts.accounts} accounts`;
+  let heading: string;
+  if (wave !== null) {
+    const dayNumber = getWaveDayNumber(wave.launch_date, generatedAt);
+    heading =
+      dayNumber >= 0
+        ? `${wave.name} · launched ${wave.launch_date} · day ${dayNumber}`
+        : `${wave.name} · launches ${wave.launch_date}`;
+  } else {
+    heading = `No wave · ${counts.accounts} accounts`;
+  }
   const barRows = [
     {
       label: "Accounts",
@@ -36,7 +38,12 @@ export function UserHealthWaveFunnel({
       caveat:
         "positive evidence only — absence is unknown, not 'not installed'",
     },
-    { label: "Opened app (ever)", count: counts.opened_app_ever },
+    {
+      label: "Opened app (ever)",
+      count: counts.opened_app_ever,
+      caveat:
+        "only newer app versions report this — absence is unknown, not 'never opened'",
+    },
     { label: "Activated (ever)", count: counts.activated_ever },
     { label: `Active · ${days}d`, count: counts.active_in_window },
   ];

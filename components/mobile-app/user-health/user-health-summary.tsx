@@ -50,7 +50,7 @@ export function UserHealthSummary({ data }: { data: MobileUserHealthResponse }) 
     {
       label: "Device signals",
       value: data.summary.registered_devices,
-      detail: "Positive app-device evidence; not an install denominator",
+      detail: "Currently registered push devices; not an install denominator",
       icon: Smartphone,
       tone: "violet" as const,
     },

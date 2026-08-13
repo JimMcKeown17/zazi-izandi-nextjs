@@ -45,6 +45,20 @@ test("the summary presents the rollout-cutoff authentication proxy precisely", (
   assert.doesNotMatch(html, /have signed in at least once/i);
 });
 
+test("the device summary tile describes current registered push devices", () => {
+  const html = renderToStaticMarkup(
+    createElement(UserHealthSummary, {
+      data: VALID_MOBILE_USER_HEALTH_PAYLOAD,
+    })
+  );
+
+  assert.match(
+    html,
+    /Currently registered push devices; not an install denominator/
+  );
+  assert.doesNotMatch(html, /Positive app-device evidence/);
+});
+
 test("summary tiles deep-link into board filters using the payload's own scope", () => {
   const html = renderToStaticMarkup(
     createElement(UserHealthSummary, {
