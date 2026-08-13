@@ -1,5 +1,37 @@
 # Zazi iZandi Website Build Log
 
+## 2026-08-14 — Per-EA profile pages live end to end
+
+- Shipped `/mobile-app/users` (eligible-EA index) and `/mobile-app/users/<id>`
+  (full per-EA inspection profile) across all three layers: Supabase
+  `mobile_user_profile(p_user_id)` RPC (applied hosted with post-apply verifier
+  `residue_free` proof), Django `GET /api/mobile/users/<uuid>/profile/` with a
+  strict jsonschema contract, and this frontend. Profile shows identity + wave
+  day, tri-state auth/device/app-open evidence, counts-only assessment
+  coverage, five lifetime tiles, four 26-week charts (newest bar explicitly
+  labeled week-to-date), the ten-weekday session strip, recent sessions with
+  attendee-derived group names and letters/blending focus, and GPS-free clock
+  history. Attendance-ledger EA names now link to profiles; Users sits above
+  the "Schools — Soon" stub.
+- Error taxonomy is machine-coded end to end: 404 `mobile_user_not_found`
+  (malformed and unknown ids render the same not-found panel), 422
+  `mobile_user_profile_data_integrity` (corrupt clock history renders a
+  distinct "data needs repair" panel instead of a fake outage), 502 generic.
+  Django activated real RFC 3339 format checking family-wide
+  (`rfc3339-validator`) and now logs sanitized failures with bounded,
+  PII-free structured warnings.
+- Verification: 18-scenario live-Postgres harness (privilege denial,
+  cross-RPC parity with the user-health board, future-dated as-of exclusion,
+  zero residue), Django 61/61, frontend 146/146 + tsc + eslint + production
+  build. Review matrix per repo: task gates, Opus whole-branch finals, codex
+  adversarial reviews, scoped re-reviews — all converged clean. Pre-deploy
+  hosted checks: 0 invalid clock intervals, 0 letters/blend collisions.
+  Production smoke on real data passed (index, rich profile, both not-found
+  shapes proving the coded 404 path live).
+- Deferred tickets: clock-row repair command, per-ID eligibility lookup to
+  replace the per-request population scan, blocker-chip diagnosis on the
+  profile, strip-cell helper consolidation.
+
 ## 2026-08-13 — Part B rollout waves and app_open live end to end
 
 - The full Part B stack is deployed: Supabase wave tables with an immutability
