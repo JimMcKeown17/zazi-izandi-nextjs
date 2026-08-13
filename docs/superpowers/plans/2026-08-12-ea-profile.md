@@ -38,6 +38,7 @@ Coordinator re-runs gates and commits (codex sandbox cannot write linked-worktre
 
 **Files:**
 - Create: `supabase/migrations/20260813100000_mobile_user_profile_rpc.sql`
+- Modify: `scripts/seed-verification/backup-archive-sequences.json` (round-9 finding — this artifact binds a `migration_manifest_digest` over EVERY sorted migration timestamp; `__tests__/seedBackupArchiveSequences.test.js` and the runtime `scripts/provision-seed-restore.mjs` both fail closed on drift. AFTER the migration filename is final, regenerate ONLY the migration-manifest digest — recompute it the way the test does, never hard-code a value from review notes — retaining the reviewed DDL hash and the empty sequence inventory)
 - Create: `__tests__/mobileUserProfileSqlContract.test.js`
 - Read first: `supabase/migrations/20260813092000_mobile_user_health_waves_lifetime.sql` (v2 — source of the identity/lifetime/app_open/ever_device/wave CTE idioms) and `supabase/migrations/20260812120000_mobile_reporting_real_user_population.sql` (`mobile_sessions_activity`'s `heatmap_dates` idiom; `mobile_time_entries_activity`'s entry/duration/invalid-interval idioms)
 
@@ -320,12 +321,12 @@ Final SELECT: `jsonb_build_object` of all top-level keys incl. `'user_id', p_use
 
 - [ ] **Step 4: Run to verify GREEN**
 
-Run: `npm test -- __tests__/mobileUserProfileSqlContract.test.js` → PASS, and the sibling suites must not regress: `npm test -- __tests__/rolloutWavesAppOpenSqlContract.test.js __tests__/mobileRealUserReportingSqlContract.test.js __tests__/mobileOperationalReportingSqlContract.test.js __tests__/mobileSessionsActivitySqlContract.test.js` → PASS.
+Run: `npm test -- __tests__/mobileUserProfileSqlContract.test.js __tests__/seedBackupArchiveSequences.test.js __tests__/seedRestoreProvisioning.test.js` → PASS (the seed pins prove the regenerated digest; round-9 finding), and the sibling suites must not regress: `npm test -- __tests__/rolloutWavesAppOpenSqlContract.test.js __tests__/mobileRealUserReportingSqlContract.test.js __tests__/mobileOperationalReportingSqlContract.test.js __tests__/mobileSessionsActivitySqlContract.test.js` → PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20260813100000_mobile_user_profile_rpc.sql __tests__/mobileUserProfileSqlContract.test.js
+git add supabase/migrations/20260813100000_mobile_user_profile_rpc.sql __tests__/mobileUserProfileSqlContract.test.js scripts/seed-verification/backup-archive-sequences.json
 git commit -m "feat(profile): add mobile_user_profile RPC"
 ```
 
