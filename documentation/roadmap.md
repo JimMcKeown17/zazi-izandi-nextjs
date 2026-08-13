@@ -122,3 +122,40 @@ opened-app). The redesign separates the species.
   denominators on one screen). All rows are already loaded client-side, so
   this can be a client-side recompute; label the scope on the tiles either
   way.
+- [ ] Dormancy datapoint per row: "Last activity: N days ago" computed from
+  the lifetime `last_ever_activity_at` already in the payload, shown as a
+  compact line inside an existing cell (Auth/Login, or the slot freed by
+  demoting the Device Signal column — last login matters operationally;
+  push-token state does not belong in the row grid). Becomes the triage key
+  for Quiet EAs as waves mature. Frontend-only.
+- [ ] Cumulative activation curve per wave: day-by-day cumulative count of
+  wave members with their first app activity, plotted against the wave size —
+  the trajectory view ("accelerating or stalling") that the funnel snapshot
+  cannot show. Cross-repo: needs a `first_activity_at` field (min of first
+  clock / first session / first app assessment) added to
+  `mobile_user_health_domain_v2` and passed through Django; the chart itself
+  is frontend. Explicitly skipped for now: a first-app-open reach curve
+  (`first_app_open_at` is already in the payload if this changes).
+
+## Open data-quality investigation (2026-08-13)
+
+- [ ] ECD-batch accounts showing app-captured assessments with empty server
+  data (live examples: rows with 13–17 app assessments but 0 classes /
+  children / groups). Established from code, not a timing issue: both columns
+  come from the same live RPC call; Server Data counts current non-unassigned
+  assignment rows while App Activity counts immutable assessment events, and
+  `assessments.child_id` has no foreign key, with the app syncing per-entity
+  through an offline outbox — so assessments can land while the children /
+  class / assignment upserts fail or stay queued (primary hypothesis), or
+  after assignments were unassigned (secondary). Next step: run the
+  discriminating read-only queries against production (do the assessed
+  child_ids exist in `children`; do any `child_ea_assignments` rows exist for
+  these EAs including unassigned ones).
+- [ ] The same accounts have no `education_assistants` roster row, so they
+  render school "Unattributed" and expectation "unknown" instead of
+  "self_setup" — they escape the seeded/self-setup blocker logic and school
+  filters despite being mid-rollout ECD EAs (their Django auth cutoff proves
+  ECD-batch membership). Fix the roster linkage for the ECD batch, and
+  consider deriving expectation from rollout-wave membership (already joined
+  in the RPC) instead of roster school type, which removes this failure mode
+  at the root.
