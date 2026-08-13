@@ -12,6 +12,7 @@ function cellTextColor(count: number): string {
 }
 
 function formatDate(value: string): string {
+  // Parse as local date to avoid UTC timezone shift (YYYY-MM-DD → wrong day in non-UTC zones)
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day).toLocaleDateString("en-ZA", {
     weekday: "short",

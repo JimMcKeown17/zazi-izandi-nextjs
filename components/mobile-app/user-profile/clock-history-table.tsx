@@ -26,6 +26,17 @@ function formatTime(value: string | null): string {
   return value ? TIME_FORMAT.format(new Date(value)) : "Open now";
 }
 
+function getEntryKeyBase(entry: MobileUserProfileClockEntry): string {
+  return [
+    entry.sign_in_time,
+    entry.sign_out_time ?? "open",
+    entry.local_date,
+    entry.duration_minutes ?? "in-progress",
+    entry.auto_clocked_out ? "automatic" : "manual",
+    entry.is_active ? "active" : "complete",
+  ].join("::");
+}
+
 function EntryMarkers({ entry }: { entry: MobileUserProfileClockEntry }) {
   if (entry.is_active) {
     return (
@@ -49,6 +60,8 @@ export function ClockHistoryTable({
 }: {
   entries: MobileUserProfileClockEntry[];
 }) {
+  const keyOccurrences = new Map<string, number>();
+
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 px-4 py-4">
@@ -76,30 +89,36 @@ export function ClockHistoryTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {entries.map((entry) => (
-                <tr
-                  key={entry.sign_in_time}
-                  className="hover:bg-slate-50/80"
-                >
-                  <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-800">
-                    {formatLocalDate(entry.local_date)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 font-medium tabular-nums text-slate-800">
-                    {formatTime(entry.sign_in_time)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 tabular-nums text-slate-700">
-                    {formatTime(entry.sign_out_time)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 font-semibold tabular-nums text-slate-900">
-                    {entry.is_active
-                      ? "In progress"
-                      : formatDurationMinutes(entry.duration_minutes)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <EntryMarkers entry={entry} />
-                  </td>
-                </tr>
-              ))}
+              {entries.map((entry) => {
+                const keyBase = getEntryKeyBase(entry);
+                const occurrence = keyOccurrences.get(keyBase) ?? 0;
+                keyOccurrences.set(keyBase, occurrence + 1);
+
+                return (
+                  <tr
+                    key={`${keyBase}::${occurrence}`}
+                    className="hover:bg-slate-50/80"
+                  >
+                    <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-800">
+                      {formatLocalDate(entry.local_date)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 font-medium tabular-nums text-slate-800">
+                      {formatTime(entry.sign_in_time)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 tabular-nums text-slate-700">
+                      {formatTime(entry.sign_out_time)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 font-semibold tabular-nums text-slate-900">
+                      {entry.is_active
+                        ? "In progress"
+                        : formatDurationMinutes(entry.duration_minutes)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <EntryMarkers entry={entry} />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

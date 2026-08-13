@@ -14,8 +14,8 @@ import {
   Smartphone,
 } from "lucide-react";
 
+import { EmploymentBadge } from "@/components/mobile-app/employment-badge";
 import { UserHealthWaveFunnel } from "@/components/mobile-app/user-health/user-health-wave-funnel";
-import { getEmploymentStatusDisplay } from "@/lib/mobile/presentation";
 import {
   buildChaseListCsv,
   buildChaseListText,
@@ -193,16 +193,6 @@ function StageEvidence({
   );
 }
 
-function EmploymentBadge({ status }: { status: string | null }) {
-  const display = getEmploymentStatusDisplay(status);
-  if (!display || display.kind === "active") return null;
-  return (
-    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-      {display.label}
-    </span>
-  );
-}
-
 function AuthEvidence({ user }: { user: MobileUserHealthRow }) {
   const labels = {
     ready: "Auth enabled",
@@ -309,8 +299,9 @@ function DataEvidence({ user }: { user: MobileUserHealthRow }) {
         {expectationLabel}
       </p>
       <p className="mt-1 text-xs tabular-nums text-slate-500">
-        {user.data.classes} class · {user.data.children} children ·{" "}
-        {user.data.groups} groups · {user.data.grouped_children} grouped
+        {user.data.classes} {user.data.classes === 1 ? "class" : "classes"} ·{" "}
+        {user.data.children} children · {user.data.groups} groups ·{" "}
+        {user.data.grouped_children} grouped
       </p>
       {user.data.imported_assessments > 0 ? (
         <p className="mt-1 text-[11px] text-slate-400">

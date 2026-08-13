@@ -49,16 +49,16 @@ const NAV_ITEMS: NavItem[] = [
     enabled: true,
   },
   {
-    name: "Schools",
-    href: "/mobile-app/schools",
-    icon: School,
-    enabled: false,
-  },
-  {
     name: "Users",
     href: "/mobile-app/users",
     icon: Users,
     enabled: true,
+  },
+  {
+    name: "Schools",
+    href: "/mobile-app/schools",
+    icon: School,
+    enabled: false,
   },
 ];
 
@@ -169,34 +169,39 @@ export function MobileSidebarNavigation({
         >
           <div
             data-testid="mobile-nav-scroll"
-            className="scrollbar-none flex w-full items-center overflow-x-auto px-3 py-2 pr-10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="scrollbar-none w-full overflow-x-auto px-3 py-2 pr-10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
-            {enabledItems.map((item) => {
-              const Icon = item.icon;
-              const active = isActive(pathname, item);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-label={item.name}
-                  className={cn(
-                    "flex min-w-20 shrink-0 flex-col items-center gap-1 rounded-md px-3 py-1 text-[10px] font-medium",
-                    active ? "text-accent-yellow" : "text-slate-300"
-                  )}
-                >
-                  <Icon className="h-5 w-5" />
-                  {item.name}
-                </Link>
-              );
-            })}
-            <Link
-              href="/"
-              aria-label="Back to site"
-              className="flex min-w-20 shrink-0 flex-col items-center gap-1 rounded-md px-3 py-1 text-[10px] font-medium text-slate-300"
+            <div
+              data-testid="mobile-nav-items"
+              className="flex w-max mx-auto min-w-full items-center justify-around"
             >
-              <ArrowLeft className="h-5 w-5" />
-              Site
-            </Link>
+              {enabledItems.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(pathname, item);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-label={item.name}
+                    className={cn(
+                      "flex min-w-20 shrink-0 flex-col items-center gap-1 rounded-md px-3 py-1 text-[10px] font-medium",
+                      active ? "text-accent-yellow" : "text-slate-300"
+                    )}
+                  >
+                    <Icon className="h-5 w-5" />
+                    {item.name}
+                  </Link>
+                );
+              })}
+              <Link
+                href="/"
+                aria-label="Back to site"
+                className="flex min-w-20 shrink-0 flex-col items-center gap-1 rounded-md px-3 py-1 text-[10px] font-medium text-slate-300"
+              >
+                <ArrowLeft className="h-5 w-5" />
+                Site
+              </Link>
+            </div>
           </div>
           <div
             data-testid="mobile-nav-right-fade"

@@ -67,8 +67,6 @@ export function EaRollupTable({
   userHealthLinksEnabled = false,
 }: {
   rollups: EaClockRollup[];
-  days: number;
-  schoolId: string | null;
   userHealthLinksEnabled?: boolean;
 }) {
   if (rollups.length === 0) {

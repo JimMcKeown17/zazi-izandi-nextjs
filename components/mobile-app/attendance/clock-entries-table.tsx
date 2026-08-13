@@ -79,8 +79,6 @@ export function ClockEntriesTable({
   userHealthLinksEnabled = false,
 }: {
   entries: MobileTimeEntryRow[];
-  days: number;
-  schoolId: string | null;
   userHealthLinksEnabled?: boolean;
 }) {
   const [page, setPage] = useState(1);

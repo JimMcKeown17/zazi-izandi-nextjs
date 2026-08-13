@@ -138,7 +138,7 @@ export function ProfileWeeklyTrends({
         />
         <WeeklyBarChart
           title="Sessions per week"
-          description="Literacy Coach sessions recorded for this EA."
+          description="Sessions recorded for this EA."
           series={series}
           dataKey="sessions"
         />

@@ -101,7 +101,7 @@ export function HowToReadPanel({
           {lifetimeEvidence ? (
             <p>
               <strong className="text-slate-800">Opened evidence.</strong>{" "}
-              {`An "Opened" date is proof the app was opened by this signed-in account — it says the app reached them, not that they are teaching with it or still using it. Older app versions don't send it, so a missing date is not proof of absence.`}
+              {`An "Opened" date is proof the app was opened by this signed-in account — it says the app reached them, not that they are teaching with it or still using it. Older app versions don't send it, so missing Opened evidence is not proof of absence.`}
             </p>
           ) : null}
         </div>

@@ -5,7 +5,7 @@ import {
   MapPin,
 } from "lucide-react";
 
-import { getEmploymentStatusDisplay } from "@/lib/mobile/presentation";
+import { EmploymentBadge } from "@/components/mobile-app/employment-badge";
 import { toHealthRowShape } from "@/lib/mobile/user-profile/presentation";
 import type { MobileUserProfileResponse } from "@/lib/mobile/user-profile/types";
 import {
@@ -41,10 +41,6 @@ export function ProfileHeader({
       : stage === "reached"
         ? "Reached"
         : "Not started";
-  const employment = getEmploymentStatusDisplay(
-    profile.identity?.employment_status
-  );
-
   return (
     <header className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -56,11 +52,7 @@ export function ProfileHeader({
             <h1 className="text-2xl font-bold text-slate-900">
               {user.display_name}
             </h1>
-            {employment ? (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
-                {employment.label}
-              </span>
-            ) : null}
+            <EmploymentBadge status={user.employment_status} />
           </div>
           <p className="mt-2 flex items-center gap-1.5 text-sm text-slate-600">
             <MapPin className="h-4 w-4 shrink-0 text-slate-400" />

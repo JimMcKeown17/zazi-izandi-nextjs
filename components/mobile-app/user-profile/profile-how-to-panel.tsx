@@ -23,10 +23,8 @@ export function ProfileHowToPanel({ days = 30 }: { days?: number }) {
           one record. Neither describes what children know now.
         </p>
         <p>
-          <strong className="text-slate-800">Opened evidence.</strong> An
-          Opened date proves that this signed-in account opened a reporting app
-          version. Missing Opened evidence is not proof that the app was never
-          opened, because older versions did not send this signal.
+          <strong className="text-slate-800">Opened evidence.</strong>{" "}
+          {`An "Opened" date is proof the app was opened by this signed-in account — it says the app reached them, not that they are teaching with it or still using it. Older app versions don't send it, so missing Opened evidence is not proof of absence.`}
         </p>
       </div>
     </details>

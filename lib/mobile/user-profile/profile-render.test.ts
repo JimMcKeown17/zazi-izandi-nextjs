@@ -72,6 +72,7 @@ test("the profile header preserves durable stage and windowed indicator wording"
   );
   assert.match(text, /Activated/);
   assert.match(text, /Active · 30d/);
+  assert.doesNotMatch(html, />Active<\/span>/);
   assert.doesNotMatch(text, /Quiet · 30d/);
 
   const quietText = visibleText(
@@ -111,6 +112,23 @@ test("the profile header preserves durable stage and windowed indicator wording"
   assert.doesNotMatch(reachedText, /Activated|Active · 30d|Quiet · 30d/);
 });
 
+test("the profile header gives missing identity the shared unknown employment treatment", () => {
+  const identityNullProfile: MobileUserProfileResponse = structuredClone(
+    VALID_MOBILE_USER_PROFILE_PAYLOAD
+  );
+  identityNullProfile.identity = null;
+
+  const text = visibleText(
+    renderToStaticMarkup(
+      createElement(ProfileHeader, { profile: identityNullProfile })
+    )
+  );
+
+  assert.match(text, /Status unknown/);
+  assert.match(text, /Activated/);
+  assert.match(text, /Active · 30d/);
+});
+
 test("the evidence panel shows tri-state login, current and lifetime device evidence, app opens, and assessment coverage", () => {
   const text = visibleText(
     renderToStaticMarkup(
@@ -127,6 +145,18 @@ test("the evidence panel shows tri-state login, current and lifetime device evid
   assert.match(text, /Opened first:/);
   assert.match(text, /Opened last:/);
   assert.match(text, /2 of 3 children have assessment info/);
+
+  const pluralClassesProfile: MobileUserProfileResponse = structuredClone(
+    VALID_MOBILE_USER_PROFILE_PAYLOAD
+  );
+  pluralClassesProfile.data.classes = 2;
+  const pluralClassesText = visibleText(
+    renderToStaticMarkup(
+      createElement(EvidencePanel, { profile: pluralClassesProfile })
+    )
+  );
+  assert.match(pluralClassesText, /2 classes · 3 children/);
+  assert.doesNotMatch(pluralClassesText, /2 class ·/);
 
   const notProvenProfile: MobileUserProfileResponse = structuredClone(
     VALID_MOBILE_USER_PROFILE_PAYLOAD
@@ -169,6 +199,7 @@ test("the lifetime summary owns five exact untruncated totals and labels every t
   assert.match(text, /Lifetime sessions 40/);
   assert.match(text, /Lifetime app assessments 12/);
   assert.equal((html.match(/data-lifetime-tile="true"/g) ?? []).length, 5);
+  assert.match(html, /^<section[^>]*><h2/);
   const tileLabels = html.match(/data-lifetime-tile="true"[\s\S]*?<\/article>/g);
   assert.equal(tileLabels?.length, 5);
   tileLabels?.forEach((tile) => assert.match(visibleText(tile), /Lifetime/));
@@ -198,7 +229,9 @@ test("the weekly section renders exactly four charts with distinct fixture metri
 
   const sessions = visibleText(extractTestId(html, "weekly-chart-sessions"));
   assert.match(sessions, /Sessions per week/);
+  assert.match(sessions, /Sessions recorded for this EA/);
   assert.match(sessions, /Latest week: 4 sessions/);
+  assert.doesNotMatch(sessions, /Literacy Coach/);
 
   const assessments = visibleText(
     extractTestId(html, "weekly-chart-app_assessments")
@@ -215,6 +248,7 @@ test("the weekday session strip renders all ten seeded dates and counts", () => 
   );
 
   assert.equal((html.match(/data-session-cell="true"/g) ?? []).length, 10);
+  assert.doesNotMatch(html, /role="img"/);
   dates.forEach((date, index) => {
     assert.ok(html.includes(`aria-label="${date}: ${cells[index]} sessions"`));
     assert.ok(html.includes(`data-count="${cells[index]}"`));
@@ -265,6 +299,10 @@ test("the profile how-to panel separates lifetime and windowed claims without kn
   assert.match(text, /Lifetime/);
   assert.match(text, /30-day window/);
   assert.match(text, /assessment info/);
+  assert.match(
+    text,
+    /it says the app reached them, not that they are teaching with it or still using it/
+  );
   assert.match(text, /missing Opened evidence is not proof/i);
   assert.doesNotMatch(text, /\bmastered\b/i);
   assert.doesNotMatch(text, /\blearned\b/i);
@@ -317,8 +355,13 @@ test("the sidebar exposes Users to capability holders in both nav variants and s
   assert.match(mobile, /href="\/mobile-app\/users"/);
   assert.match(desktop, /Schools/);
   assert.match(desktop, /Soon/);
+  assert.ok(desktop.indexOf(">Users<") < desktop.indexOf(">Schools<"));
   assert.match(mobile, /data-testid="mobile-nav-scroll"[^>]*overflow-x-auto/);
   assert.match(mobile, /data-testid="mobile-nav-scroll"[^>]*scrollbar-none/);
+  assert.match(
+    mobile,
+    /data-testid="mobile-nav-items"[^>]*class="[^"]*w-max mx-auto min-w-full[^"]*justify-around/
+  );
   assert.match(mobile, /aria-label="Users"[^>]*class="[^"]*shrink-0/);
   assert.match(mobile, /aria-label="Back to site"[^>]*class="[^"]*shrink-0/);
   assert.match(mobile, /data-testid="mobile-nav-right-fade"[^>]*bg-gradient-to-l/);

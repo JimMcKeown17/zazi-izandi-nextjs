@@ -126,7 +126,9 @@ export function EvidencePanel({
             <Database className="h-4 w-4" /> Server data
           </h3>
           <p className="mt-3 text-sm font-semibold text-slate-800">
-            {profile.data.classes} class · {profile.data.children} children ·{" "}
+            {profile.data.classes}{" "}
+            {profile.data.classes === 1 ? "class" : "classes"} ·{" "}
+            {profile.data.children} children ·{" "}
             {profile.data.groups} groups
           </p>
           <p className="mt-1 text-xs text-slate-500">

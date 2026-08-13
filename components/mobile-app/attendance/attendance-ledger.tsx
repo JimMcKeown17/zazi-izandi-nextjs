@@ -104,15 +104,11 @@ export function AttendanceLedger({
         <ClockEntriesTable
           key={`${needle}|${days}|${schoolId ?? ""}`}
           entries={filtered}
-          days={days}
-          schoolId={schoolId}
           userHealthLinksEnabled={userHealthLinksEnabled}
         />
       ) : (
         <EaRollupTable
           rollups={rollups}
-          days={days}
-          schoolId={schoolId}
           userHealthLinksEnabled={userHealthLinksEnabled}
         />
       )}

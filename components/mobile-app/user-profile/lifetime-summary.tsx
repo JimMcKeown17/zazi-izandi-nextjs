@@ -31,16 +31,12 @@ export function LifetimeSummary({
 
   return (
     <section aria-labelledby="lifetime-summary-title">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <h2 id="lifetime-summary-title" className="font-bold text-slate-900">
-            Lifetime summary
-          </h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Untruncated totals across all retained history.
-          </p>
-        </div>
-      </div>
+      <h2 id="lifetime-summary-title" className="font-bold text-slate-900">
+        Lifetime summary
+      </h2>
+      <p className="mt-1 text-xs text-slate-500">
+        Untruncated totals across all retained history.
+      </p>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {tiles.map((tile) => (
           <article
