@@ -32,6 +32,14 @@ import {
   decodeMobileUserHealthResponse,
   type MobileUserHealthResult,
 } from "./user-health/response";
+import {
+  buildUserProfileRequest,
+  validateProfileUserId,
+} from "./user-profile/request";
+import {
+  decodeMobileUserProfileResponse,
+  type MobileUserProfileResult,
+} from "./user-profile/response";
 
 export async function getMobileSessionsActivity(
   filters: MobileSessionsActivityFilters
@@ -106,4 +114,34 @@ export async function getMobileUserHealth(
   if (response.status === 401) redirect("/login?error=session_expired");
   if (response.status === 403) redirect("/login?error=insufficient_role");
   return decodeMobileUserHealthResponse(response);
+}
+
+export async function getMobileUserProfile(
+  userId: string
+): Promise<MobileUserProfileResult> {
+  const session = await requireMobileUserHealthSession();
+  const validatedUserId = validateProfileUserId(userId);
+  if (validatedUserId === null) {
+    return { ok: false, status: 404, notFound: true };
+  }
+
+  const token = await session.getToken();
+  if (!token) redirect("/login?error=session_expired");
+
+  const request = buildUserProfileRequest(token, validatedUserId);
+  let response: Response;
+  try {
+    response = await djangoFetch(request.path, request.init);
+  } catch (error) {
+    console.error("[mobile/api] Failed to reach Django user profile:", error);
+    return {
+      ok: false,
+      status: 502,
+      message: "The user profile service is currently unavailable.",
+    };
+  }
+
+  if (response.status === 401) redirect("/login?error=session_expired");
+  if (response.status === 403) redirect("/login?error=insufficient_role");
+  return decodeMobileUserProfileResponse(response);
 }
