@@ -75,7 +75,8 @@ describe('mobile_user_profile RPC contract', () => {
   test('emits every top-level payload key', () => {
     const text = migrationText();
     for (const key of [
-      "'generated_at'", "'identity'", "'wave'", "'app_device'",
+      "'generated_at'", "'user_id'", "'days'", "'windowed_activity'",
+      "'identity'", "'wave'", "'app_device'",
       "'ever_registered_device'", "'data'", "'lifetime'", "'weekly'",
       "'recent_weekday_sessions'", "'recent_sessions'", "'clock_entries'",
     ]) {
@@ -85,6 +86,15 @@ describe('mobile_user_profile RPC contract', () => {
     expect(text).toContain("'clock_minutes_completed'");
     expect(text).toContain("'letters_focused'");
     expect(text).toContain("'blend_categories'");
+  });
+
+  test('identity uses the FULL OUTER identity/roster population rule', () => {
+    const text = migrationText();
+    expect(text).toMatch(/FULL OUTER JOIN public\.education_assistants/);
+  });
+
+  test('legacy group fallback reads only the first group_ids element', () => {
+    expect(migrationText()).toMatch(/group_ids\[1\]/);
   });
 
   test('lifetime CTEs are unwindowed and device history includes invalidated tokens', () => {
@@ -141,6 +151,10 @@ AS $function$
 DECLARE
   v_generated_at TIMESTAMPTZ := pg_catalog.statement_timestamp();
   v_end_date DATE := (v_generated_at AT TIME ZONE 'Africa/Johannesburg')::DATE;
+  v_days CONSTANT INTEGER := 30;                        -- fixed windowed_activity window
+  v_start_date DATE := v_end_date - (v_days - 1);
+  v_start_at TIMESTAMPTZ := v_start_date::TIMESTAMP AT TIME ZONE 'Africa/Johannesburg';
+  v_end_at TIMESTAMPTZ := (v_end_date + 1)::TIMESTAMP AT TIME ZONE 'Africa/Johannesburg';
   v_strip_start DATE := v_end_date - 13;                -- 14-day span guarantees >= 10 weekdays
   v_week_end DATE := (pg_catalog.date_trunc(
     'week', (v_generated_at AT TIME ZONE 'Africa/Johannesburg')))::DATE;  -- current ISO Monday
@@ -159,7 +173,8 @@ $function$;
 
 CTEs, in order (each anchored to an existing idiom — copy that code and scope it):
 
-1. `identity_row` — the `identity_population` CTE from v2 (20260813092000) with `AND identity.user_id = p_user_id` replacing the `ANY (p_included_user_ids)` + school-filter predicates; same COALESCE display-name cascade, same `data_expectation` CASE. Emits ≤ 1 row.
+1. `identity_row` — start from the FULL OUTER identity/roster rule of `mobile_reporting_identity_population` (in `20260812120000`): `FROM public.staff_identity_links AS identity FULL OUTER JOIN public.education_assistants AS roster ON roster.user_id = identity.user_id WHERE COALESCE(identity.user_id, roster.user_id) = p_user_id AND (identity.role = 'ea' OR roster.user_id IS NOT NULL)` — so roster-only EAs keep their roster name/school/status (round-1 adversarial finding; v2's identity_population starts from identity links only and would drop them). Onto that base, graft v2's profile fields: the COALESCE display-name cascade (roster→identity→concat fallbacks→uuid), `roster.employment_status`, school join for `current_school_id`/`current_school`/`school_type` (COALESCE `'Unattributed'`), and the `data_expectation` CASE (`identity.teampact_user_id IS NOT NULL → 'seeded'`; ECD school_type → `'self_setup'`; else `'unknown'`). Emits ≤ 1 row.
+1b. `windowed_activity` block — copy v2's THREE windowed CTE idioms (`clock_activity`, `session_activity`, `assessment_activity` in 20260813092000 — window predicates on `v_start_at`/`v_end_at`/`v_start_date`/`v_end_date`) scoped `WHERE …user_id = p_user_id`, and emit the SAME seven-key object shape as a health row's `activity` (counts + three per-source timestamps + `last_activity_at` = bare `GREATEST` of the three). Top level also emits `'user_id', p_user_id` and `'days', v_days`.
 2. `wave_membership` — verbatim from v2, plus `AND member.user_id = p_user_id`.
 3. `current_push_token` — the `LEFT JOIN LATERAL` push-token idiom from v2's `health_rows` recast as a CTE: newest non-invalidated token for `p_user_id` (registered/platform/app_version/last_seen_at).
 4. `ever_device` — verbatim from v2 (`SELECT DISTINCT user_id FROM public.notification_push_tokens`) with `WHERE push_token_row.user_id = p_user_id`.
@@ -271,20 +286,19 @@ CTEs, in order (each anchored to an existing idiom — copy that code and scope 
         session_row.notes,
         session_row.activities->'letters_focused' AS letters_focused,
         session_row.activities->'blend_categories' AS blend_categories,
-        COALESCE(attendee_groups.names, fallback_groups.names) AS group_name,
+        COALESCE(attendee_groups.names, fallback_group.name) AS group_name,
         COALESCE(present_counts.present_attendees, 0)::INTEGER AS present_attendees
       FROM public.sessions AS session_row
       LEFT JOIN LATERAL (
-        SELECT pg_catalog.string_agg(DISTINCT group_row.name, ', ') AS names
+        SELECT pg_catalog.string_agg(DISTINCT group_row.name, ', ' ORDER BY group_row.name) AS names
         FROM public.session_attendees AS attendee
         JOIN public.groups AS group_row ON group_row.id = attendee.group_id
         WHERE attendee.session_id = session_row.id
       ) AS attendee_groups ON TRUE
-      LEFT JOIN LATERAL (
-        SELECT pg_catalog.string_agg(DISTINCT group_row.name, ', ') AS names
-        FROM pg_catalog.unnest(session_row.group_ids) AS legacy(group_id)
-        JOIN public.groups AS group_row ON group_row.id = legacy.group_id
-      ) AS fallback_groups ON TRUE
+      -- Legacy fallback (sessions with no attendee rows): the FIRST
+      -- group_ids element only, per the binding spec — never the whole array.
+      LEFT JOIN public.groups AS fallback_group
+        ON fallback_group.id = session_row.group_ids[1]
       LEFT JOIN LATERAL (
         SELECT COUNT(*)::INTEGER AS present_attendees
         FROM public.session_attendees AS attendee
@@ -302,7 +316,7 @@ CTEs, in order (each anchored to an existing idiom — copy that code and scope 
 then `jsonb_agg` of `jsonb_build_object('session_date', …, 'started_at', …, 'duration_seconds', …, 'group_name', …, 'letters_focused', …, 'blend_categories', …, 'present_attendees', …, 'notes', …)` preserving the same ORDER BY, COALESCE `'[]'::JSONB`.
 11. `clock_entries_json` — the entry-shape idiom from `mobile_time_entries_activity` (local_date/sign_in_time/sign_out_time/duration_minutes/auto_clocked_out/is_active — NO roster, NO lat/lon) scoped `WHERE entry.user_id = p_user_id`, `ORDER BY entry.sign_in_time DESC, entry.id LIMIT 100`, plus that RPC's invalid-interval EXISTS guard (ERRCODE 22000, message `mobile_user_profile_invalid_interval`) placed before the main RETURN, scoped to this user's rows.
 
-Final SELECT: `jsonb_build_object` of all top-level keys; `identity` = row-to-jsonb of `identity_row` or NULL when absent (`CASE WHEN identity.user_id IS NULL THEN NULL::JSONB ELSE jsonb_build_object(…) END` via LEFT JOIN of a `(SELECT 1)` anchor — or aggregate `MAX`-style scalars; keep it simple with one `LEFT JOIN identity_row ON TRUE` from a single-row anchor CTE); `wave` = the v2 CASE idiom; `ever_registered_device` = `EXISTS`-driven boolean; `data` includes `children_assessed`. Footer: REVOKE/GRANT/COMMENT/NOTIFY per Global Constraints.
+Final SELECT: `jsonb_build_object` of all top-level keys incl. `'user_id', p_user_id`, `'days', v_days`, and `'windowed_activity', …`; `identity` = row-to-jsonb of `identity_row` or NULL when absent (`CASE WHEN identity_anchor.user_id IS NULL THEN NULL::JSONB ELSE jsonb_build_object(…) END` via one `LEFT JOIN identity_row … ON TRUE` from a single-row anchor CTE — note the anchor tests `COALESCE(identity.user_id, roster.user_id)`); `wave` = the v2 CASE idiom; `ever_registered_device` = `EXISTS`-driven boolean; `data` includes `children_assessed`. Footer: REVOKE/GRANT/COMMENT/NOTIFY per Global Constraints.
 
 - [ ] **Step 4: Run to verify GREEN**
 
@@ -333,14 +347,18 @@ git commit -m "feat(profile): add mobile_user_profile RPC"
 
 Fixture (randomUUID, one profile EA + one control EA): school; identity link (role `ea`) + `education_assistants` roster row; wave + live membership (direct service inserts — the loader is already proven); classes/children/groups/assignments — 3 children assigned, 2 of them with an `assessments` row EACH (one imported `capture_mode NULL` by another user, one app-captured by the EA) so `children_assessed = 2` while `children = 3`; sessions: one letters-level session (activities `{"letters_focused": ["a","b"], "blend_categories": null, …}`) with 2 present + 1 absent attendees in group A, one blending session (`{"letters_focused": null, "blend_categories": ["short vowels"], …}`) in group B, one LEGACY session with NO attendee rows and `group_ids = ARRAY[groupA]` (fallback path), one session dated 60 days back (outside strip, inside lifetime/weekly range); time entries: completed (65 min), active (`sign_out_time NULL`), auto-clocked-out completed, one 60 days back; app_open rows ×2; one invalidated push token only.
 
+Fixture additions (round-1 findings): a ROSTER-ONLY EA (education_assistants row, NO staff_identity_links row — insert the roster row with a fresh uuid; if the auth-user trigger auto-creates an identity link for real auth users, create this fixture WITHOUT an auth.users row, which is exactly the roster-only shape the FULL OUTER rule admits — adapt to what the trigger actually does and document it in the report); an IDENTITY-ONLY user (identity link role `ea`, no roster row); a legacy session with NO attendee rows and `group_ids = ARRAY[groupB, groupA]` (two elements — fallback must name ONLY groupB); one session whose attendees span BOTH groups (assert ONE session row with deterministic `"A-name, B-name"` ordering); the profile EA's newest activity placed OUTSIDE the 30-day window for a `windowedVsLifetime` scenario? No — keep the main EA active-in-window; add instead a fourth QUIET fixture user: lifetime clock/session rows 60+ days old, ZERO rows in the last 30 days.
+
 Scenario assertions (each a named key in the summary object):
 1. `argValidation` — NULL arg raises `mobile_user_profile_user_id_required`.
-2. `identityAndWave` — display name, school, expectation `seeded`; `wave.name`; control EA's uuid returns `identity` null-free but the UNKNOWN random uuid returns `"identity": null` with all counts zero and empty lists (RPC is population-agnostic).
+2. `identityAndWave` — display name, school, expectation `seeded`; `wave.name`; `user_id` echoes the input; `days = 30`.
+2b. `populationVariants` — identity+roster EA: full identity; ROSTER-ONLY EA: identity NON-null with roster name/school/status (never synthesized); IDENTITY-ONLY user: identity non-null with identity-cascade name and `Unattributed`; UNKNOWN random uuid: `"identity": null`, zero counts, empty lists (RPC is population-agnostic).
+2c. `windowedVsLifetime` — the QUIET fixture user: `windowed_activity` counts all zero with null timestamps while `lifetime.totals` are nonzero and `first/last_ever_activity_at` non-null; the main EA: windowed counts match only the rows inside the last 30 SAST days.
 3. `dataCounts` — children 3, `children_assessed` 2, groups/classes/grouped counts as seeded.
 4. `lifetimeAndTotals` — totals match seeded rows exactly (clock_entries incl. active + old; clock_days distinct SAST dates; clock_minutes_completed excludes the active entry; sessions 4; app_assessments 1); `first/last_ever_activity_at` bracket the 60-day-old and newest rows; app_open first/last match.
 5. `weeklyBuckets` — exactly 26 rows, strictly-increasing Mondays ending at the current SAST week; the buckets containing the seeded weeks carry the right counts; all others zero.
 6. `weekdayStrip` — 10 ascending weekday dates; cells reflect the seeded session dates (and 0 elsewhere); weekend session (seed one on a Saturday) NOT counted in any cell.
-7. `recentSessions` — 4 rows ordered newest-first; letters session emits `letters_focused` array + `blend_categories` null; blending session the reverse; legacy session resolves `group_name` via the `group_ids` fallback; present_attendees 2 for the letters session; notes passthrough.
+7. `recentSessions` — rows ordered newest-first; letters session emits `letters_focused` array + `blend_categories` null; blending session the reverse; the legacy two-group session resolves `group_name` to ONLY the FIRST `group_ids` element's name; the two-group attendee session emits ONE row with the deterministic alphabetical comma-joined name; present_attendees 2 for the letters session; notes passthrough.
 8. `clockEntries` — ordered newest-first; pairing (`is_active` ⟺ null sign_out ⟺ null duration); `auto_clocked_out` flag present; NO `lat`/`lon` keys anywhere in the payload (assert via jsonb path scan of the whole payload text).
 9. `crossUserIsolation` — the control EA's payload contains none of the profile EA's session/clock counts.
 10. `zeroResidue` — teardown removes every fixture row (append-only wave trigger disabled only for scoped deletes inside the teardown transaction, per the rollout-waves harness precedent).
@@ -402,13 +420,30 @@ def test_auth_only_user_gets_synthesized_identity(self):
     # payload with "identity": null for AUTH_ONLY_USER_ID -> display name from GoTrue,
     # current_school "Unattributed", expectation "unknown", counts/lists passthrough
 
+def test_rpc_receives_canonical_string_for_uuid_object_input(self):
+    # Round-1 finding: the URL converter passes uuid.UUID, which is not JSON
+    # serializable — fetch_user_profile must normalize FIRST.
+    import uuid as uuid_module
+    client = reporting_client(user_profile_payload())
+    fetch_user_profile(uuid_module.UUID(SEEDED_USER_ID), client=client)
+    client.rpc.assert_any_call("mobile_user_profile", {"p_user_id": SEEDED_USER_ID})
+
 def test_profile_invariants_fail_closed(self):
     # subTest table with __cause__ substring pinning:
     #  - weekly length 25            -> "weekly must have 26 buckets"
     #  - non-Monday week_start       -> "weekly buckets must be Mondays"
+    #  - EVERY weekly date shifted back exactly one week (internally valid,
+    #    but not ending at generated_at's SAST week)
+    #                                 -> "weekly must end at the current week"
     #  - strip dates length 9        -> "weekday strip must have 10 dates"
+    #  - strip = 10 valid weekdays all one week older than generated_at implies
+    #                                 -> "weekday strip must be current"
     #  - strip cells/dates mismatch  -> "weekday strip cells mismatch"
     #  - clock entry sign_out None with duration set -> "incomplete clock entry"
+    #  - windowed_activity count>0 with null matching timestamp
+    #                                 -> "incomplete windowed activity"
+    #  - payload user_id != requested id -> "user id mismatch"
+    #  - days != 30                  -> "unexpected activity window"
     #  - children_assessed > children -> "children_assessed exceeds children"
     #  - a session with BOTH letters_focused and blend_categories non-null
     #                                 -> "session focus must be exclusive"
@@ -417,6 +452,13 @@ def test_endpoint_requires_capability_and_maps_statuses(self):
     # endpoint test class: senior_staff 200; junior_staff 403; bad uuid segment 404 by URL conv;
     # MobileReportingNotFound -> 404 {"error": "user not found"};
     # MobileReportingError -> 502 sanitized (patch fetch_user_profile like the health tests do)
+
+def test_endpoint_serializes_uuid_through_the_real_adapter(self):
+    # UNPATCHED view->fetch_user_profile path (round-1 finding): patch only the
+    # SupabaseNotificationClient construction (the layer BELOW the adapter) with the
+    # reporting_client fake, hit the endpoint with a real uuid URL, and assert 200 +
+    # the fake's rpc received {"p_user_id": "<canonical string>"} — proving the
+    # uuid.UUID from the URL converter never reaches the JSON body unserialized.
 ```
 
 Write these as full real tests following the file's existing conventions (module constants, `assertRaisesRegex`, `@override_settings`, patched Clerk verifier). In `api/tests_mobile_reports.py`, add `test_user_profile_rpc_is_admitted_with_exact_args` next to the existing allowlist-boundary tests (real `SupabaseNotificationClient.rpc("mobile_user_profile", {"p_user_id": "<uuid>"})` with the HTTP layer mocked; asserts the request is issued).
@@ -429,8 +471,8 @@ Write these as full real tests following the file's existing conventions (module
 
 - `MobileReportingNotFound(Exception)` with `status_code = 404` next to `MobileReportingError`.
 - `MOBILE_USER_PROFILE_SCHEMA`: Draft 2020-12, `additionalProperties: False` at every level, reusing the `$defs` idioms (`uuid`, `nullable_timestamp`, `count`, the wave def). All top-level keys required (the RPC always emits the full shape). `letters_focused`/`blend_categories`: `{"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]}`.
-- `_validate_user_profile_payload(payload)`: schema validation + the invariants pinned in Step 1's `__cause__` table (Monday check via `date.fromisoformat(week_start).weekday() == 0`; strictly increasing +7 days; strip dates ascending weekdays `weekday() < 5`; clock pairing `is_active ⟺ sign_out_time is None ⟺ duration_minutes is None`; `children_assessed <= children`; per-session focus exclusivity; lifetime pair/order rules reused from the Part B helpers). Wrap in the same try/except → sanitized `MobileReportingError`.
-- `fetch_user_profile(user_id, *, client=None)`: resolve client like `fetch_user_health`; `included_user_ids` + auth users via the existing `_eligible_reporting_population` flow; `str(user_id) not in included` → `MobileReportingNotFound`; call RPC; validate; if `identity` is None, synthesize from the GoTrue display-name fallback exactly as the health board's auth-only path (`"Unattributed"`, expectation `"unknown"`); build the `auth` block via `_normalized_auth_user` + `_with_provisioning_auth_evidence` (construct the wrapper dict it expects: `{"auth": …, "data": {"expectation": …}}` and take its enriched `auth`); attach `email`.
+- `_validate_user_profile_payload(payload, *, user_id)`: schema validation + the invariants pinned in Step 1's `__cause__` table. Chronology is anchored on the payload's own `generated_at` (NOT wall clock — deterministic for fixtures and midnight-crossing requests; round-1 finding): compute the SAST date of `generated_at`, derive the expected current ISO Monday and expected exact last-10-weekday list from it, and compare the COMPLETE `weekly` week_start array (26 Mondays ending at that expected Monday) and the COMPLETE `recent_weekday_sessions.dates` array against the derived values. Other invariants: clock pairing `is_active ⟺ sign_out_time is None ⟺ duration_minutes is None`; `windowed_activity` count⟺timestamp pairing per source + `last_activity_at` = max (reuse the health-domain pairing rules verbatim); `payload["user_id"] == user_id`; `payload["days"] == 30`; `children_assessed <= children`; per-session focus exclusivity; lifetime pair/order rules reused from the Part B helpers. Wrap in the same try/except → sanitized `MobileReportingError`.
+- `fetch_user_profile(user_id, *, client=None)`: FIRST normalize `user_id = str(uuid.UUID(str(user_id)))` (the URL converter passes a `uuid.UUID` object, which is not JSON serializable — round-1 finding); resolve client like `fetch_user_health`; `included_user_ids` + auth users via the existing `_eligible_reporting_population` flow; `user_id not in included` → `MobileReportingNotFound`; call RPC with `{"p_user_id": user_id}` (the normalized string); validate with `user_id=user_id`; if `identity` is None, synthesize from the GoTrue display-name fallback exactly as the health board's auth-only path (`"Unattributed"`, expectation `"unknown"`); build the `auth` block via `_normalized_auth_user` + `_with_provisioning_auth_evidence` (construct the wrapper dict it expects: `{"auth": …, "data": {"expectation": …}}` and take its enriched `auth`); attach `email`.
 - View + URL + allowlist entry per the Files list; the view mirrors `mobile_user_health`'s authorization (`MOBILE_USER_HEALTH_READ`) and error mapping, adding the 404 branch.
 
 - [ ] **Step 4: Run to verify GREEN**
@@ -455,15 +497,16 @@ git commit -m "feat(api): per-EA profile endpoint reading mobile_user_profile"
 
 **Interfaces:**
 - Consumes: Task 3's response contract.
-- Produces (Task 5 imports these): `MobileUserProfileResponse` / `MobileUserProfile*` types; `mobileUserProfileSchema`; `buildUserProfileRequest(token, userId)` (throws on non-uuid userId); `decodeMobileUserProfileResponse` result union including `{ ok: false; status: 404; notFound: true }`; `getMobileUserProfile(userId)` in `api.ts`; presentation helpers `formatSessionFocus(letters: string[] | null, blends: string[] | null): string` ("A, B" | "Blending: short vowels" | "—"), `formatDurationMinutes(minutes: number | null): string`, `formatDurationSeconds(seconds: number | null): string`, `toHealthRowShape(profile): MobileUserHealthRow`-compatible object (explicit field mapping so `getActivityStage`/`isQuiet`/`hasEverOpenedApp` work unmodified on profile data).
+- Produces (Task 5 imports these): `MobileUserProfileResponse` / `MobileUserProfile*` types incl. `MobileUserProfileWeeklyRow { week_start: string; clock_days: number; clock_minutes_completed: number; sessions: number; app_assessments: number }` (an explicit interface — NEVER `{week_start: string} & Record<string, number>`, which is unsatisfiable in TS; round-1 finding); `mobileUserProfileSchema`; `buildUserProfileRequest(token, userId)` (throws `RangeError` on non-uuid); `decodeMobileUserProfileResponse` result union including `{ ok: false; status: 404; notFound: true }`; `getMobileUserProfile(userId)` in `api.ts` — this is THE single malformed-id boundary: it CATCHES the builder's `RangeError` and returns the SAME notFound variant, so a malformed URL id and an unknown uuid are indistinguishable to the page (round-1 finding); presentation helpers `formatSessionFocus(letters: string[] | null, blends: string[] | null): string` ("A, B" | "Blending: short vowels" | "—"), `formatDurationMinutes(minutes: number | null): string`, `formatDurationSeconds(seconds: number | null): string`, and `toHealthRowShape(profile): MobileUserHealthRow` — a FULLY faithful mapping now that the contract carries what the board needs: `user_id` ← `profile.user_id`, `activity` ← `profile.windowed_activity` (the board's exact 30-day semantics — never lifetime totals), `app_device`/`ever_registered_device`/`last_app_open_at`/lifetime fields/`auth`/`wave` ← same-named fields, `data.expectation` ← identity (or `"unknown"`), remaining `data` counts ← `profile.data`, `display_name`/`email`/`employment_status`/school fields ← identity/auth. `getActivityStage`/`isQuiet`/`hasEverOpenedApp` then run UNMODIFIED with board meaning; windowed indicators are labeled `· 30d` (`profile.days`).
 
 - [ ] **Step 1: Write the failing tests**
 
-Real node:test files mirroring `user-health`'s style. Fixture `VALID_MOBILE_USER_PROFILE_PAYLOAD` in `test-fixtures.ts`: full response for one seeded EA — 26 weekly buckets (generate in code), 10 strip dates, 3 recent sessions (letters / blending / legacy-fallback group), 3 clock entries (completed / active / auto), wave + auth blocks. Tests pin:
-- schema RETAINS values (parse output deep-equals the significant fields — zod strips unknowns, so retention is the point) and rejects: 25 weekly buckets; non-Monday `week_start`; strip length 9; both-focus-non-null session; `children_assessed > children`; active clock entry with non-null duration.
+Real node:test files mirroring `user-health`'s style. Fixture `VALID_MOBILE_USER_PROFILE_PAYLOAD` in `test-fixtures.ts`: full response for one seeded EA — `generated_at` FIXED, with the 26 weekly buckets and 10 strip dates DERIVED in code from that `generated_at` (the schema validates chronology against it), `user_id`, `days: 30`, a `windowed_activity` block consistent with the newest in-window rows, 3 recent sessions (letters / blending / legacy-fallback group), 3 clock entries (completed / active / auto), wave + auth blocks. Also export a `QUIET_MOBILE_USER_PROFILE_PAYLOAD` variant: `windowed_activity` all-zero/null while lifetime totals are nonzero. Tests pin:
+- schema RETAINS values (parse output deep-equals the significant fields — zod strips unknowns, so retention is the point) and rejects: 25 weekly buckets; non-Monday `week_start`; ALL weekly dates shifted back one week (internally consistent but not ending at `generated_at`'s SAST week); strip length 9; strip dates one week stale; both-focus-non-null session; `children_assessed > children`; active clock entry with non-null duration; `windowed_activity` count>0 with null timestamp; `days !== 30`.
 - request: builds `/api/mobile/users/<uuid>/` with bearer header; throws `RangeError` on a non-uuid id.
 - response: 404 maps to the notFound variant; non-OK and malformed JSON map to the existing 502-style error message pattern.
-- presentation: `formatSessionFocus(["a","b"], null) === "A, B"`; `(null, ["short vowels"]) === "Blending: short vowels"`; `(null, null) === "—"`; `toHealthRowShape` round-trips stage semantics (a profile with only `last_app_open_at` → `getActivityStage === "reached"`; lifetime activity → `"active"`; quiet case).
+- api boundary: `getMobileUserProfile("not-a-uuid")` resolves to the notFound variant (no fetch attempted) — the round-1 malformed-id boundary.
+- presentation: `formatSessionFocus(["a","b"], null) === "A, B"`; `(null, ["short vowels"]) === "Blending: short vowels"`; `(null, null) === "—"`; `toHealthRowShape`: main fixture → `getActivityStage === "active"` AND `isQuiet === false`; QUIET fixture → stage `"active"` (lifetime) AND `isQuiet === true`; an app_open-only variant → `"reached"` — proving windowed vs lifetime semantics survive the mapping exactly.
 
 - [ ] **Step 2: Run to verify RED** — `npm run test:mobile` (glob covers the new dir) → new tests fail (modules missing).
 
@@ -485,7 +528,7 @@ git commit -m "feat(profile): user-profile data module with schema and presentat
 **Files:**
 - Create: `app/mobile-app/users/page.tsx`, `app/mobile-app/users/[id]/page.tsx`
 - Create: `components/mobile-app/user-profile/profile-header.tsx`, `evidence-panel.tsx`, `weekday-session-strip.tsx`, `weekly-bar-chart.tsx`, `recent-sessions-table.tsx`, `clock-history-table.tsx`, `profile-how-to-panel.tsx`
-- Modify: `components/mobile-app/layout/mobile-sidebar.tsx` (activate "Users" → `/mobile-app/users`, drop its SOON state; leave "Schools — soon" untouched)
+- Modify: `components/mobile-app/layout/mobile-sidebar.tsx` (activate "Users" → `/mobile-app/users`, drop its SOON state; leave "Schools — soon" untouched; add an EXPLICIT `/mobile-app/users` branch to `canOpenItem` returning the user-health capability — the function's default branch is `canReadSessions`, which would show junior_staff an authorized-looking link to a page they cannot open; round-1 finding)
 - Modify: `components/mobile-app/user-health/user-health-board.tsx` (EA display name → `<Link href={/mobile-app/users/${user.user_id}}>`)
 - Modify: the attendance ledger component that renders EA names (locate the junior_staff plain-text conditional; add profile links ONLY on the branch where names are already interactive/senior — thread a `canViewProfiles: boolean` prop from the attendance page derived the same way the existing conditional is)
 - Create tests in: `lib/mobile/user-profile/profile-render.test.ts` (renderToStaticMarkup component tests, board-copy style) and extend `lib/mobile/user-health/board-copy.test.ts` for the board link
@@ -496,14 +539,14 @@ git commit -m "feat(profile): user-profile data module with schema and presentat
 
 - [ ] **Step 1: Write the failing render tests**
 
-`profile-render.test.ts` over the shared fixture: header shows name · school · wave chip (`ZZ Primary 2026 · launched … · day n`) · stage badge `Activated`/`Reached` with the SAME wording rules as the board (windowed suffix only on windowed indicators); evidence panel shows the tri-state login line, device current+ever, `Opened` first/last, and the coverage line exactly `"2 of 3 children have assessment info"`; strip renders 10 cells with the seeded counts; recent-sessions table renders letters uppercased (`A, B`), `Blending: short vowels`, the fallback group name, present counts, duration; clock table renders in/out/duration/auto marker and no `lat`/`lon` text; how-to panel contains the lifetime-vs-windowed note and NEVER the words `mastered`/`learned` (negative assertions); index page test: renders roster rows as links to `/mobile-app/users/<id>`; board-copy test: EA names on the health board are links.
+`profile-render.test.ts` over the shared fixture: header shows name · school · wave chip (`ZZ Primary 2026 · launched … · day n`) · stage badge `Activated`/`Reached` with the SAME wording rules as the board (windowed suffix only on windowed indicators); evidence panel shows the tri-state login line, device current+ever, `Opened` first/last, and the coverage line exactly `"2 of 3 children have assessment info"`; strip renders 10 cells with the seeded counts; recent-sessions table renders letters uppercased (`A, B`), `Blending: short vowels`, the fallback group name, present counts, duration; clock table renders in/out/duration/auto marker and no `lat`/`lon` text; how-to panel contains the lifetime-vs-windowed note and NEVER the words `mastered`/`learned` (negative assertions); windowed Active/Quiet indicators carry the `· 30d` suffix and the QUIET fixture renders the Quiet indicator; index page test: renders roster rows as links to `/mobile-app/users/<id>`; board-copy test: EA names on the health board are links; sidebar render tests: with user-health capability the Users item is an enabled link, without it (junior_staff shape) Users renders in the same disabled state as before — on BOTH the desktop and mobile nav variants; page-level malformed-id test: the profile page given `params.id = "not-a-uuid"` renders the shared not-found state (indistinguishable from an unknown uuid), never throws.
 
 - [ ] **Step 2: RED** — `npm run test:mobile` → new tests fail.
 
 - [ ] **Step 3: Implement**
 
 - Pages mirror the user-health page skeleton (auth → `getMobileUserProfile(params.id)` → error/notFound/other states; index uses `getMobileUserHealth` and renders name/school/wave/stage rows sorted by name). `[id]` validated by the request helper (throws → notFound state).
-- `weekly-bar-chart.tsx`: small client component `WeeklyBarChart({ title, description, series, dataKey })` with `series: Array<{week_start: string} & Record<string, number>>` — Recharts BarChart per the attendance idiom; rendered three times from the page (clock_days, sessions, app_assessments).
+- `weekly-bar-chart.tsx`: small client component `WeeklyBarChart({ title, description, series, dataKey })` with `series: MobileUserProfileWeeklyRow[]` and `dataKey: "clock_days" | "clock_minutes_completed" | "sessions" | "app_assessments"` (explicit union — the intersection-with-index-signature form cannot typecheck; round-1 finding); Recharts BarChart per the attendance idiom; rendered three times from the page (clock_days, sessions, app_assessments) so all three keys are compile-checked.
 - `weekday-session-strip.tsx`: server-compatible, `{ dates: string[]; cells: number[] }`, one row of colored cells + date labels (borrow `cellColor` thresholds from `ea-heatmap.tsx`).
 - Tables/panels server-compatible (no hooks). Copy rules from Global Constraints verbatim.
 - Sidebar + link integrations per Files list.

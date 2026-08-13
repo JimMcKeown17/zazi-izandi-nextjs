@@ -31,7 +31,17 @@ Additive migration, house pattern exactly (bare `CREATE FUNCTION`, `STABLE`, `SE
 ```jsonc
 {
   "generated_at": "...",
-  "identity": {            // null when the uuid has no identity_population row (auth-only account)
+  "user_id": "<uuid>",     // echo of p_user_id (canonical lowercase)
+  "days": 30,              // the fixed activity window for windowed_activity below
+  "windowed_activity": {   // SAME 30-day rules as mobile_user_health_domain_v2's activity block
+    "clock_entries": 0, "sessions": 0, "app_assessments": 0,
+    "last_clock_in_at": "…" | null, "last_session_at": "…" | null,
+    "last_app_assessment_at": "…" | null, "last_activity_at": "…" | null
+  },
+  "identity": {            // null when the uuid matches NEITHER an identity link NOR a roster row
+                           // (population rule = the FULL OUTER identity/roster join of
+                           // mobile_reporting_identity_population — roster-only EAs keep their
+                           // roster name/school/status and are NOT synthesized as auth-only)
     "display_name": "...", // same COALESCE cascade as mobile_user_health_domain_v2
     "employment_status": "active" | null,
     "current_school_id": "<uuid>" | null,
@@ -107,7 +117,7 @@ Additive RPC applied hosted first (same psql+ledger flow as Part B, post-apply v
 New module `lib/mobile/user-profile/` (house pattern mirroring `user-health/`): `schema.ts` (zod + superRefine mirroring Django invariants), `types.ts`, `request.ts` (`/api/mobile/users/<uuid>/`), `response.ts` (decode union incl. 404 → not-found), `presentation.ts` (formatting: letters uppercased comma-join — same rule as the app's `formatLetters`; blending label `Blending: <categories>`; duration/hours formatting), colocated `*.test.ts`.
 
 Components `components/mobile-app/user-profile/`:
-- **Profile header** — name, school, employment status, wave chip (`name · launched date · day n`, reuse `getWaveDayNumber`), durable stage badge + windowed Active/Quiet indicators — IDENTICAL semantics and labels as the user-health board (import the same presentation helpers; profile fields map onto a `MobileUserHealthRow`-compatible shape for `getActivityStage`/`isQuiet`).
+- **Profile header** — name, school, employment status, wave chip (`name · launched date · day n`, reuse `getWaveDayNumber`), durable stage badge + windowed Active/Quiet indicators labeled `· 30d` — IDENTICAL semantics and labels as the user-health board. The `windowed_activity` block + `user_id` + evidence fields map onto a `MobileUserHealthRow`-compatible shape (`toHealthRowShape`) so `getActivityStage`/`isQuiet`/`hasEverOpenedApp` run UNMODIFIED with the board's exact windowed meaning; lifetime totals are never used for windowed claims.
 - **Evidence panel** — auth state + post-provisioning tri-state (existing presentation helper), device (current + ever), app_open first/last ("Opened" language, reach-not-usage framing), data setup incl. `children_assessed / children` coverage line ("12 of 14 children have assessment info").
 - **Ten-weekday strip** — new small `WeekdaySessionStrip` component (dates + cells props) reusing the `EAHeatmap` cell-color idiom; one row, no table/search.
 - **Weekly trends** — one small reusable `WeeklyBarChart` (Recharts, modeled on `AttendanceTrendChart`) rendered three times: clock days/week, sessions/week, assessments/week (26 weeks).
