@@ -137,25 +137,35 @@ opened-app). The redesign separates the species.
   is frontend. Explicitly skipped for now: a first-app-open reach curve
   (`first_app_open_at` is already in the payload if this changes).
 
-## Open data-quality investigation (2026-08-13)
+## Data-quality findings — ECD self-setup blind spot (confirmed 2026-08-13)
 
-- [ ] ECD-batch accounts showing app-captured assessments with empty server
-  data (live examples: rows with 13–17 app assessments but 0 classes /
-  children / groups). Established from code, not a timing issue: both columns
-  come from the same live RPC call; Server Data counts current non-unassigned
-  assignment rows while App Activity counts immutable assessment events, and
-  `assessments.child_id` has no foreign key, with the app syncing per-entity
-  through an offline outbox — so assessments can land while the children /
-  class / assignment upserts fail or stay queued (primary hypothesis), or
-  after assignments were unassigned (secondary). Next step: run the
-  discriminating read-only queries against production (do the assessed
-  child_ids exist in `children`; do any `child_ea_assignments` rows exist for
-  these EAs including unassigned ones).
-- [ ] The same accounts have no `education_assistants` roster row, so they
-  render school "Unattributed" and expectation "unknown" instead of
-  "self_setup" — they escape the seeded/self-setup blocker logic and school
-  filters despite being mid-rollout ECD EAs (their Django auth cutoff proves
-  ECD-batch membership). Fix the roster linkage for the ECD batch, and
-  consider deriving expectation from rollout-wave membership (already joined
-  in the RPC) instead of roster school type, which removes this failure mode
-  at the root.
+Root-caused with read-only production queries after User health showed EAs
+with 13–17 app assessments but 0 classes / children / groups. Not a timing
+issue — both columns come from the same live RPC call. Confirmed mechanism:
+
+- The ECD self-setup flow creates classes and children (correct `created_by`,
+  children linked to classes) but **never writes `class_ea_assignments` /
+  `child_ea_assignments` rows** — 0 of the 27 ZZ ECD 2026 wave members have a
+  single assignment row, while 22 of 27 have created children. The v2
+  user-health RPC counts server data exclusively through the assignment
+  tables, so the entire self-setup cohort reads 0/0/0/0 no matter how much
+  real data they create. (`assessments.child_id` has no FK, so assessments
+  attach regardless.)
+- All 27 ECD roster rows have `school_id IS NULL`, so the expectation CASE
+  (roster school `school_type = 'ecd'` → self_setup) can never fire — every
+  ECD EA renders school "Unattributed" and expectation "unknown", escaping
+  the self-setup classification entirely.
+
+Fixes (decision needed on the first):
+
+- [ ] Decide the ownership model for self-setup data and fix at that root:
+  either the app's self-setup flow should emit assignment rows (backfill the
+  existing ones), or the RPC's data counts should also traverse the
+  `created_by` ownership path for self-setup EAs. Cross-repo either way.
+- [ ] Populate `school_id` on the ECD roster rows (centres as schools), and
+  derive expectation from rollout-wave membership (already joined in the
+  RPC) instead of roster school type so cohort classification stops
+  depending on roster completeness.
+- [ ] Hidden good news to surface once fixed: 22 of 27 ECD EAs have already
+  created children in-app — real self-setup adoption the dashboard currently
+  renders as emptiness.
