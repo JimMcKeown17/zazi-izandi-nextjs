@@ -120,7 +120,8 @@ Components `components/mobile-app/user-profile/`:
 - **Profile header** — name, school, employment status, wave chip (`name · launched date · day n`, reuse `getWaveDayNumber`), durable stage badge + windowed Active/Quiet indicators labeled `· 30d` — IDENTICAL semantics and labels as the user-health board. The `windowed_activity` block + `user_id` + evidence fields map onto a `MobileUserHealthRow`-compatible shape (`toHealthRowShape`) so `getActivityStage`/`isQuiet`/`hasEverOpenedApp` run UNMODIFIED with the board's exact windowed meaning; lifetime totals are never used for windowed claims.
 - **Evidence panel** — auth state + post-provisioning tri-state (existing presentation helper), device (current + ever), app_open first/last ("Opened" language, reach-not-usage framing), data setup incl. `children_assessed / children` coverage line ("12 of 14 children have assessment info").
 - **Ten-weekday strip** — new small `WeekdaySessionStrip` component (dates + cells props) reusing the `EAHeatmap` cell-color idiom; one row, no table/search.
-- **Weekly trends** — one small reusable `WeeklyBarChart` (Recharts, modeled on `AttendanceTrendChart`) rendered three times: clock days/week, sessions/week, assessments/week (26 weeks).
+- **Lifetime summary** — a KPI tile row owning `lifetime.totals`: lifetime clock days, completed clock time, clock entries, sessions, app assessments — every tile explicitly labeled `Lifetime` (the totals are the only untruncated aggregates; the capped tables must never masquerade as them).
+- **Weekly trends** — one small reusable `WeeklyBarChart` (Recharts, modeled on `AttendanceTrendChart`) rendered FOUR times: clock days/week, completed clock minutes/week, sessions/week, assessments/week (26 weeks — every computed weekly metric is rendered).
 - **Recent sessions table** — date, group, focus (letters or blending), present count, duration, notes. The team's primary inspection surface.
 - **Clock history table** — date, in, out, duration, auto-clockout flag, active marker (mirrors ledger presentation, minus GPS).
 - **How-to panel** — honesty notes: which numbers are lifetime vs windowed; assessment counts are activity counts, never mastery claims (letter-mastery language rules apply); app_open absence-is-not-proof note.
@@ -139,7 +140,7 @@ Link integration: user-health board rows and attendance ledger EA names link to 
 
 - Supabase: SQL-contract Jest suite for the new migration; new postgres-harness scenario set (fixture EA with letters + blending sessions, attendees across two groups, clock incl. auto-clockout + active entry, imported + app assessments, wave membership, app_open rows; assert weekly bucket math, weekday strip vs seeded dates, group-name fallback path, children_assessed, clock pairing; zero residue) wired into the combined harness; post-apply verifier additions.
 - Django: SimpleTestCase suite — passthrough happy path, 404 for non-population uuid, auth-only synthesis, each invariant fail-closed with `__cause__` pinning, allowlist boundary regression with the real client.
-- Frontend: schema retention + rejection tests; presentation tests (letters/blending/duration/day math); render tests for header/evidence/tables/strip (board-copy style); index + link-integration render tests.
+- Frontend: schema retention + rejection tests; presentation tests (letters/blending/duration/day math); render tests for header/evidence/lifetime-summary (all five `Lifetime`-labeled totals asserted)/four weekly charts/tables/strip (board-copy style); index + link-integration render tests.
 
 ## Risks / notes
 
