@@ -212,8 +212,25 @@ test("the weekly section renders exactly four charts with distinct fixture metri
       series: VALID_MOBILE_USER_PROFILE_PAYLOAD.weekly,
     })
   );
+  const text = visibleText(html);
+  const currentWeekDisclosure =
+    "The most recent bar is the current week so far, through the report snapshot—not a full week.";
 
   assert.equal((html.match(/data-weekly-chart="true"/g) ?? []).length, 4);
+  assert.equal(
+    text.split(currentWeekDisclosure).length - 1,
+    4,
+    "each weekly chart must disclose that its latest bar is week-to-date"
+  );
+  assert.equal(
+    VALID_MOBILE_USER_PROFILE_PAYLOAD.generated_at,
+    "2026-08-16T22:30:00+00:00"
+  );
+  assert.equal(
+    VALID_MOBILE_USER_PROFILE_PAYLOAD.weekly.at(-1)?.week_start,
+    "2026-08-17"
+  );
+  assert.doesNotMatch(text, /Twenty-six complete/);
 
   const clockDays = visibleText(extractTestId(html, "weekly-chart-clock_days"));
   assert.match(clockDays, /Clock days per week/);

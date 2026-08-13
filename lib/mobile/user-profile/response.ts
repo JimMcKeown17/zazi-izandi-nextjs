@@ -7,12 +7,12 @@ export type MobileUserProfileResult =
   | { ok: false; status: 422; dataQuality: true }
   | { ok: false; status: number; message: string };
 
-function isExactErrorPayload(payload: unknown, error: string): boolean {
+function hasErrorCode(payload: unknown, code: string): boolean {
   if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
     return false;
   }
   const record = payload as Record<string, unknown>;
-  return Object.keys(record).length === 1 && record.error === error;
+  return record.code === code;
 }
 
 export async function decodeMobileUserProfileResponse(
@@ -24,16 +24,13 @@ export async function decodeMobileUserProfileResponse(
         const payload: unknown = await response.json();
         if (
           response.status === 404 &&
-          isExactErrorPayload(payload, "user not found")
+          hasErrorCode(payload, "mobile_user_not_found")
         ) {
           return { ok: false, status: 404, notFound: true };
         }
         if (
           response.status === 422 &&
-          isExactErrorPayload(
-            payload,
-            "mobile reporting data integrity issue"
-          )
+          hasErrorCode(payload, "mobile_user_profile_data_integrity")
         ) {
           return { ok: false, status: 422, dataQuality: true };
         }

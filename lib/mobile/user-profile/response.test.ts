@@ -15,26 +15,91 @@ test("a complete user profile response is decoded without losing values", async 
   );
 });
 
-test("only the exact endpoint 404 body maps to the not-found variant", async () => {
+test("HTTP 404 with the not-found code maps despite extra metadata", async () => {
   assert.deepEqual(
     await decodeMobileUserProfileResponse(
-      new Response(JSON.stringify({ error: "user not found" }), {
-        status: 404,
-      })
+      new Response(
+        JSON.stringify({
+          error: "user not found",
+          code: "mobile_user_not_found",
+          correlation_id: "profile-404-test",
+        }),
+        { status: 404 }
+      )
     ),
     { ok: false, status: 404, notFound: true }
   );
 });
 
-test("the exact integrity-error 422 maps to the data-quality variant", async () => {
+test("HTTP 422 with the integrity code maps despite extra metadata", async () => {
   assert.deepEqual(
     await decodeMobileUserProfileResponse(
       new Response(
-        JSON.stringify({ error: "mobile reporting data integrity issue" }),
+        JSON.stringify({
+          error: "mobile reporting data integrity issue",
+          code: "mobile_user_profile_data_integrity",
+          correlation_id: "profile-422-test",
+        }),
         { status: 422 }
       )
     ),
     { ok: false, status: 422, dataQuality: true }
+  );
+});
+
+test("codeless and unknown-code profile errors stay generic", async () => {
+  const cases = [
+    {
+      status: 404,
+      payload: { error: "user not found" },
+    },
+    {
+      status: 404,
+      payload: { error: "user not found", code: "unknown_not_found" },
+    },
+    {
+      status: 422,
+      payload: { error: "mobile reporting data integrity issue" },
+    },
+    {
+      status: 422,
+      payload: {
+        error: "mobile reporting data integrity issue",
+        code: "unknown_integrity_issue",
+      },
+    },
+  ] as const;
+
+  for (const { status, payload } of cases) {
+    assert.deepEqual(
+      await decodeMobileUserProfileResponse(
+        new Response(JSON.stringify(payload), { status })
+      ),
+      {
+        ok: false,
+        status,
+        message: "The user profile service could not return user data.",
+      }
+    );
+  }
+});
+
+test("the reporting-unavailable 502 code remains a generic service failure", async () => {
+  assert.deepEqual(
+    await decodeMobileUserProfileResponse(
+      new Response(
+        JSON.stringify({
+          error: "mobile reporting service unavailable",
+          code: "mobile_reporting_unavailable",
+        }),
+        { status: 502 }
+      )
+    ),
+    {
+      ok: false,
+      status: 502,
+      message: "The user profile service could not return user data.",
+    }
   );
 });
 
@@ -55,7 +120,7 @@ test("unknown 4xx and 5xx statuses remain generic service errors", async () => {
   }
 });
 
-test("route-level HTML and different-JSON 404 responses stay service errors", async () => {
+test("route-level HTML and malformed 404 responses stay service errors", async () => {
   const expected = {
     ok: false,
     status: 404,
@@ -73,15 +138,6 @@ test("route-level HTML and different-JSON 404 responses stay service errors", as
       new Response(JSON.stringify({ error: "not found", detail: "route" }), {
         status: 404,
       })
-    ),
-    expected
-  );
-  assert.deepEqual(
-    await decodeMobileUserProfileResponse(
-      new Response(
-        JSON.stringify({ error: "user not found", detail: "unexpected" }),
-        { status: 404 }
-      )
     ),
     expected
   );

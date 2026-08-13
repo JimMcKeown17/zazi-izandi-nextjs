@@ -56,7 +56,8 @@ export function WeeklyBarChart({
     >
       <h3 className="font-bold text-slate-900">{title}</h3>
       <p className="mt-1 min-h-8 text-xs leading-relaxed text-slate-500">
-        {description}
+        {description} The most recent bar is the current week so far, through
+        the report snapshot—not a full week.
       </p>
       <p className="sr-only">
         Latest week: {latestValue} {LATEST_LABELS[dataKey]}
@@ -120,7 +121,7 @@ export function ProfileWeeklyTrends({
           Weekly trends
         </h2>
         <p className="mt-1 text-xs text-slate-500">
-          Twenty-six complete, zero-filled ISO-week buckets, oldest to newest.
+          Twenty-six zero-filled ISO-week buckets, oldest to newest.
         </p>
       </div>
       <div className="mt-3 grid gap-4 lg:grid-cols-2">
