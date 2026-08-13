@@ -1,6 +1,6 @@
 # Zazi iZandi Website Roadmap
 
-_Updated: 2026-08-11_
+_Updated: 2026-08-13_
 
 This tracker records the website work for the approved mobile-app admin
 reporting plan. The detailed cross-repository contract remains in the mobile
@@ -35,22 +35,30 @@ worktree's implementation and evidence boundaries.
 - [x] Slice 1 deployment/live gate: verify Vercel's project, production branch,
   domains, and environment; deploy Django first; deploy the frontend; prove a
   cookie-free login redirect and an authorized live success response.
-- [ ] Slice 2: Clock In/Out reporting and CSV.
+- [x] Slice 2: Clock In/Out reporting and CSV.
   - [x] Frontend contract and local UI: shift-level rows, bounded date/current-
     school filters, reconciled summaries, open and automatic-clock-out states,
     responsive table/cards, sanitized error state, and capability-restricted
     same-origin CSV download.
-  - [ ] Upstream and live proof: implement/verify the service-role Supabase
-    reporting function and CSV query, Clerk-authorized Django endpoints, hosted
-    integration, populated browser semantics, and deployment.
-- [ ] User onboarding and health board.
+  - [x] Upstream and live proof: service-role Supabase reporting function and
+    CSV query, Clerk-authorized Django endpoints, hosted integration, and
+    deployment — live end to end 2026-08-11 (see build log).
+- [x] User onboarding and health board.
   - [x] Frontend contract and local UI: searchable UUID/name/email identity,
     auth readiness and last-sign-in evidence, positive device registration,
     seeded/self-setup data expectations, app activity, attention reasons, and
     responsive row/card presentation.
-  - [ ] Upstream and live proof: implement and privilege-test the domain
-    aggregation, join it to auth-account evidence in Django, verify real
-    self-setup and seeded cohorts, and deploy.
+  - [x] Upstream and live proof: domain aggregation privilege-tested, joined to
+    auth-account evidence in Django, verified against the real seeded and
+    self-setup cohorts, and deployed — live end to end 2026-08-11 (see build
+    log).
+- [x] Mobile ops usability (Part A, plan
+  docs/superpowers/plans/2026-08-11-mobile-ops-usability.md): per-EA clock
+  rollup with By shift / By EA toggle and search, daily clocking trend chart,
+  stage × blockers health model, URL-initialized filters with clickable
+  summary tiles, chase-list CSV export, app-version card, blocker playbook
+  panel, and cross-links between the health board and clock ledger. Merged to
+  main 2026-08-12.
 - [ ] Slice 3: Session CSV exports.
 - [ ] Slice 4: Add-school workflow and audit trail.
 - [ ] Slice 5: Add-user invite workflow and public set-password page.
@@ -65,13 +73,52 @@ its absence cannot prove that the app was never installed.
 
 ## Roadmap: future mobile-app operations work
 
-- [ ] Per-EA profile pages (`/mobile-app/users/<id>`, fills the "Users — soon"
-  nav placeholder): one EA's full clock history, sessions, and user-health
-  snapshot on a single page; cross-links from the health board and clock
-  ledger land here instead of on filtered global pages. Needs a design pass
-  and likely a dedicated per-EA Django/Supabase endpoint (full history, not
-  the windowed global feeds).
-- [ ] Part B rollout waves (gated spec in
-  docs/superpowers/plans/2026-08-11-mobile-ops-usability.md): stored wave
-  membership + per-wave coverage; restores the evidence-coverage strip as the
-  wave-scoped instrument.
+- [x] Part B rollout waves + app_open (plan
+  docs/superpowers/plans/2026-08-12-rollout-waves.md): wave tables with
+  immutability guard, rate-bounded `record_app_open` RPC, and
+  `mobile_user_health_domain_v2` in Supabase; Django tolerant passthrough;
+  frontend wave filter, wave-scoped evidence panel, lifetime-ratchet stage,
+  and quiet predicate; app_open emitter published to the app via EAS OTA.
+  Deployed 2026-08-13 with waves loaded: ZZ Primary 2026 (152 seeded EAs,
+  launched 2026-08-08) and ZZ ECD 2026 (27 self-setup EAs, 2026-08-11).
+  Masifunde wave still to be defined and loaded.
+- [ ] **In progress** — Per-EA profile pages (`/mobile-app/users/<id>`, fills
+  the "Users — soon" nav placeholder): one EA's full clock history, sessions,
+  and user-health snapshot on a single page; cross-links from the health board
+  and clock ledger land here instead of on filtered global pages. Being built
+  2026-08-13 across `feat/ea-profile` (this repo), `feat/ea-profile-api`
+  (Django), and `feat/ea-profile-rpc` (Supabase); spec and plan in
+  docs/superpowers/specs/2026-08-12-ea-profile-design.md and
+  docs/superpowers/plans/2026-08-12-ea-profile.md on that branch.
+
+## Roadmap: user-health digestibility (wave panel v2, agreed 2026-08-13)
+
+Field observation from the first live rollout week: the wave panel mixes
+three metric species — adoption (activated), instrument coverage (push
+tokens, app_open), and preconditions (accounts, auth-ready) — on one visual
+scale, which invites invalid comparisons (80% logged-in was read against 42%
+opened-app). The redesign separates the species.
+
+- [ ] Mutually exclusive adoption funnel at the top of the wave panel: three
+  buckets from the existing stage model — Activated (ever) / Reached but not
+  yet active / No evidence yet — every wave member in exactly one bucket, the
+  bars sum to the wave size, and each bucket links to the board filtered to
+  those EAs (and to the chase-list CSV). This is the "who do I call" view.
+  Once a wave matures, split Activated into Active vs Quiet using the shipped
+  quiet predicate.
+- [ ] Demote the instrument bars: move "Device signal" and "Opened app" out of
+  the main panel into a collapsed "telemetry coverage" disclosure, framed
+  explicitly as how well we can observe, not how well EAs are doing. Rename
+  "Device signals" to "Approved push notifications" everywhere — that is its
+  operational meaning (who a push notification can reach).
+- [ ] Summary cards: drop the "Device signals" card; add an "Opened app
+  (ever)" card in its place (doubles as an OTA-penetration proxy during
+  rollouts).
+- [ ] Precondition bars: collapse "Accounts" and "Auth ready" into a single
+  caption line (e.g. "152 accounts · all auth-ready") and render a bar only
+  when a value regresses below 100% — keep the alarm, lose the noise.
+- [ ] Summary tiles must respect the active cohort/wave filter (today the
+  tiles are population-wide while the board below is filtered — two silent
+  denominators on one screen). All rows are already loaded client-side, so
+  this can be a client-side recompute; label the scope on the tiles either
+  way.
