@@ -37,28 +37,31 @@ test("an initial query narrows both views and explains the summary scope", () =>
   assert.match(html, /does not change the summary tiles/i);
 });
 
-test("ledger rows link each EA to their user health row, preserving window and school scope", () => {
-  const withLinks = renderToStaticMarkup(
-    createElement(AttendanceLedger, {
-      entries,
-      days: 7,
-      schoolId: "a0c54f15-e176-42c5-ad0e-300947557005",
-      initialView: "ea",
-      userHealthLinksEnabled: true,
-    })
-  );
-  assert.match(
-    withLinks,
-    /href="\/mobile-app\/user-health\?days=7&amp;school_id=a0c54f15-e176-42c5-ad0e-300947557005&amp;q=3eb26195-c9b4-41a2-a01d-3b341a28177e"/
-  );
+test("both ledger views link each EA to the exact profile URL only with the user-health capability", () => {
+  for (const initialView of ["shifts", "ea"] as const) {
+    const withLinks = renderToStaticMarkup(
+      createElement(AttendanceLedger, {
+        entries,
+        days: 7,
+        schoolId: "a0c54f15-e176-42c5-ad0e-300947557005",
+        initialView,
+        userHealthLinksEnabled: true,
+      })
+    );
+    assert.match(
+      withLinks,
+      /href="\/mobile-app\/users\/3eb26195-c9b4-41a2-a01d-3b341a28177e"/
+    );
+    assert.doesNotMatch(withLinks, /\/mobile-app\/user-health\?/);
 
-  const withoutLinks = renderToStaticMarkup(
-    createElement(AttendanceLedger, {
-      entries,
-      days: 7,
-      schoolId: null,
-      initialView: "ea",
-    })
-  );
-  assert.doesNotMatch(withoutLinks, /\/mobile-app\/user-health\?/);
+    const withoutLinks = renderToStaticMarkup(
+      createElement(AttendanceLedger, {
+        entries,
+        days: 7,
+        schoolId: null,
+        initialView,
+      })
+    );
+    assert.doesNotMatch(withoutLinks, /href="\/mobile-app\/users\//);
+  }
 });

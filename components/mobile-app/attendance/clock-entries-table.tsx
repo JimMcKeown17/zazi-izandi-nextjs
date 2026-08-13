@@ -64,17 +64,6 @@ function formatTime(value: string | null): string {
   return value ? TIME_FORMAT.format(new Date(value)) : "Clocked in now";
 }
 
-function buildUserHealthHref(
-  days: number,
-  schoolId: string | null,
-  userId: string
-): string {
-  const params = new URLSearchParams({ days: String(days) });
-  if (schoolId !== null) params.set("school_id", schoolId);
-  params.set("q", userId);
-  return `/mobile-app/user-health?${params.toString()}`;
-}
-
 function Duration({ entry }: { entry: MobileTimeEntryRow }) {
   return entry.duration_minutes === null ? (
     <span className="font-medium text-emerald-700">In progress</span>
@@ -87,8 +76,6 @@ function Duration({ entry }: { entry: MobileTimeEntryRow }) {
 
 export function ClockEntriesTable({
   entries,
-  days,
-  schoolId,
   userHealthLinksEnabled = false,
 }: {
   entries: MobileTimeEntryRow[];
@@ -152,7 +139,7 @@ export function ClockEntriesTable({
                     <span className="font-semibold text-slate-900">
                       {userHealthLinksEnabled ? (
                         <Link
-                          href={buildUserHealthHref(days, schoolId, entry.user_id)}
+                          href={`/mobile-app/users/${entry.user_id}`}
                           className="hover:underline"
                         >
                           {entry.ea_name}
@@ -199,7 +186,7 @@ export function ClockEntriesTable({
                   <h3 className="font-bold text-slate-900">
                     {userHealthLinksEnabled ? (
                       <Link
-                        href={buildUserHealthHref(days, schoolId, entry.user_id)}
+                        href={`/mobile-app/users/${entry.user_id}`}
                         className="hover:underline"
                       >
                         {entry.ea_name}

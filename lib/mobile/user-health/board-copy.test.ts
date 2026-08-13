@@ -88,6 +88,15 @@ test("the board uses EA terminology and exposes blocker actions on its chips", (
   assert.doesNotMatch(html, /youth/i);
 });
 
+test("EA names on both board layouts link to their per-user profiles", () => {
+  const html = renderBoard({
+    users: [VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0]],
+  });
+  const href = `href="/mobile-app/users/${VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0].user_id}"`;
+
+  assert.equal(html.split(href).length - 1, 2);
+});
+
 test("the board exposes wave choices and a wave-scoped evidence funnel", () => {
   const allWavesHtml = renderBoard();
   assert.match(allWavesHtml, />All waves</);

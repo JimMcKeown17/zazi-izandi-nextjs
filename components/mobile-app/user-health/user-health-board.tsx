@@ -704,7 +704,12 @@ export function UserHealthBoard({
                   <tr key={user.user_id} className="align-top hover:bg-slate-50/80">
                     <td className="px-4 py-4">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-bold text-slate-900">{user.display_name}</p>
+                        <Link
+                          href={`/mobile-app/users/${user.user_id}`}
+                          className="font-bold text-slate-900 hover:text-primary hover:underline"
+                        >
+                          {user.display_name}
+                        </Link>
                         <EmploymentBadge status={user.employment_status} />
                       </div>
                       <p className="mt-1 text-xs text-slate-600">
@@ -752,7 +757,14 @@ export function UserHealthBoard({
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-bold text-slate-900">{user.display_name}</h3>
+                      <h3>
+                        <Link
+                          href={`/mobile-app/users/${user.user_id}`}
+                          className="font-bold text-slate-900 hover:text-primary hover:underline"
+                        >
+                          {user.display_name}
+                        </Link>
+                      </h3>
                       <EmploymentBadge status={user.employment_status} />
                     </div>
                     <p className="mt-1 break-all text-xs text-slate-600">

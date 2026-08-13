@@ -50,17 +50,6 @@ function formatAutomatic(rollup: EaClockRollup): string {
   )}%)`;
 }
 
-function buildUserHealthHref(
-  days: number,
-  schoolId: string | null,
-  userId: string
-): string {
-  const params = new URLSearchParams({ days: String(days) });
-  if (schoolId !== null) params.set("school_id", schoolId);
-  params.set("q", userId);
-  return `/mobile-app/user-health?${params.toString()}`;
-}
-
 function LastClockIn({ value }: { value: string }) {
   const clockIn = new Date(value);
   return (
@@ -75,8 +64,6 @@ function LastClockIn({ value }: { value: string }) {
 
 export function EaRollupTable({
   rollups,
-  days,
-  schoolId,
   userHealthLinksEnabled = false,
 }: {
   rollups: EaClockRollup[];
@@ -130,7 +117,7 @@ export function EaRollupTable({
                     <span className="font-semibold text-slate-900">
                       {userHealthLinksEnabled ? (
                         <Link
-                          href={buildUserHealthHref(days, schoolId, rollup.user_id)}
+                          href={`/mobile-app/users/${rollup.user_id}`}
                           className="hover:underline"
                         >
                           {rollup.ea_name}
@@ -179,7 +166,7 @@ export function EaRollupTable({
                   <h3 className="font-bold text-slate-900">
                     {userHealthLinksEnabled ? (
                       <Link
-                        href={buildUserHealthHref(days, schoolId, rollup.user_id)}
+                        href={`/mobile-app/users/${rollup.user_id}`}
                         className="hover:underline"
                       >
                         {rollup.ea_name}
