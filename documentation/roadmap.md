@@ -181,7 +181,20 @@ irreversible access loss; see the spec's "Why not triggers"):
   tables are covered. Unassignment/handover semantics are Phase 2, deferred,
   and require app-side changes. Coordinate migration timestamps with the
   `feat/ea-profile-rpc` workstream; brief the team that Server Data numbers
-  jump on deploy.
+  jump on deploy. Round 2 (REVISE) adjudicated into spec v3: neutrality
+  guards moved into the SQL, advisory leases, ordered bounded scans,
+  per-table subtransactions, run log, cron scheduling moved out of the
+  migration. Round 3 (Codex, NO-SHIP) adjudicated into v4: the
+  retained-access trade-off was withdrawn as an authorization defect;
+  added provenance ledger + tested compensating rollback, xact-scoped
+  advisory locks, and an independent watchdog as a deploy prerequisite.
+  **Decision required before deploy (spec §Decision):** Fork B
+  (recommended — child projection + atomic revocation in the sync RPC's
+  tombstone branch; re-add-after-removal becomes a documented support case
+  until Phase 2) vs Fork A (classes+groups only; children stay broken).
+  **Handoff for the next session/agent (spec v4 has NOT yet passed
+  adversarial review — round 4 was in flight):**
+  docs/superpowers/plans/2026-08-14-assignment-reconciliation-handoff.md.
 - [ ] Populate `school_id` on the ECD roster rows (centres as schools), and
   derive expectation from rollout-wave membership (already joined in the
   RPC) instead of roster school type so cohort classification stops
