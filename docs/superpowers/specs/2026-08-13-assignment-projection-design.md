@@ -1,10 +1,17 @@
-# Assignment Read-Model Reconciliation — Design Spec (v3)
+# Assignment Read-Model Reconciliation — Design Spec (v4)
 
 _Drafted 2026-08-13. v2 after adversarial round 1 (17 findings; trigger/
 soft-close design withdrawn — see "Why not triggers"). v3 after adversarial
-round 2 (15 findings, verdict REVISE: architecture endorsed, SQL contract
-hardened). Status: DRAFT for review round 3. Target repo: `zazi-izandi-app`
-(Supabase migrations only). No mobile-app, Django, or frontend changes._
+round 2 (15 findings, REVISE: architecture endorsed, SQL contract hardened).
+v4 after adversarial round 3 (Codex, NO-SHIP: 4 findings — the
+retained-access "accepted trade-off" is withdrawn as an authorization
+defect; provenance ledger + compensating rollback added; advisory locks
+made transaction-scoped; independent watchdog made a deploy prerequisite).
+Status: DRAFT for review round 4. Target repo: `zazi-izandi-app`. No
+mobile-app or frontend changes. Fork B modifies one existing sync RPC in a
+versioned migration; the watchdog adds one management-command check to the
+existing nightly Django cron. Everything else is additive Supabase
+migrations._
 
 ## Problem
 
@@ -116,12 +123,18 @@ statement in the migration** (fact 12); scheduling is a runbook step.
 `LANGUAGE plpgsql`, `SECURITY DEFINER`, owner `postgres`,
 `SET search_path = ''`, fully-qualified names, grants per fact 10. Behavior:
 
-1. **Leases.** `pg_try_advisory_lock` on its own key
-   (`'zazi:primary:2026:assignment-reconciler'`) — if unavailable, another
-   run is live (this also serializes the Django-fallback path): record a
-   skipped run and return. Then `pg_try_advisory_lock` on the seed key
-   (fact 11) — if unavailable, a seed/restore is live: record
-   `skipped_seed_lease` and return. Both locks released at the end.
+1. **Leases — transaction-scoped.** `pg_try_advisory_xact_lock` on its own
+   key (`'zazi:primary:2026:assignment-reconciler'`) — if unavailable,
+   another run is live (this also serializes the Django-fallback path):
+   record a skipped run and return. Then `pg_try_advisory_xact_lock` on the
+   seed key (fact 11) — if unavailable, a seed/restore is live: record
+   `skipped_seed_lease` and return. Transaction scope (repo precedent:
+   `20260813091000:61`, `20260813230000:384`) means rollback or completion
+   releases the locks automatically — a crash after acquisition can never
+   wedge future runs into permanent `skipped_concurrent` (round-3 finding;
+   session-scoped locks survive transaction rollback and would). Advisory
+   keys share one keyspace regardless of scope, so the xact-lock attempt
+   correctly fails while a seed session holds its session-scoped lease.
    This closes the two round-2 damage paths: a cron firing mid-restore
    (backup row vs fresh projected row → `23505` aborting the restore) and
    mid-wipe resurrection of rows being torn down.
@@ -179,26 +192,55 @@ statement in the migration** (fact 12); scheduling is a runbook step.
    nullable, targets `NOT NULL`); bookkeeping columns = `now()`;
    `synced = TRUE`. Nothing consumes `server_updated_at` deltas for these
    tables (fact 5 — full-snapshot pulls), so `now()` stamps are safe.
-8. **Run log.** The function writes one row per invocation to
-   `private.assignment_reconciliation_runs` (started/finished, per-table
-   inserted + residual counts by class, error text, `skipped_seed_lease` /
-   `skipped_concurrent` flags). pg_cron discards return values, so the
-   log is the observability surface — this is what earns "this bug class
-   can never again go unnoticed." (Precedent: `private.seed_run_manifest`,
-   `private.mobile_sync_receipts`.) Provenance limitation, accepted for
-   Phase 1: projected rows carry no per-row marker; the run log records
-   counts, not ids.
+8. **Run log + provenance ledger.** The function writes one row per
+   invocation to `private.assignment_reconciliation_runs`
+   (started/finished, per-table inserted + residual counts by class, error
+   text, `skipped_seed_lease` / `skipped_concurrent` flags), and — round-3
+   requirement — appends every inserted row's identity to an immutable
+   `private.assignment_reconciliation_ledger` (`run_id`, `table_name`,
+   `row_id`, `inserted_at`). The ledger is what makes the migration
+   *reversible*: an incident responder can distinguish reconciler-created
+   rows from seeded, handover, or manually managed ones. (Precedent:
+   `private.seed_run_manifest`, `private.mobile_sync_receipts`.)
 
 ### 2. Drift view
 
 `private.assignment_read_model_drift` — per table: `missing_projectable`,
 `residual_contested_history` / `residual_multi_claimant` /
 `residual_creator_mismatch`, and **`orphaned_active`** (active domain row
-whose source row no longer exists — the residue of the decision below).
-Defined `WITH (security_invoker = true)` (PG17) plus explicit `REVOKE ALL …
-FROM PUBLIC, anon, authenticated, authenticator`. If the counts are later
-surfaced to Django/user-health, that is a `public`, service-role-only
-wrapper function per fact 10 — PostgREST cannot reach `private`.
+whose source row no longer exists). Defined `WITH (security_invoker =
+true)` (PG17) plus explicit `REVOKE ALL … FROM PUBLIC, anon, authenticated,
+authenticator`.
+
+### 2b. Compensating rollback (round-3 requirement — rollback must be real)
+
+`private.rollback_assignment_reconciliation(p_run_id DEFAULT NULL)`
+(SECURITY DEFINER per fact 10, xact-locked like the reconciler): for each
+ledger entry (optionally scoped to one run), **delete** the domain row iff
+it is *unmodified since insertion* (`server_updated_at` still equals the
+ledger's inserted stamp — any later UPDATE, including a Fork-B revocation
+closure, bumps it via the existing `BEFORE UPDATE` trigger and the row is
+skipped as no-longer-reconciler-owned). Deleting an entity's only rows
+restores the pre-deploy legacy fallback exactly (fact 1's `NOT EXISTS`
+gate), and the projection predicate guarantees the reconciler only ever
+inserted into entities that had no other rows — so full rollback of
+unmodified rows is a faithful return to pre-deploy authorization state.
+Returns per-table deleted/skipped counts; ledger rows are retained for
+audit. Harness-tested before any production backfill (test plan).
+
+### 2c. Independent watchdog (deploy prerequisite — round-3 requirement)
+
+A passive run log cannot notice a deleted cron job, scheduler outage, or
+pre-log failure. Before the schedule is enabled: a `public`,
+service-role-only health function (fact 10 pattern — PostgREST cannot reach
+`private`) returning last-successful-run age plus the drift view's
+counters; the **existing nightly Django cron** calls it and raises a
+data-quality alert (surfaced on `/pm/data-quality`) when: no successful run
+within 3 intervals, any nonzero `residual_*` count, or `orphaned_active`
+growth week-over-week. The staleness figure below is thereby an operational
+SLO with a monitor, not an assumed bound. (This is the one place a
+Django-side change exists: one management-command check calling one RPC —
+no sync-path or app changes.)
 
 ### 3. Scheduling (runbook step, hosted project only — never in a migration)
 
@@ -218,20 +260,44 @@ Fallback if pg_cron is unavailable: a service-role RPC wrapper called by the
 existing nightly Django cron — safe against overlap because the function's
 own advisory lock provides the serialization pg_cron would have.
 
-## Decision required (Jim) — unassignment behavior changes at deploy
+## Decision required (Jim) — how child projection handles removal
 
-Today, for self-setup EAs (no domain rows), removing a child in-app deletes
-the `staff_children` row and access genuinely ends (the fallback is the only
-grant). **After the backfill, that same removal no longer revokes
-server-side access** — the projected active domain row keeps granting until
-Phase 2 exists, and the device re-pulls the child from the assignment row.
-This is the one real behavior change Phase 1 introduces; it is tracked
-per-row by the `orphaned_active` drift counter. Recommendation: accept it
-(seeded EAs already live in exactly this state; child *deletion* — as
-opposed to de-claiming — still works via `delete_child_if_no_history` and
-FK cascade), and let Phase 2 implement true revocation. The alternative —
-reconciler-written soft-closes — re-imports the round-1 quarantine/deadlock
-chain and is rejected.
+Round-3 adjudication, accepted: v3's "accept retained access until Phase 2"
+option is **withdrawn**. After projection, an EA who deliberately removes a
+child would have kept server-side read/write access to that child's graph
+while the UI implied revocation succeeded — in a child-data system that is
+an authorization defect, not a trade-off. Two viable forks remain:
+
+**Fork B (recommended) — child projection + atomic revocation in the
+tombstone branch.** The sync RPC's `STAFF_CHILDREN` tombstone branch
+(`20260729200000:2307–2325`) already deletes the source row under the
+permission gate inside the canonical lock order; a versioned
+`CREATE OR REPLACE` migration extends that same transaction to soft-close
+the actor's active `child_ea_assignments` row (`unassigned_at = now()`,
+`handover_reason = 'assignment_removed'`). Removal then revokes atomically:
+the domain row closes, RLS denies, and the removing device's next pull
+quarantines the child locally — which is the *intended* outcome of a
+deliberate removal (the quarantine/restore machinery exists for exactly
+this). Known bounded cost: **re-add after removal** becomes a support case
+until Phase 2 — the closed row makes the client refuse the push (fact 4)
+and the server gate false (fact 1); runbook: service-role SQL deletes the
+child's closed domain rows (ledgered), restoring the fallback, after which
+the re-add syncs and the reconciler re-projects. Judged rare (deliberate
+removal followed by re-claim of the same child). Blast radius: one hot,
+heavily-reviewed RPC changes — it gets its own migration, full harness
+rerun, and the round-3-mandated cases (RLS denial post-closure, duplicate
+tombstones, mid-transaction rollback, partial-failure recovery).
+
+**Fork A (conservative) — exclude child projection from Phase 1.** Ship
+classes + groups only (their sources have no removal path — declaiming is
+archival, which consumers already filter — so no revocation gap exists for
+them). Zero sync-RPC changes; but the ECD dashboard gap this work exists to
+fix is overwhelmingly *children* (854 of 928 rows), so the original problem
+stays broken until the full child design ships.
+
+The v1-style alternative (reconciler-written soft-closes) remains rejected —
+it re-imports the round-1 quarantine/deadlock chain from outside the sync
+transaction where the app cannot reason about it.
 
 ## Staleness contract
 
@@ -290,16 +356,27 @@ Round-2 additions: (7) multi-claimant child → both skipped, residual
 `multi_claimant` counted, nothing inserted; (8) `created_by` mismatch →
 skipped + counted; (9) closed row for the pair + live source → re-opened
 (new active row, closed row untouched); closed row for a *different* EA →
-`contested_history`, not projected; (10) `staff_children` DELETE after
-projection → domain row stays active, `orphaned_active` increments —
-asserting the *decided* non-revoking behavior explicitly; (11) run while
-the seed advisory lease is held → `skipped_seed_lease`, zero writes;
-concurrent second invocation → `skipped_concurrent`; (12) release harness
-applies the migration to its bare `template0` database (proves no `cron.*`
-in the migration); (13) `p_limit` batching converges over successive runs;
-(14) function EXECUTE denied to `authenticated`/`anon`; drift view
-unreadable by `authenticated`; (15) sync upsert path still returns
-`ROW_COUNT = 1` (no trigger crept in).
+`contested_history`, not projected; (10) run while the seed advisory lease
+is held → `skipped_seed_lease`, zero writes; concurrent second invocation →
+`skipped_concurrent`; (11) release harness applies the migration to its
+bare `template0` database (proves no `cron.*` in the migration); (12)
+`p_limit` batching converges over successive runs; (13) function EXECUTE
+denied to `authenticated`/`anon`; drift view unreadable by `authenticated`;
+(14) sync upsert path still returns `ROW_COUNT = 1` (no trigger crept in).
+
+Round-3 additions: (15) ledger records every inserted row; compensating
+rollback deletes unmodified reconciler rows, skips modified ones, restores
+the legacy fallback (helper returns TRUE again for the fallback-only
+fixture EA), and reports counts; rollback is idempotent; (16) injected
+failure after lock acquisition (two connections) → transaction rollback
+frees the xact locks and a fresh invocation immediately acquires and
+reconciles; (17) Fork B tombstone atomicity: removal closes the domain row
+and deletes the source in one transaction — RLS denies the removed EA
+afterwards; duplicate tombstone replays are idempotent; mid-transaction
+rollback leaves both rows consistent; re-add-after-removal reproduces the
+documented client refusal and the runbook SQL restores the fallback; (18)
+watchdog: a deleted cron job / stale last-success is detected by the health
+function and surfaces the alert condition.
 
 ## Deploy
 
@@ -316,14 +393,16 @@ unreadable by `authenticated`; (15) sync upsert path still returns
 5. Runbook: enable/verify pg_cron, `cron.schedule`, verify `cron.job` row
    and the next run's log entry.
 6. Announce the Server Data jump; note the staleness contract.
-7. Rollback: `cron.unschedule` + `DROP FUNCTION`; projected rows are
-   correct domain data and remain. Part B's v1/v2 RPC rollback story is
-   unaffected.
+7. Rollback (now real, per round 3): `cron.unschedule` halts scheduling;
+   `private.rollback_assignment_reconciliation()` reverses the data plane —
+   ledgered, unmodified reconciler rows are deleted, restoring the legacy
+   fallback exactly; modified rows (e.g. Fork-B closures) are skipped and
+   reported. Part B's v1/v2 RPC rollback story is unaffected.
 
-## Open questions for round 3
+## Open questions for round 4
 
-1. Cadence: hourly steady-state with `*/15` for the first rollout week?
-2. Surface drift/run-log counts to Django (service-role wrapper) now, or
-   SQL-only until Phase 2?
+1. Fork A vs Fork B (see Decision section) — Jim's call; deploy is gated on
+   it. The rest of the design is identical under either fork.
+2. Cadence: hourly steady-state with `*/15` for the first rollout week?
 3. Seed-fixture hardening (`ON CONFLICT` in `matrix-fixture.mjs` and seed
    SQL): agreed as mandatory before Phase 2 — schedule now or with Phase 2?
