@@ -112,26 +112,56 @@ was adjudicated — claims verified against code — before revising):
   that, the migration was irreversible); advisory locks became
   transaction-scoped; an independent watchdog became a deploy prerequisite.
 
-**⚠️ v4 itself has NOT passed adversarial review.** A round-4 Codex review
-was in flight when this session ended, and its interim log already flagged
-"a concrete NO-SHIP contradiction is emerging" (suspected area: the
-interaction between the reconciler's closed-row re-open rule, the Fork B
-tombstone closure, and the client-side push gate — check whether re-opening
-on live source evidence can resurrect access that a Fork B revocation just
-removed, and whether the drift/rollback machinery is coherent under Fork
-B). Its output, if it survived, is at
-`/private/tmp/claude-501/-Users-jimmckeown-Development-zazi-mobile-clock-reporting-nextjs/1a56206f-e1d6-4e6e-9906-acc62c34849b/tasks/bnpvwd6i4.output`
-— but do not rely on it existing. **Treat the spec as an unreviewed draft:
-verify every "verified architecture fact" (1–14) against the code yourself,
-and run fresh adversarial review rounds until a SHIP verdict, adjudicating
-each round's findings on evidence (several earlier findings contained
-wrong citations or overreach — verify, never blindly accept).**
+**⚠️ v4 has NOT passed adversarial review. Round 4 (Codex) completed just
+as this session ended: verdict NO-SHIP / REVISE — the xact-lock and
+ledger/rollback closures held, but Fork B as specified is unsound. Its four
+findings are reproduced verbatim in the Appendix; they are UNADJUDICATED —
+verifying and folding them into a v5 is your first task.** Summary:
+
+1. **Fork B targets a branch the shipped removal flow never reaches.**
+   `EditChildScreen.js:145–160` → `ChildrenContext.js:400–405` →
+   `childrenRepository.js:547–557` merely *archives* the CHILDREN row;
+   `deleteStaffChild` (`storage.js:135`) has **no callers**, so no
+   production path emits a STAFF_CHILDREN tombstone. (This also means the
+   spec's fact 8 — "deletion is live" — is misleading: the server DELETE
+   branch exists but is unreachable from the UI. Verify.) Any removal
+   design must start from the real user-visible entry point.
+2. **Reconciler/tombstone race**: without a shared serialization boundary,
+   a reconcile statement's snapshot can insert an active domain row after
+   the tombstone transaction deleted its source — recreating the forbidden
+   "no source, active authorization" state. Needs a lock/lease shared by
+   both paths plus a two-connection behavioral test.
+3. **The re-add runbook is broken** for `created_by IS NULL` children
+   (deleting closed rows restores no fallback leg) and never un-quarantines
+   the device (restoration only triggers on an active pulled row); the
+   broad DELETE can also erase legitimate handover history. Needs an
+   audited, actor-scoped recovery transaction instead.
+4. **The watchdog can false-green the original bug**: it must alert on
+   nonzero/growing `missing_projectable` and on non-convergence, with a
+   check cadence that actually enforces the stated threshold (a nightly
+   poll cannot enforce a 3-hour bound).
+
+Treat the whole spec as an unreviewed draft: verify every "verified
+architecture fact" (1–14) against the code yourself, adjudicate the
+Appendix findings, revise to v5, and run fresh adversarial rounds until a
+SHIP verdict — adjudicating each round on evidence (rounds in this cycle
+contained both decisive catches and wrong citations; verify, never blindly
+accept).
 
 ## 4. The decision Jim must make (deploy is gated on it)
 
 The spec's §"Decision required" defines two forks. **Recommendation from
-the outgoing session: Fork B.** Jim has NOT yet decided — put this decision
-in front of him explicitly once the spec passes review.
+the outgoing session: Fork B — with a round-4 caveat.** Round 4 (§3,
+Appendix) showed Fork B's *mechanism* (extending the STAFF_CHILDREN
+tombstone branch) targets a code path the shipped removal UI never reaches,
+and identified a reconciler race plus a broken re-add runbook. The
+recommendation that survives is Fork B's *principle*: child projection must
+ship together with real, atomic revocation on the actual user-visible
+removal path — the mechanism must be redesigned from
+`EditChildScreen`'s real transaction, not assumed. Fork A remains the
+conservative fallback. Jim has NOT yet decided — put this decision in
+front of him once the spec passes review, with your own re-derived
+assessment.
 
 - **Fork B (recommended): child projection + atomic revocation.** A
   versioned `CREATE OR REPLACE` of the sync RPC extends the existing
@@ -241,3 +271,33 @@ projection + revocation wholesale.
    runbook), then implement on a feature branch in the app repo.
 5. Keep `documentation/roadmap.md` and `documentation/build-log.md` in the
    website repo current as things land.
+
+## Appendix — Round 4 verbatim findings (Codex, 2026-08-14, UNADJUDICATED)
+
+### Codex Adversarial Review
+
+Target: branch diff against main
+Verdict: needs-attention
+
+REVISE / NO-SHIP. The transaction-scoped advisory locks and the provenance-ledger plus timestamp-guarded rollback are materially improved and I found no comparable contradiction in those two closures. The recommended Fork B is still unsound, however: it does not cover the shipped user-visible removal path, it can race the reconciler and resurrect an active authorization row, its re-add runbook does not restore either server or device access in all admitted cases, and the watchdog can remain green while the original missing-projection drift grows.
+
+Findings:
+- [high] Fork B changes a tombstone branch that the shipped removal flow does not reach (docs/superpowers/specs/2026-08-13-assignment-projection-design.md:271-280)
+  The live mobile path contradicts the premise that extending the STAFF_CHILDREN tombstone branch fixes deliberate child removal. `EditChildScreen.js:145-160` calls `ChildrenContext.deleteChild`; `ChildrenContext.js:400-405` calls `childrenRepository.delete`; and `childrenRepository.js:547-557` merely archives the CHILDREN row. The family snapshot therefore retains STAFF_CHILDREN and sends it as an upsert. Repository-wide search finds `deleteStaffChild` only at its definition in `src/utils/storage.js:135`, with no caller, and no production call site passes `removedMembers` into the v2 CHILDREN family recorder. Consequently an EA can use the UI’s “remove this child” action, have the child disappear from the UI, and retain the projected active assignment and RLS access because the new server branch never executes.
+  Recommendation: Trace and specify the actual `EditChildScreen` removal transaction end to end. Make that production entry point atomically emit the STAFF_CHILDREN tombstone and remove/archive the child as intended, or explicitly redesign the action and client contract. Add a device-faithful test that begins at the user-visible removal command and proves source deletion, assignment closure, RLS denial, and local quarantine; an RPC-only tombstone test is insufficient.
+- [high] Fork B is not atomic with the concurrent reconciler and can resurrect access after removal (docs/superpowers/specs/2026-08-13-assignment-projection-design.md:147-152)
+  Putting source deletion and assignment closure in one sync-RPC transaction does not serialize that transaction with the separate reconciler. The reconciler is specified as an ordered, bounded `INSERT … SELECT` but does not lock the selected `staff_children` source rows, and the tombstone RPC does not acquire the reconciler’s advisory lock. Under READ COMMITTED, a reconcile statement can snapshot a newly added source row before its first projection, the tombstone transaction can then delete that source and find no active assignment to close, and the already-started reconcile statement can finally insert the active `child_ea_assignments` row from its stale statement snapshot. The result is exactly the forbidden state: no source claim but an active domain authorization row granting continued RLS access. This race is plausible during the documented interval between a new claim and its first hourly reconciliation.
+  Recommendation: Define a shared serialization boundary between source deletion and projection. For example, lock candidate `staff_children` rows in canonical order before projection and preserve compatible parent/domain lock order, or make the tombstone branch acquire the same transaction-scoped reconciler lease with bounded failure/retry semantics. Add a two-connection PostgreSQL test that pauses reconciliation after candidate observation, commits a tombstone, resumes reconciliation, and proves no active orphan can be inserted.
+- [high] The re-add runbook cannot reliably restore fallback or the quarantined device graph (docs/superpowers/specs/2026-08-13-assignment-projection-design.md:281-285)
+  Deleting the child’s closed domain rows is not sufficient to make “the re-add syncs” true. The projection predicate explicitly admits children whose `created_by` is NULL. After Fork B has deleted `staff_children`, deleting the closed assignment for such a child leaves neither fallback leg required by `current_user_can_write_child`: there is no source row and `created_by` does not equal the actor. On-device, `childRevocationRepository.js:757-797` clears an existing revocation and requests restoration only when an active assignment is returned; an empty full snapshot after the support DELETE does neither, so the child graph remains quarantined. The earlier repository refusal also means there is no accepted re-add family mutation waiting to resume. Moreover, “delete the child’s closed domain rows” is not scoped to the actor or provenance and can erase legitimate handover history.
+  Recommendation: Replace the broad DELETE runbook with a case-bound, audited recovery transaction. Validate the exact child, EA, claimant, and history state; preserve closed history; recreate the source claim and insert a new active assignment atomically (or provide an equivalently safe reopen operation); then require a successful device pull that returns the active assignment and completes graph restoration before the user retries. Test `created_by = NULL`, an already quarantined graph, competing historical rows, duplicate execution, and rollback.
+- [medium] The watchdog omits the primary drift counter and can false-green the original failure mode (docs/superpowers/specs/2026-08-13-assignment-projection-design.md:231-243)
+  The health function returns the drift counters, but the specified alert conditions cover only stale successful runs, nonzero `residual_*`, and week-over-week `orphaned_active` growth. They do not alert on nonzero or growing `missing_projectable`, which is the exact original bug class. A regressed reconciler can therefore keep writing fresh “successful” run-log rows while inserting nothing; with residuals at zero and no orphan growth, the independent watchdog remains green as missing assignments accumulate. In addition, a nightly Django poll can detect a three-hour threshold up to roughly a day late, so it does not operationally enforce the claimed three-interval bound.
+  Recommendation: Alert on `missing_projectable` whenever it remains nonzero beyond the explicitly bounded number of convergence runs, and define “successful run” to exclude per-table errors and unexpected non-convergence. Run the independent check frequently enough to enforce the three-interval objective, deploy and verify it before enabling reconciliation, and add a test where fresh run logs coexist with growing `missing_projectable` and must raise the alert.
+
+Next steps:
+- Revise Fork B around the real mobile removal entry point, not only the currently unreachable RPC tombstone branch.
+- Specify and behaviorally test cross-transaction serialization between reconciliation and removal.
+- Replace the re-add DELETE instructions with an audited, actor-scoped recovery transaction that produces an active assignment and device restoration evidence.
+- Make `missing_projectable` and convergence failure first-class watchdog alert conditions, with monitor cadence aligned to the stated threshold.
+
