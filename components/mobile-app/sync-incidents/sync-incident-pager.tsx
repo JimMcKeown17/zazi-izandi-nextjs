@@ -89,7 +89,9 @@ export function SyncIncidentPager({
           {state.inFlightRequestId !== null ? "Loading…" : "Load more receipts"}
         </button>
       ) : additionalIncidents.length > 0 ? (
-        <p className="text-xs text-slate-500">All receipts in this snapshot are shown.</p>
+        <p className="text-xs text-slate-500">
+          No further receipts were returned for this cursor.
+        </p>
       ) : null}
     </div>
   );

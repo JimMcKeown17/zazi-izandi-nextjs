@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { timestampMicros } from "./timestamps";
 import type { MobileSyncIncidentFilters } from "./types";
 
 const UUID_PATTERN =
@@ -55,6 +56,44 @@ export function normalizeActorTextCandidate(
       : { maxCodePoints: 160, maxUtf8Bytes: 640, rejectAt: false }
   );
   return valid ? normalized : null;
+}
+
+/**
+ * Contract-test mirror only. Production browser responses already contain the
+ * display name selected and validated by Django; the browser never receives
+ * raw roster or identity candidates. Keeping this mirror lets the byte-pinned
+ * SQL/Python/TypeScript corpus detect cross-repository projection drift.
+ */
+export function selectActorDisplayName(
+  actorUserId: string,
+  candidates: {
+    rosterDisplayName: string | null;
+    identityDisplayName: string | null;
+    rosterFirstName: string | null;
+    rosterLastName: string | null;
+    identityFirstName: string | null;
+    identityLastName: string | null;
+  }
+): { displayName: string; source: "roster" | "identity" | "uuid" } {
+  const joinedName = (first: string | null, last: string | null): string =>
+    [first?.replace(/^ +| +$/g, ""), last?.replace(/^ +| +$/g, "")]
+      .filter((value): value is string => Boolean(value))
+      .join(" ");
+  const ordered = [
+    [candidates.rosterDisplayName, "roster"],
+    [candidates.identityDisplayName, "identity"],
+    [joinedName(candidates.rosterFirstName, candidates.rosterLastName), "roster"],
+    [
+      joinedName(candidates.identityFirstName, candidates.identityLastName),
+      "identity",
+    ],
+  ] as const;
+  for (const [candidate, source] of ordered) {
+    if (candidate === null) continue;
+    const normalized = normalizeActorTextCandidate(candidate, "display_name");
+    if (normalized !== null) return { displayName: normalized, source };
+  }
+  return { displayName: actorUserId, source: "uuid" };
 }
 
 const displayName = z.string().refine(
@@ -279,17 +318,6 @@ const summarySchema = z.strictObject({
   newest_received_at: controlTimestamp.nullable(),
 });
 
-function timestampMicros(value: string): bigint {
-  const match = CONTROL_TIMESTAMP_PATTERN.exec(value);
-  if (!match) throw new TypeError("invalid timestamp");
-  const [secondPart, fractionPart = ""] = value.slice(0, -1).split(".");
-  const secondMillis = Date.parse(`${secondPart}Z`);
-  return (
-    BigInt(secondMillis) * BigInt(1000) +
-    BigInt(fractionPart.padEnd(6, "0"))
-  );
-}
-
 function expectedSastWindow(snapshot: string, days: number): {
   start: bigint;
   end: bigint;
@@ -349,6 +377,7 @@ export const mobileSyncIncidentsSchema = z
     if (
       summary.affected_users > summary.receipts ||
       value.page_count !== incidents.length ||
+      value.page_count > filters.limit ||
       summary.receipts < incidents.length
     ) {
       context.addIssue({
@@ -495,13 +524,6 @@ export const mobileSyncIncidentsSchema = z
         code: "custom",
         path: ["next_cursor"],
         message: "a cursor requires a full page",
-      });
-    }
-    if (value.page_count < filters.limit && value.next_cursor !== null) {
-      context.addIssue({
-        code: "custom",
-        path: ["next_cursor"],
-        message: "a short page cannot have a cursor",
       });
     }
   });

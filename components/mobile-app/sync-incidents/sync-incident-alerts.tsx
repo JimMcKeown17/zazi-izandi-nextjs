@@ -8,6 +8,7 @@ import {
   getIncidentIdentity,
   INCIDENT_KIND_COPY,
   shortenActorUuid,
+  wasReceivedAfterDeviceObservation,
 } from "@/lib/mobile/sync-incidents/presentation";
 import type {
   MobileSyncIncidentItem,
@@ -45,6 +46,10 @@ export function SyncIncidentList({
         const { actor, receipt } = item;
         const copy = INCIDENT_KIND_COPY[receipt.incident_kind];
         const uuidFallback = actor.display_name_source === "uuid";
+        const currentSchool =
+          actor.current_school_id === null
+            ? "No current school recorded"
+            : actor.current_school ?? "School name unavailable";
         return (
           <article
             key={getIncidentIdentity(item)}
@@ -69,7 +74,7 @@ export function SyncIncidentList({
                     : `Actor ${shortenActorUuid(actor.user_id)}`}
                 </p>
                 <p className="text-sm text-slate-600">
-                  Current school: {actor.current_school ?? "School name unavailable"}
+                  Current school: {currentSchool}
                 </p>
               </div>
               <Link
@@ -86,6 +91,14 @@ export function SyncIncidentList({
             <p className="mt-2 text-sm font-medium text-slate-800">
               {getIncidentClassification(receipt)}
             </p>
+
+            {wasReceivedAfterDeviceObservation(receipt) ? (
+              <p className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
+                The server received this later than the device-reported observation
+                time. Connectivity, app activation, and device-clock differences can
+                contribute.
+              </p>
+            ) : null}
 
             <dl className="mt-3 grid gap-2 rounded-lg bg-slate-50 p-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
               <div>
@@ -131,7 +144,7 @@ export function SyncIncidentList({
                 <TechnicalValue label="Integrity reason" value={receipt.reason} />
                 <TechnicalValue label="Detail kind" value={receipt.detail_kind} />
                 <TechnicalValue label="Detail code" value={receipt.detail_code} />
-                <TechnicalValue label="Last observed on device (UTC)" value={receipt.last_seen_at} />
+                <TechnicalValue label="Last reported as observed on device" value={receipt.last_seen_at} />
                 <TechnicalValue label="Occurrence count" value={receipt.occurrence_count} />
                 <TechnicalValue label="Build" value={receipt.build_number} />
                 <TechnicalValue label="OS version" value={receipt.os_version} />

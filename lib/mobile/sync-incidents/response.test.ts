@@ -244,6 +244,32 @@ test("a cursor page cannot return the same cursor and create a no-progress loop"
   assert.equal(result.ok, false);
 });
 
+test("every page is bounded by its echoed limit, including terminal cursor pages", async () => {
+  const payload = structuredClone(VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD);
+  const second = structuredClone(payload.incidents[0]);
+  second.actor.user_id = "00000000-0000-4000-8000-000000000005";
+  second.actor.display_name = "Second Fixture EA";
+  second.receipt.actor_user_id = second.actor.user_id;
+  second.receipt.mutation_id = "00000000-0000-4000-8000-000000000006";
+  second.receipt.incident_key = `support:v1:${second.receipt.mutation_id}`;
+  second.receipt.local_record_id = "00000000-0000-4000-8000-000000000007";
+  second.receipt.client_stream_id = "00000000-0000-4000-8000-000000000008";
+  second.receipt.received_at = "2026-08-14T11:57:00Z";
+  payload.applied_filters.limit = 1;
+  payload.summary.receipts = 2;
+  payload.summary.affected_users = 2;
+  payload.summary.support_roots = 2;
+  payload.incidents = [payload.incidents[0], second];
+  payload.page_count = 2;
+  payload.next_cursor = null;
+
+  const result = await decodeMobileSyncIncidentsResponse(
+    new Response(JSON.stringify(payload), { status: 200 }),
+    { days: 7, limit: 1, cursor: "signed.previous.page" }
+  );
+  assert.equal(result.ok, false);
+});
+
 test("email-like or control-bearing actor presentation never reaches the panel", async () => {
   for (const displayName of ["fixture@example.org", "Fixture\u2028EA"]) {
     const payload = structuredClone(VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD);

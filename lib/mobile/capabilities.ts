@@ -1,11 +1,14 @@
-export type Role =
-  | "ea"
-  | "teacher"
-  | "funder"
-  | "junior_staff"
-  | "senior_staff"
-  | "admin"
-  | "zz_data_manager";
+export const ALL_MOBILE_ROLES = [
+  "ea",
+  "teacher",
+  "funder",
+  "junior_staff",
+  "senior_staff",
+  "admin",
+  "zz_data_manager",
+] as const;
+
+export type Role = (typeof ALL_MOBILE_ROLES)[number];
 
 export type MobileCapability =
   | "mobile.sessions.read"

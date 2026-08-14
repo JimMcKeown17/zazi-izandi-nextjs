@@ -3,6 +3,7 @@ import type {
   MobileSyncIncidentKind,
   MobileSyncIncidentReceipt,
 } from "./types";
+import { timestampMicros } from "./timestamps";
 
 export const INCIDENT_KIND_COPY: Record<
   MobileSyncIncidentKind,
@@ -64,10 +65,15 @@ export function getIncidentClassification(
     receipt.incident_kind === "integrity_aggregate"
       ? receipt.reason
       : receipt.error_code;
-  return (
-    (token ? CLASSIFICATION_COPY[token] : null) ??
-    "The receipt contains a bounded technical classification for investigation."
-  );
+  return token && Object.prototype.hasOwnProperty.call(CLASSIFICATION_COPY, token)
+    ? CLASSIFICATION_COPY[token]
+    : "The receipt contains a bounded technical classification for investigation.";
+}
+
+export function wasReceivedAfterDeviceObservation(
+  receipt: MobileSyncIncidentReceipt
+): boolean {
+  return timestampMicros(receipt.received_at) > timestampMicros(receipt.first_seen_at);
 }
 
 export function getIncidentIdentity(item: MobileSyncIncidentItem): string {

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { hasCapability } from "./capabilities";
+import { ALL_MOBILE_ROLES, hasCapability } from "./capabilities";
+import { resolveSyncIncidentPageRequest } from "./sync-incidents/page-access";
 
 test("mobile.sessions.read is allowed only for the approved staff roles", () => {
   const allowed = [
@@ -52,21 +53,31 @@ test("the email-bearing health board is limited to senior operational roles", ()
 });
 
 test("sync incident alerts have exactly the User Health role set", () => {
-  const roles = [
-    "ea",
-    "teacher",
-    "funder",
-    "junior_staff",
-    "senior_staff",
-    "admin",
-    "zz_data_manager",
-  ] as const;
-
-  for (const role of roles) {
+  for (const role of ALL_MOBILE_ROLES) {
     assert.equal(
       hasCapability(role, "mobile.sync_incidents.read"),
       hasCapability(role, "mobile.user_health.read"),
       role
     );
   }
+});
+
+test("capability drift produces a section-local denial without calling the loader", async () => {
+  let calls = 0;
+  const result = await resolveSyncIncidentPageRequest(
+    "junior_staff",
+    false,
+    async () => {
+      calls += 1;
+      throw new Error("must not run");
+    }
+  );
+
+  assert.equal(calls, 0);
+  assert.deepEqual(result, {
+    ok: false,
+    status: 403,
+    kind: "not_authorized",
+    message: "Sync incident alerts are not available for this role.",
+  });
 });

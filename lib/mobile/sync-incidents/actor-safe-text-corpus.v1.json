@@ -99,5 +99,77 @@
       "repeat": { "unit": "S", "count": 161 },
       "expected_valid": false
     }
+  ],
+  "projection_cases": [
+    {
+      "id": "roster_display_name_wins",
+      "actor_user_id": "00000000-0000-4000-8000-000000000001",
+      "roster_display_name": "  Roster Display  ",
+      "identity_display_name": "Identity Display",
+      "roster_first_name": "Roster",
+      "roster_last_name": "Name",
+      "identity_first_name": "Identity",
+      "identity_last_name": "Name",
+      "school_name": "  Fixture Primary  ",
+      "expected_display_name": "Roster Display",
+      "expected_display_name_source": "roster",
+      "expected_school_name": "Fixture Primary"
+    },
+    {
+      "id": "invalid_roster_display_falls_to_identity_display",
+      "actor_user_id": "00000000-0000-4000-8000-000000000002",
+      "roster_display_name": "roster@example.org",
+      "identity_display_name": "  Identity Display  ",
+      "roster_first_name": "Roster",
+      "roster_last_name": "Name",
+      "identity_first_name": "Identity",
+      "identity_last_name": "Name",
+      "school_name": "Fixture School @ Site B",
+      "expected_display_name": "Identity Display",
+      "expected_display_name_source": "identity",
+      "expected_school_name": "Fixture School @ Site B"
+    },
+    {
+      "id": "invalid_displays_fall_to_roster_names",
+      "actor_user_id": "00000000-0000-4000-8000-000000000003",
+      "roster_display_name": "   ",
+      "identity_display_name": "Identity\u2028Display",
+      "roster_first_name": "  Roster  ",
+      "roster_last_name": "  Person  ",
+      "identity_first_name": "Identity",
+      "identity_last_name": "Person",
+      "school_name": "Roster Names School",
+      "expected_display_name": "Roster Person",
+      "expected_display_name_source": "roster",
+      "expected_school_name": "Roster Names School"
+    },
+    {
+      "id": "invalid_roster_names_fall_to_identity_names",
+      "actor_user_id": "00000000-0000-4000-8000-000000000004",
+      "roster_display_name": "   ",
+      "identity_display_name": "identity@example.org",
+      "roster_first_name": "roster@example.org",
+      "roster_last_name": "Person",
+      "identity_first_name": "  Identity  ",
+      "identity_last_name": "  Person  ",
+      "school_name": "Identity Names School",
+      "expected_display_name": "Identity Person",
+      "expected_display_name_source": "identity",
+      "expected_school_name": "Identity Names School"
+    },
+    {
+      "id": "all_invalid_names_fall_to_uuid_and_invalid_school_is_null",
+      "actor_user_id": "00000000-0000-4000-8000-000000000005",
+      "roster_display_name": "roster@example.org",
+      "identity_display_name": "identity@example.org",
+      "roster_first_name": "bad@example.org",
+      "roster_last_name": "Person",
+      "identity_first_name": "Identity\u0001",
+      "identity_last_name": "Person",
+      "school_name": "Unsafe\u007fSchool",
+      "expected_display_name": "00000000-0000-4000-8000-000000000005",
+      "expected_display_name_source": "uuid",
+      "expected_school_name": null
+    }
   ]
 }

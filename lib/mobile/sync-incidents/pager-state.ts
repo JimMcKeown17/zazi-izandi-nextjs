@@ -1,5 +1,6 @@
 import type { SyncIncidentPageActionResult } from "./load-page";
 import { getIncidentIdentity } from "./presentation";
+import { timestampMicros } from "./timestamps";
 import type {
   MobileSyncIncidentFilters,
   MobileSyncIncidentItem,
@@ -67,14 +68,6 @@ function getSnapshotContract(data: MobileSyncIncidentsResponse): string {
   });
 }
 
-function timestampMicros(value: string): bigint {
-  const [secondPart, fractionPart = ""] = value.slice(0, -1).split(".");
-  return (
-    BigInt(Date.parse(`${secondPart}Z`)) * BigInt(1000) +
-    BigInt(fractionPart.padEnd(6, "0"))
-  );
-}
-
 function isStrictlyAfterInDescendingOrder(
   previous: MobileSyncIncidentItem,
   current: MobileSyncIncidentItem
@@ -100,8 +93,6 @@ function isValidContinuation(
   const cumulativeCount = state.incidents.length + data.incidents.length;
   if (
     cumulativeCount > state.expectedReceiptCount ||
-    (data.next_cursor === null &&
-      cumulativeCount !== state.expectedReceiptCount) ||
     (data.next_cursor !== null &&
       cumulativeCount >= state.expectedReceiptCount)
   ) {

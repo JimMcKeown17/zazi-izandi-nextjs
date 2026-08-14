@@ -10,10 +10,9 @@ import {
   getMobileSyncIncidents,
   getMobileUserHealth,
 } from "@/lib/mobile/api";
-import type {
-  MobileSyncIncidentKind,
-  MobileSyncIncidentsResult,
-} from "@/lib/mobile/sync-incidents/types";
+import { requireMobileReportingSession } from "@/lib/mobile/auth";
+import { resolveSyncIncidentPageRequest } from "@/lib/mobile/sync-incidents/page-access";
+import type { MobileSyncIncidentKind } from "@/lib/mobile/sync-incidents/types";
 import {
   buildDeviceVersionBreakdown,
   splitVersionBreakdown,
@@ -123,24 +122,22 @@ export default async function MobileUserHealthPage({
   const initialWaveValue = firstValue(params.wave);
   const initialCohort = parseCohort(firstValue(params.cohort));
 
-  const invalidFiltersResult: MobileSyncIncidentsResult = {
-    ok: false,
-    status: 400,
-    kind: "invalid_filters",
-    message: "The selected sync-incident filters are invalid.",
-  };
+  const session = await requireMobileReportingSession();
   const [healthResult, incidentResult] = await Promise.all([
     getMobileUserHealth({ days, schoolId: rawSchoolId }),
-    invalidIncidentFilters
-      ? Promise.resolve(invalidFiltersResult)
-      : getMobileSyncIncidents({
+    resolveSyncIncidentPageRequest(
+      session.role,
+      invalidIncidentFilters,
+      () =>
+        getMobileSyncIncidents({
           days,
           schoolId,
           incidentKind,
           descriptorKey,
           limit: 50,
           cursor: null,
-        }),
+        })
+    ),
   ]);
 
   let healthSuccess: React.ReactNode = null;

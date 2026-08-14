@@ -125,6 +125,28 @@ test("the pager blocks duplicate loads and accumulates a valid next page", () =>
   assert.equal(complete.needsRefresh, false);
 });
 
+test("an empty exhausted continuation is valid while its bound summary remains nonzero", () => {
+  const initial = initialPage();
+  const loading = reducePagerState(createPagerState(initial), {
+    type: "request_started",
+    requestId: 1,
+  });
+  const terminal = structuredClone(initial);
+  terminal.incidents = [];
+  terminal.page_count = 0;
+  terminal.next_cursor = null;
+  assertValidPage(terminal, "signed.page.one");
+
+  const complete = reducePagerState(loading, {
+    type: "response_received",
+    requestId: 1,
+    result: { ok: true, data: terminal },
+  });
+  assert.equal(complete.needsRefresh, false);
+  assert.equal(complete.nextCursor, null);
+  assert.equal(complete.incidents.length, 1);
+});
+
 test("stale cursors discard later pages and old responses are ignored after reset", () => {
   const initial = initialPage();
   const firstLoading = reducePagerState(createPagerState(initial), {
@@ -270,11 +292,11 @@ test("the pager rejects changed snapshots, cross-page disorder, and cursor cycle
   );
   assert.equal(duplicateRejected.needsRefresh, true);
 
-  const prematureTerminal = structuredClone(initial);
-  prematureTerminal.incidents = [nextIncident()];
-  prematureTerminal.next_cursor = null;
-  assertValidPage(prematureTerminal, "signed.page.one");
-  const incomplete = reducePagerState(
+  const shortTerminal = structuredClone(initial);
+  shortTerminal.incidents = [nextIncident()];
+  shortTerminal.next_cursor = null;
+  assertValidPage(shortTerminal, "signed.page.one");
+  const exhausted = reducePagerState(
     reducePagerState(createPagerState(initial), {
       type: "request_started",
       requestId: 5,
@@ -282,11 +304,11 @@ test("the pager rejects changed snapshots, cross-page disorder, and cursor cycle
     {
       type: "response_received",
       requestId: 5,
-      result: { ok: true, data: prematureTerminal },
+      result: { ok: true, data: shortTerminal },
     }
   );
-  assert.equal(incomplete.needsRefresh, true);
-  assert.equal(incomplete.nextCursor, null);
+  assert.equal(exhausted.needsRefresh, false);
+  assert.equal(exhausted.nextCursor, null);
 
   const twoItemInitial = initialPage();
   twoItemInitial.applied_filters.limit = 2;
