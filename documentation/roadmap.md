@@ -181,7 +181,12 @@ irreversible access loss; see the spec's "Why not triggers"):
   tables are covered. Unassignment/handover semantics are Phase 2, deferred,
   and require app-side changes. Coordinate migration timestamps with the
   `feat/ea-profile-rpc` workstream; brief the team that Server Data numbers
-  jump on deploy.
+  jump on deploy. Round 2 (REVISE) adjudicated into spec v3: neutrality
+  guards moved into the SQL, advisory leases, ordered bounded scans,
+  per-table subtransactions, run log, cron scheduling moved out of the
+  migration. **Decision required before deploy:** for projected pairs,
+  removing a child in-app no longer revokes server-side access until
+  Phase 2 (tracked by the `orphaned_active` drift counter).
 - [ ] Populate `school_id` on the ECD roster rows (centres as schools), and
   derive expectation from rollout-wave membership (already joined in the
   RPC) instead of roster school type so cohort classification stops
