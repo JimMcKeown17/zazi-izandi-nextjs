@@ -192,6 +192,9 @@ irreversible access loss; see the spec's "Why not triggers"):
   (recommended — child projection + atomic revocation in the sync RPC's
   tombstone branch; re-add-after-removal becomes a documented support case
   until Phase 2) vs Fork A (classes+groups only; children stay broken).
+  **Handoff for the next session/agent (spec v4 has NOT yet passed
+  adversarial review — round 4 was in flight):**
+  docs/superpowers/plans/2026-08-14-assignment-reconciliation-handoff.md.
 - [ ] Populate `school_id` on the ECD roster rows (centres as schools), and
   derive expectation from rollout-wave membership (already joined in the
   RPC) instead of roster school type so cohort classification stops
