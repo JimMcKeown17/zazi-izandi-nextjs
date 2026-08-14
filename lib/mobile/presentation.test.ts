@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
+import { EAHeatmap } from "@/components/pm/sessions/ea-heatmap";
 
 import {
   getEmploymentStatusDisplay,
@@ -50,6 +54,67 @@ test("mobile heatmap rows retain the Supabase actor UUID as their render identit
       total_sessions: 3,
     },
   ]);
+});
+
+test("the mobile heatmap links an EA name when profile access and row identity are present", () => {
+  const html = renderToStaticMarkup(
+    createElement(EAHeatmap, {
+      dates: ["2026-08-13"],
+      eas: [
+        {
+          row_id: "3eb26195-c9b4-41a2-a01d-3b341a28177e",
+          ea_name: "Asemahle Mancayi",
+          school: "Charles Duna Primary",
+          cells: [2],
+        },
+      ],
+      profileLinkEnabled: true,
+    })
+  );
+
+  assert.match(
+    html,
+    /<a[^>]*href="\/mobile-app\/users\/3eb26195-c9b4-41a2-a01d-3b341a28177e"[^>]*>Asemahle Mancayi<\/a>/
+  );
+  assert.match(html, /<a[^>]*class="hover:underline"/);
+});
+
+test("the mobile heatmap keeps an EA without row identity as plain text", () => {
+  const html = renderToStaticMarkup(
+    createElement(EAHeatmap, {
+      dates: ["2026-08-13"],
+      eas: [
+        {
+          ea_name: "EA Without UUID",
+          school: "Unattributed",
+          cells: [0],
+        },
+      ],
+      profileLinkEnabled: true,
+    })
+  );
+
+  assert.match(html, />EA Without UUID<\/span>/);
+  assert.doesNotMatch(html, /href="\/mobile-app\/users\//);
+});
+
+test("the shared heatmap default keeps PM names unlinked even with row identity", () => {
+  const html = renderToStaticMarkup(
+    createElement(EAHeatmap, {
+      dates: ["2026-08-13"],
+      eas: [
+        {
+          row_id: "3eb26195-c9b4-41a2-a01d-3b341a28177e",
+          ea_name: "Default PM EA",
+          school: "Charles Duna Primary",
+          cells: [1],
+        },
+      ],
+    })
+  );
+
+  assert.match(html, />Default PM EA<\/span>/);
+  assert.doesNotMatch(html, /href="\/mobile-app\/users\//);
 });
 
 test("the Other trend series is shown exactly when unexplained sessions exist", () => {

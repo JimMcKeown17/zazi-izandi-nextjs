@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { getEmploymentStatusDisplay } from "@/lib/mobile/presentation";
 
@@ -17,6 +18,7 @@ interface Props {
   eas: SessionHeatmapRow[];
   schoolColumnLabel?: string;
   subtitle?: string;
+  profileLinkEnabled?: boolean;
 }
 
 function cellColor(count: number): string {
@@ -45,6 +47,7 @@ export function EAHeatmap({
   eas,
   schoolColumnLabel = "School",
   subtitle = "Sessions per day — last 10 weekdays",
+  profileLinkEnabled = false,
 }: Props) {
   const [search, setSearch] = useState("");
 
@@ -126,7 +129,16 @@ export function EAHeatmap({
                   >
                     <td className="max-w-[140px] py-1 pr-2 text-slate-800">
                       <span className="block truncate font-medium">
-                        {ea.ea_name}
+                        {profileLinkEnabled && ea.row_id ? (
+                          <Link
+                            href={`/mobile-app/users/${ea.row_id}`}
+                            className="hover:underline"
+                          >
+                            {ea.ea_name}
+                          </Link>
+                        ) : (
+                          ea.ea_name
+                        )}
                       </span>
                       {employmentStatus ? (
                         <span

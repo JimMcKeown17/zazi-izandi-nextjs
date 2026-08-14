@@ -7,6 +7,8 @@ import { SessionsTrendChart } from "@/components/pm/sessions/sessions-trend-char
 import { SessionFilters } from "@/components/mobile-app/sessions/session-filters";
 import { SessionSummaryTiles } from "@/components/mobile-app/sessions/session-summary-tiles";
 import { getMobileSessionsActivity } from "@/lib/mobile/api";
+import { requireMobileSessionsSession } from "@/lib/mobile/auth";
+import { hasCapability } from "@/lib/mobile/capabilities";
 import {
   toHeatmapDisplayRows,
   toSchoolSummaryDisplayRows,
@@ -29,7 +31,10 @@ function parseDays(value: string | undefined): number {
 export default async function MobileSessionsPage({
   searchParams,
 }: SessionsPageProps) {
-  const params = await searchParams;
+  const [params, session] = await Promise.all([
+    searchParams,
+    requireMobileSessionsSession(),
+  ]);
   const days = parseDays(firstValue(params.days));
   const schoolId = firstValue(params.school_id) || null;
   const result = await getMobileSessionsActivity({ days, schoolId });
@@ -112,6 +117,10 @@ export default async function MobileSessionsPage({
         eas={toHeatmapDisplayRows(data.ea_heatmap.eas)}
         schoolColumnLabel="Current school"
         subtitle="Latest weekdays; Total covers the full window and school is the current roster assignment"
+        profileLinkEnabled={hasCapability(
+          session.role,
+          "mobile.user_health.read"
+        )}
       />
 
       <SessionsSchoolTable
