@@ -12,6 +12,7 @@ export interface SyncIncidentPagerState {
   nextCursor: string | null;
   seenCursors: string[];
   snapshotContract: string;
+  expectedReceiptCount: number;
   inFlightRequestId: number | null;
   error: string | null;
   needsRefresh: boolean;
@@ -52,6 +53,7 @@ export function createPagerState(
     nextCursor: data.next_cursor,
     seenCursors: data.next_cursor === null ? [] : [data.next_cursor],
     snapshotContract: getSnapshotContract(data),
+    expectedReceiptCount: data.summary.receipts,
     inFlightRequestId: null,
     error: null,
     needsRefresh: false,
@@ -92,6 +94,17 @@ function isValidContinuation(
 ): boolean {
   if (getSnapshotContract(data) !== state.snapshotContract) return false;
   if (data.next_cursor !== null && state.seenCursors.includes(data.next_cursor)) {
+    return false;
+  }
+
+  const cumulativeCount = state.incidents.length + data.incidents.length;
+  if (
+    cumulativeCount > state.expectedReceiptCount ||
+    (data.next_cursor === null &&
+      cumulativeCount !== state.expectedReceiptCount) ||
+    (data.next_cursor !== null &&
+      cumulativeCount >= state.expectedReceiptCount)
+  ) {
     return false;
   }
 

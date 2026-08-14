@@ -45,6 +45,19 @@ function thirdIncident() {
   return third;
 }
 
+function fourthIncident() {
+  const fourth = thirdIncident();
+  fourth.actor.user_id = "00000000-0000-4000-8000-000000000014";
+  fourth.actor.display_name = "Fourth Fixture EA";
+  fourth.receipt.actor_user_id = fourth.actor.user_id;
+  fourth.receipt.mutation_id = "00000000-0000-4000-8000-000000000015";
+  fourth.receipt.incident_key = `support:v1:${fourth.receipt.mutation_id}`;
+  fourth.receipt.local_record_id = "00000000-0000-4000-8000-000000000016";
+  fourth.receipt.client_stream_id = "00000000-0000-4000-8000-000000000017";
+  fourth.receipt.received_at = "2026-08-14T11:55:00Z";
+  return fourth;
+}
+
 function assertValidPage(
   data: MobileSyncIncidentsResponse,
   cursor: string | null
@@ -55,7 +68,7 @@ function assertValidPage(
     assert.equal(
       responseMatchesRequest(parsed.data, {
         days: 7,
-        limit: 1,
+        limit: data.applied_filters.limit,
         cursor,
       }),
       true
@@ -91,6 +104,25 @@ test("the pager blocks duplicate loads and accumulates a valid next page", () =>
   assert.equal(accumulated.incidents.length, 2);
   assert.equal(accumulated.nextCursor, "signed.page.two");
   assert.equal(accumulated.inFlightRequestId, null);
+
+  const pageThree = structuredClone(initial);
+  pageThree.incidents = [thirdIncident()];
+  pageThree.next_cursor = null;
+  assertValidPage(pageThree, "signed.page.two");
+  const complete = reducePagerState(
+    reducePagerState(accumulated, {
+      type: "request_started",
+      requestId: 2,
+    }),
+    {
+      type: "response_received",
+      requestId: 2,
+      result: { ok: true, data: pageThree },
+    }
+  );
+  assert.equal(complete.incidents.length, 3);
+  assert.equal(complete.nextCursor, null);
+  assert.equal(complete.needsRefresh, false);
 });
 
 test("stale cursors discard later pages and old responses are ignored after reset", () => {
@@ -238,11 +270,11 @@ test("the pager rejects changed snapshots, cross-page disorder, and cursor cycle
   );
   assert.equal(duplicateRejected.needsRefresh, true);
 
-  const pageTwo = structuredClone(initial);
-  pageTwo.incidents = [nextIncident()];
-  pageTwo.next_cursor = "signed.page.two";
-  assertValidPage(pageTwo, "signed.page.one");
-  const afterPageTwo = reducePagerState(
+  const prematureTerminal = structuredClone(initial);
+  prematureTerminal.incidents = [nextIncident()];
+  prematureTerminal.next_cursor = null;
+  assertValidPage(prematureTerminal, "signed.page.one");
+  const incomplete = reducePagerState(
     reducePagerState(createPagerState(initial), {
       type: "request_started",
       requestId: 5,
@@ -250,10 +282,67 @@ test("the pager rejects changed snapshots, cross-page disorder, and cursor cycle
     {
       type: "response_received",
       requestId: 5,
+      result: { ok: true, data: prematureTerminal },
+    }
+  );
+  assert.equal(incomplete.needsRefresh, true);
+  assert.equal(incomplete.nextCursor, null);
+
+  const twoItemInitial = initialPage();
+  twoItemInitial.applied_filters.limit = 2;
+  twoItemInitial.incidents = [twoItemInitial.incidents[0], nextIncident()];
+  twoItemInitial.page_count = 2;
+  assertValidPage(twoItemInitial, null);
+  const overcountPage = structuredClone(twoItemInitial);
+  overcountPage.incidents = [thirdIncident(), fourthIncident()];
+  overcountPage.next_cursor = null;
+  assertValidPage(overcountPage, "signed.page.one");
+  const overcounted = reducePagerState(
+    reducePagerState(createPagerState(twoItemInitial), {
+      type: "request_started",
+      requestId: 6,
+    }),
+    {
+      type: "response_received",
+      requestId: 6,
+      result: { ok: true, data: overcountPage },
+    }
+  );
+  assert.equal(overcounted.needsRefresh, true);
+
+  const pageTwo = structuredClone(initial);
+  pageTwo.incidents = [nextIncident()];
+  pageTwo.next_cursor = "signed.page.two";
+  assertValidPage(pageTwo, "signed.page.one");
+  const afterPageTwo = reducePagerState(
+    reducePagerState(createPagerState(initial), {
+      type: "request_started",
+      requestId: 7,
+    }),
+    {
+      type: "response_received",
+      requestId: 7,
       result: { ok: true, data: pageTwo },
     }
   );
   assert.equal(afterPageTwo.needsRefresh, false);
+
+  const cursorAtTotal = structuredClone(initial);
+  cursorAtTotal.incidents = [thirdIncident()];
+  cursorAtTotal.next_cursor = "signed.page.three";
+  assertValidPage(cursorAtTotal, "signed.page.two");
+  const totalWithCursor = reducePagerState(
+    reducePagerState(afterPageTwo, {
+      type: "request_started",
+      requestId: 8,
+    }),
+    {
+      type: "response_received",
+      requestId: 8,
+      result: { ok: true, data: cursorAtTotal },
+    }
+  );
+  assert.equal(totalWithCursor.needsRefresh, true);
 
   const cyclic = structuredClone(initial);
   cyclic.incidents = [thirdIncident()];
@@ -262,11 +351,11 @@ test("the pager rejects changed snapshots, cross-page disorder, and cursor cycle
   const cycleRejected = reducePagerState(
     reducePagerState(afterPageTwo, {
       type: "request_started",
-      requestId: 6,
+      requestId: 9,
     }),
     {
       type: "response_received",
-      requestId: 6,
+      requestId: 9,
       result: { ok: true, data: cyclic },
     }
   );
