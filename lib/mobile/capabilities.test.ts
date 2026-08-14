@@ -50,3 +50,23 @@ test("the email-bearing health board is limited to senior operational roles", ()
     assert.equal(hasCapability(role, "mobile.user_health.read"), false, role);
   }
 });
+
+test("sync incident alerts have exactly the User Health role set", () => {
+  const roles = [
+    "ea",
+    "teacher",
+    "funder",
+    "junior_staff",
+    "senior_staff",
+    "admin",
+    "zz_data_manager",
+  ] as const;
+
+  for (const role of roles) {
+    assert.equal(
+      hasCapability(role, "mobile.sync_incidents.read"),
+      hasCapability(role, "mobile.user_health.read"),
+      role
+    );
+  }
+});
