@@ -93,6 +93,8 @@ function isValidContinuation(
   const cumulativeCount = state.incidents.length + data.incidents.length;
   if (
     cumulativeCount > state.expectedReceiptCount ||
+    (data.next_cursor === null &&
+      cumulativeCount !== state.expectedReceiptCount) ||
     (data.next_cursor !== null &&
       cumulativeCount >= state.expectedReceiptCount)
   ) {

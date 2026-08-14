@@ -90,7 +90,7 @@ export function SyncIncidentPager({
         </button>
       ) : additionalIncidents.length > 0 ? (
         <p className="text-xs text-slate-500">
-          No further receipts were returned for this cursor.
+          All receipts in this snapshot are shown.
         </p>
       ) : null}
     </div>

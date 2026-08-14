@@ -125,7 +125,7 @@ test("the pager blocks duplicate loads and accumulates a valid next page", () =>
   assert.equal(complete.needsRefresh, false);
 });
 
-test("an empty exhausted continuation is valid while its bound summary remains nonzero", () => {
+test("an empty terminal continuation fails closed while receipts remain outstanding", () => {
   const initial = initialPage();
   const loading = reducePagerState(createPagerState(initial), {
     type: "request_started",
@@ -142,7 +142,7 @@ test("an empty exhausted continuation is valid while its bound summary remains n
     requestId: 1,
     result: { ok: true, data: terminal },
   });
-  assert.equal(complete.needsRefresh, false);
+  assert.equal(complete.needsRefresh, true);
   assert.equal(complete.nextCursor, null);
   assert.equal(complete.incidents.length, 1);
 });
@@ -307,8 +307,9 @@ test("the pager rejects changed snapshots, cross-page disorder, and cursor cycle
       result: { ok: true, data: shortTerminal },
     }
   );
-  assert.equal(exhausted.needsRefresh, false);
+  assert.equal(exhausted.needsRefresh, true);
   assert.equal(exhausted.nextCursor, null);
+  assert.deepEqual(exhausted.incidents, initial.incidents);
 
   const twoItemInitial = initialPage();
   twoItemInitial.applied_filters.limit = 2;
