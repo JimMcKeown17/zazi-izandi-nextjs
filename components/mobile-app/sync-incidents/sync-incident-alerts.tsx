@@ -158,9 +158,11 @@ export function SyncIncidentList({
 function SuccessPanel({
   data,
   filtersSlot,
+  pagerSlot,
 }: {
   data: MobileSyncIncidentsResponse;
   filtersSlot?: ReactNode;
+  pagerSlot?: ReactNode;
 }) {
   return (
     <section
@@ -204,7 +206,10 @@ function SuccessPanel({
           incident waiting to report.
         </div>
       ) : (
-        <SyncIncidentList incidents={data.incidents} />
+        <>
+          <SyncIncidentList incidents={data.incidents} />
+          {pagerSlot}
+        </>
       )}
     </section>
   );
@@ -213,11 +218,21 @@ function SuccessPanel({
 export function SyncIncidentAlerts({
   result,
   filtersSlot,
+  pagerSlot,
 }: {
   result: MobileSyncIncidentsResult;
   filtersSlot?: ReactNode;
+  pagerSlot?: ReactNode;
 }) {
-  if (result.ok) return <SuccessPanel data={result.data} filtersSlot={filtersSlot} />;
+  if (result.ok) {
+    return (
+      <SuccessPanel
+        data={result.data}
+        filtersSlot={filtersSlot}
+        pagerSlot={pagerSlot}
+      />
+    );
+  }
 
   const denied = result.kind === "not_authorized";
   return (
@@ -235,9 +250,12 @@ export function SyncIncidentAlerts({
           <h2 className="font-semibold text-slate-900">Sync incident alerts</h2>
           <p className="mt-1 text-sm text-slate-700">{result.message}</p>
           {!denied ? (
-            <p className="mt-1 text-xs text-slate-500">
-              The separate User Health evidence remains valid.
-            </p>
+            <>
+              <p className="mt-1 text-xs text-slate-500">
+                The separate User Health evidence remains valid.
+              </p>
+              {filtersSlot ? <div className="mt-3">{filtersSlot}</div> : null}
+            </>
           ) : null}
         </div>
       </div>

@@ -41,10 +41,7 @@ import {
   decodeMobileUserProfileResponse,
   type MobileUserProfileResult,
 } from "./user-profile/response";
-import { buildSyncIncidentsRequest } from "./sync-incidents/request";
-import {
-  decodeMobileSyncIncidentsResponse,
-} from "./sync-incidents/response";
+import { fetchMobileSyncIncidentsWithToken } from "./sync-incidents/server-fetch";
 import type {
   MobileSyncIncidentFilters,
   MobileSyncIncidentsResult,
@@ -132,22 +129,11 @@ export async function getMobileSyncIncidents(
   const token = await session.getToken();
   if (!token) redirect("/login?error=session_expired");
 
-  const request = buildSyncIncidentsRequest(token, filters);
-  let response: Response;
-  try {
-    response = await djangoFetch(request.path, request.init);
-  } catch {
-    console.error("[mobile/api] Django sync-incident request failed");
-    return {
-      ok: false,
-      status: 502,
-      kind: "unavailable",
-      message: "Sync incident alerts are temporarily unavailable.",
-    };
+  const result = await fetchMobileSyncIncidentsWithToken(token, filters);
+  if (!result.ok && result.kind === "not_authenticated") {
+    redirect("/login?error=session_expired");
   }
-
-  if (response.status === 401) redirect("/login?error=session_expired");
-  return decodeMobileSyncIncidentsResponse(response, filters);
+  return result;
 }
 
 export async function getMobileUserProfile(

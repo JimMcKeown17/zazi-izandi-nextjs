@@ -1,4 +1,6 @@
 import { HowToReadPanel } from "@/components/mobile-app/user-health/how-to-read-panel";
+import { SyncIncidentFilters } from "@/components/mobile-app/sync-incidents/sync-incident-filters";
+import { SyncIncidentPager } from "@/components/mobile-app/sync-incidents/sync-incident-pager";
 import { UserHealthBoard } from "@/components/mobile-app/user-health/user-health-board";
 import { UserHealthFilters } from "@/components/mobile-app/user-health/user-health-filters";
 import { UserHealthPageContent } from "@/components/mobile-app/user-health/user-health-page-content";
@@ -239,11 +241,35 @@ export default async function MobileUserHealthPage({
     );
   }
 
+  const incidentFiltersSlot = (
+    <SyncIncidentFilters
+      key={`${incidentKind ?? ""}|${descriptorKey ?? ""}`}
+      incidentKind={incidentKind ?? null}
+      descriptorKey={descriptorKey}
+    />
+  );
+  const incidentPagerSlot =
+    incidentResult.ok && incidentResult.data.next_cursor !== null ? (
+      <SyncIncidentPager
+        key={`${days}|${schoolId ?? ""}|${incidentKind ?? ""}|${descriptorKey ?? ""}`}
+        initialData={incidentResult.data}
+        filters={{
+          days,
+          schoolId,
+          incidentKind: incidentKind ?? null,
+          descriptorKey,
+          limit: 50,
+        }}
+      />
+    ) : null;
+
   return (
     <UserHealthPageContent
       healthResult={healthResult}
       incidentResult={incidentResult}
       healthSuccess={healthSuccess}
+      incidentFiltersSlot={incidentFiltersSlot}
+      incidentPagerSlot={incidentPagerSlot}
     />
   );
 }

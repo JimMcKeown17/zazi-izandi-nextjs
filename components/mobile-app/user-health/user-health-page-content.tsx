@@ -10,11 +10,13 @@ export function UserHealthPageContent({
   incidentResult,
   healthSuccess,
   incidentFiltersSlot,
+  incidentPagerSlot,
 }: {
   healthResult: MobileUserHealthResult;
   incidentResult: MobileSyncIncidentsResult;
   healthSuccess: ReactNode;
   incidentFiltersSlot?: ReactNode;
+  incidentPagerSlot?: ReactNode;
 }) {
   return (
     <div className="mx-auto max-w-[96rem] space-y-4">
@@ -32,6 +34,7 @@ export function UserHealthPageContent({
       <SyncIncidentAlerts
         result={incidentResult}
         filtersSlot={incidentFiltersSlot}
+        pagerSlot={incidentPagerSlot}
       />
 
       {healthResult.ok ? (
