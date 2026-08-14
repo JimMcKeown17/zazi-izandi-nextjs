@@ -529,6 +529,13 @@ export function responseMatchesRequest(
     return false;
   }
 
+  if (
+    requestedFilters.cursor != null &&
+    response.next_cursor === requestedFilters.cursor
+  ) {
+    return false;
+  }
+
   if (requestedFilters.cursor == null && response.summary.receipts > 0) {
     if (
       response.incidents.length === 0 ||

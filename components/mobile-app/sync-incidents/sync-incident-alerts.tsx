@@ -7,7 +7,6 @@ import {
   getIncidentClassification,
   getIncidentIdentity,
   INCIDENT_KIND_COPY,
-  serverReceiptWasDelayed,
   shortenActorUuid,
 } from "@/lib/mobile/sync-incidents/presentation";
 import type {
@@ -111,13 +110,6 @@ export function SyncIncidentList({
               </div>
             </dl>
 
-            {serverReceiptWasDelayed(receipt) ? (
-              <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                The server received this later than the device-reported observation time.
-                Connectivity, app activation, and device-clock differences can contribute.
-              </p>
-            ) : null}
-
             <details className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
               <summary className="cursor-pointer text-sm font-semibold text-slate-700">
                 Technical detail
@@ -206,10 +198,18 @@ function SuccessPanel({
           incident waiting to report.
         </div>
       ) : (
-        <>
-          <SyncIncidentList incidents={data.incidents} />
-          {pagerSlot}
-        </>
+        <details
+          data-testid="mobile-sync-incident-receipts"
+          className="rounded-lg border border-amber-200 bg-white"
+        >
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-amber-900 hover:bg-amber-50">
+            View {data.summary.receipts} {data.summary.receipts === 1 ? "receipt" : "receipts"}
+          </summary>
+          <div className="space-y-3 border-t border-amber-100 p-3 sm:p-4">
+            <SyncIncidentList incidents={data.incidents} />
+            {pagerSlot}
+          </div>
+        </details>
       )}
     </section>
   );

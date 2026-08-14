@@ -73,10 +73,3 @@ export function getIncidentClassification(
 export function getIncidentIdentity(item: MobileSyncIncidentItem): string {
   return `${item.receipt.actor_user_id}:${item.receipt.incident_key}`;
 }
-
-export function serverReceiptWasDelayed(
-  receipt: MobileSyncIncidentReceipt
-): boolean {
-  return Date.parse(receipt.received_at) > Date.parse(receipt.first_seen_at);
-}
-

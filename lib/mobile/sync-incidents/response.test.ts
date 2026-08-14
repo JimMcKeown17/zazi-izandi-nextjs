@@ -230,6 +230,20 @@ test("actor correlation and microsecond ordering fail closed without Date roundi
   assert.equal(mismatchResult.ok, false);
 });
 
+test("a cursor page cannot return the same cursor and create a no-progress loop", async () => {
+  const payload = structuredClone(VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD);
+  payload.applied_filters.limit = 1;
+  payload.summary.receipts = 2;
+  payload.summary.support_roots = 2;
+  payload.next_cursor = "signed.page.one";
+
+  const result = await decodeMobileSyncIncidentsResponse(
+    new Response(JSON.stringify(payload), { status: 200 }),
+    { days: 7, limit: 1, cursor: "signed.page.one" }
+  );
+  assert.equal(result.ok, false);
+});
+
 test("email-like or control-bearing actor presentation never reaches the panel", async () => {
   for (const displayName of ["fixture@example.org", "Fixture\u2028EA"]) {
     const payload = structuredClone(VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD);

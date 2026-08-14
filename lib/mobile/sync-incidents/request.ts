@@ -83,6 +83,7 @@ export function buildSyncIncidentsRequest(
     init: {
       method: "GET",
       cache: "no-store",
+      redirect: "manual",
       headers: { Authorization: `Bearer ${clerkSessionToken}` },
     },
   };

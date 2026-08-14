@@ -61,6 +61,35 @@ test("the page loader fails closed before fetching for invalid input or current 
   assert.equal(fetchCalls, 0);
 });
 
+test("authorization exceptions become a static unavailable result without fetching or logging", async () => {
+  let fetchCalls = 0;
+  const logged: unknown[][] = [];
+  const originalConsoleError = console.error;
+  console.error = (...args: unknown[]) => logged.push(args);
+  try {
+    const loader = createSyncIncidentPageLoader({
+      authorize: async () => {
+        throw new Error("clerk unavailable with sensitive context");
+      },
+      fetchPage: async () => {
+        fetchCalls += 1;
+        return { ok: true, data: VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD };
+      },
+    });
+
+    assert.deepEqual(await loader(INPUT), {
+      ok: false,
+      status: 502,
+      kind: "unavailable",
+      message: "Sync incident alerts are temporarily unavailable.",
+    });
+    assert.equal(fetchCalls, 0);
+    assert.deepEqual(logged, []);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
 test("authorized page loads preserve opaque cursors across three pages and replay", async () => {
   const requested: MobileSyncIncidentFilters[] = [];
   const fetchPage = async (

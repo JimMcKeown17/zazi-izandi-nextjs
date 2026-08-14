@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useReducer, useRef } from "react";
+import { useEffect, useReducer, useRef } from "react";
 
 import { loadNextMobileSyncIncidentPage } from "@/app/mobile-app/user-health/sync-incident-actions";
 import { SyncIncidentList } from "./sync-incident-alerts";
@@ -33,6 +33,10 @@ export function SyncIncidentPager({
     state.initialIncidents.length
   );
 
+  useEffect(() => {
+    if (state.needsRefresh) router.refresh();
+  }, [router, state.needsRefresh]);
+
   async function loadMore() {
     if (inFlight.current || state.nextCursor === null) return;
     inFlight.current = true;
@@ -49,9 +53,12 @@ export function SyncIncidentPager({
         cursor,
       });
       dispatch({ type: "response_received", requestId, result });
-      if (!result.ok && result.kind === "stale_cursor") {
-        router.refresh();
-      }
+    } catch {
+      dispatch({
+        type: "request_failed",
+        requestId,
+        message: "Sync incident alerts could not load another page. Try again.",
+      });
     } finally {
       inFlight.current = false;
     }
@@ -87,4 +94,3 @@ export function SyncIncidentPager({
     </div>
   );
 }
-

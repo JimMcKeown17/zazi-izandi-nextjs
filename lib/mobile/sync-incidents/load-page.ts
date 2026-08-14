@@ -69,7 +69,17 @@ export function createSyncIncidentPageLoader(dependencies: {
       };
     }
 
-    const authorization = await dependencies.authorize();
+    let authorization: AuthorizationResult;
+    try {
+      authorization = await dependencies.authorize();
+    } catch {
+      return {
+        ok: false,
+        status: 502,
+        kind: "unavailable",
+        message: "Sync incident alerts are temporarily unavailable.",
+      };
+    }
     if (!authorization.ok || authorization.token.length === 0) {
       const kind = authorization.ok ? "not_authenticated" : authorization.kind;
       return kind === "not_authenticated"

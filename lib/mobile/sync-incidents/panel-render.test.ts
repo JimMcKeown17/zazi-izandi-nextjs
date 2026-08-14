@@ -36,6 +36,11 @@ test("the alert panel renders historical evidence, profile authority, and bounde
   assert.match(text, /Received by server/);
   assert.match(text, /First reported as observed on device/);
   assert.match(text, /Technical detail/);
+  assert.match(
+    html,
+    /<details[^>]*data-testid="mobile-sync-incident-receipts"(?![^>]*\sopen(?:=|\s|>))/
+  );
+  assert.match(text, /View 1 receipt/);
   assert.match(html, /href="\/mobile-app\/users\/00000000-0000-4000-8000-000000000001"/);
   assert.doesNotMatch(text, /unresolved|still active|lost work|corrupted/i);
   assert.doesNotMatch(html, /normalized_payload|fixture@example\.org/);

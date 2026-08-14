@@ -1,6 +1,7 @@
 import { HowToReadPanel } from "@/components/mobile-app/user-health/how-to-read-panel";
 import { SyncIncidentFilters } from "@/components/mobile-app/sync-incidents/sync-incident-filters";
 import { SyncIncidentPager } from "@/components/mobile-app/sync-incidents/sync-incident-pager";
+import { getSyncIncidentPagerKey } from "@/lib/mobile/sync-incidents/pager-state";
 import { UserHealthBoard } from "@/components/mobile-app/user-health/user-health-board";
 import { UserHealthFilters } from "@/components/mobile-app/user-health/user-health-filters";
 import { UserHealthPageContent } from "@/components/mobile-app/user-health/user-health-page-content";
@@ -251,7 +252,16 @@ export default async function MobileUserHealthPage({
   const incidentPagerSlot =
     incidentResult.ok && incidentResult.data.next_cursor !== null ? (
       <SyncIncidentPager
-        key={`${days}|${schoolId ?? ""}|${incidentKind ?? ""}|${descriptorKey ?? ""}`}
+        key={getSyncIncidentPagerKey(
+          {
+            days,
+            schoolId,
+            incidentKind: incidentKind ?? null,
+            descriptorKey,
+            limit: 50,
+          },
+          incidentResult.data
+        )}
         initialData={incidentResult.data}
         filters={{
           days,

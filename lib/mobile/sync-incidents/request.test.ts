@@ -21,6 +21,7 @@ test("sync incident requests are deterministic, bounded, signed-cursor-only GETs
   );
   assert.equal(request.init.cache, "no-store");
   assert.equal(request.init.method, "GET");
+  assert.equal(request.init.redirect, "manual");
   assert.equal(
     new Headers(request.init.headers).get("Authorization"),
     "Bearer clerk-session-token"
