@@ -47,6 +47,7 @@ export async function requireMobileReportingSession() {
       "mobile.sessions.read",
       "mobile.time_entries.read",
       "mobile.user_health.read",
+      "mobile.sync_incidents.read",
     ] as const
   ).some((capability) => hasCapability(session.role, capability));
 
@@ -71,4 +72,8 @@ export function requireMobileTimeEntriesSession() {
 
 export function requireMobileUserHealthSession() {
   return requireMobileCapability("mobile.user_health.read");
+}
+
+export function requireMobileSyncIncidentsSession() {
+  return requireMobileCapability("mobile.sync_incidents.read");
 }

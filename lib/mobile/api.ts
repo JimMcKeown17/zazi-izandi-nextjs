@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { djangoFetch } from "@/lib/django-fetch";
 import {
   requireMobileSessionsSession,
+  requireMobileSyncIncidentsSession,
   requireMobileTimeEntriesSession,
   requireMobileUserHealthSession,
 } from "./auth";
@@ -40,6 +41,14 @@ import {
   decodeMobileUserProfileResponse,
   type MobileUserProfileResult,
 } from "./user-profile/response";
+import { buildSyncIncidentsRequest } from "./sync-incidents/request";
+import {
+  decodeMobileSyncIncidentsResponse,
+} from "./sync-incidents/response";
+import type {
+  MobileSyncIncidentFilters,
+  MobileSyncIncidentsResult,
+} from "./sync-incidents/types";
 
 export async function getMobileSessionsActivity(
   filters: MobileSessionsActivityFilters
@@ -114,6 +123,31 @@ export async function getMobileUserHealth(
   if (response.status === 401) redirect("/login?error=session_expired");
   if (response.status === 403) redirect("/login?error=insufficient_role");
   return decodeMobileUserHealthResponse(response);
+}
+
+export async function getMobileSyncIncidents(
+  filters: MobileSyncIncidentFilters
+): Promise<MobileSyncIncidentsResult> {
+  const session = await requireMobileSyncIncidentsSession();
+  const token = await session.getToken();
+  if (!token) redirect("/login?error=session_expired");
+
+  const request = buildSyncIncidentsRequest(token, filters);
+  let response: Response;
+  try {
+    response = await djangoFetch(request.path, request.init);
+  } catch {
+    console.error("[mobile/api] Django sync-incident request failed");
+    return {
+      ok: false,
+      status: 502,
+      kind: "unavailable",
+      message: "Sync incident alerts are temporarily unavailable.",
+    };
+  }
+
+  if (response.status === 401) redirect("/login?error=session_expired");
+  return decodeMobileSyncIncidentsResponse(response, filters);
 }
 
 export async function getMobileUserProfile(
