@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "display_ascii_space_trim",
+      "kind": "display_name",
+      "value": "  Fixture EA  ",
+      "expected_valid": true,
+      "expected_normalized": "Fixture EA"
+    },
+    {
+      "id": "display_uuid_fallback",
+      "kind": "display_name",
+      "value": "00000000-0000-4000-8000-000000000001",
+      "expected_valid": true
+    },
+    {
+      "id": "display_rejects_at",
+      "kind": "display_name",
+      "value": "fixture@example.org",
+      "expected_valid": false
+    },
+    {
+      "id": "display_rejects_c0_control",
+      "kind": "display_name",
+      "value": "Fixture\u0001EA",
+      "expected_valid": false
+    },
+    {
+      "id": "display_rejects_c1_control",
+      "kind": "display_name",
+      "value": "Fixture\u0085EA",
+      "expected_valid": false
+    },
+    {
+      "id": "display_rejects_line_separator",
+      "kind": "display_name",
+      "value": "Fixture\u2028EA",
+      "expected_valid": false
+    },
+    {
+      "id": "display_rejects_paragraph_separator",
+      "kind": "display_name",
+      "value": "Fixture\u2029EA",
+      "expected_valid": false
+    },
+    {
+      "id": "display_keeps_non_breaking_space_edges",
+      "kind": "display_name",
+      "value": "\u00a0Fixture EA\u00a0",
+      "expected_valid": true
+    },
+    {
+      "id": "display_128_astral_code_points_and_512_bytes",
+      "kind": "display_name",
+      "repeat": { "unit": "\ud83d\ude00", "count": 128 },
+      "expected_valid": true
+    },
+    {
+      "id": "display_129_code_points",
+      "kind": "display_name",
+      "repeat": { "unit": "A", "count": 129 },
+      "expected_valid": false
+    },
+    {
+      "id": "display_blank_after_ascii_trim",
+      "kind": "display_name",
+      "value": "   ",
+      "expected_valid": false
+    },
+    {
+      "id": "school_allows_at",
+      "kind": "school_name",
+      "value": "School @ Site B",
+      "expected_valid": true
+    },
+    {
+      "id": "school_ascii_space_trim",
+      "kind": "school_name",
+      "value": "  Fixture Primary School  ",
+      "expected_valid": true,
+      "expected_normalized": "Fixture Primary School"
+    },
+    {
+      "id": "school_rejects_control",
+      "kind": "school_name",
+      "value": "Fixture\u007fSchool",
+      "expected_valid": false
+    },
+    {
+      "id": "school_160_astral_code_points_and_640_bytes",
+      "kind": "school_name",
+      "repeat": { "unit": "\ud83d\ude00", "count": 160 },
+      "expected_valid": true
+    },
+    {
+      "id": "school_161_code_points",
+      "kind": "school_name",
+      "repeat": { "unit": "S", "count": 161 },
+      "expected_valid": false
+    }
+  ]
+}
