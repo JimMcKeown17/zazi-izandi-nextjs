@@ -1,6 +1,12 @@
 # Mobile-app "EA left — reassign roster" — implementation design (Slice 1, step 4)
 
-**Status:** DESIGN / **revision 2** — round 1 complete (Codex, static): 3 high
+**Status:** DESIGN / **revision 3** — round 2 (Codex, static): 2 high (the
+execute budget was unenforceable while the RPC client's per-call timeout was
+20s — the handover client now runs a 5s per-call timeout with a
+fits-in-remaining-budget gate; unresolved roster items had no server-side
+gate — job creation now rejects or requires persisted per-entity decisions)
+and 1 medium (the refusal decoder is now exhaustive and fail-closed over the
+wrapper's full vocabulary, with unknown codes → integrity_fault). Round 1: 3 high
 (no server-side successor-eligibility check — the wrapper's
 `target_ea_not_found` only proves the UUID exists; stale-CAS refusals treated
 as terminal instead of triggering a re-preview — the D6 organic drain can mint
@@ -77,7 +83,8 @@ nothing new).
   (mobile `auth.users` uuids), `scope` (`roster` | `class`),
   `scope_class_id` (nullable uuid), `reason` (text), `requested_by`
   (Clerk user id + email snapshot), `status` (`created`/`running`/
-  `complete`/`complete_with_refusals`/`needs_repreview`/`integrity_fault`),
+  `complete`/`complete_with_refusals`/`complete_with_exclusions`/
+  `needs_repreview`/`integrity_fault`),
   a **progress cursor** (last completed `position`) and a **lease**
   (`lease_expires_at`, holder token) for bounded continuation, timestamps.
   Partial-unique: at most one non-terminal job per `from_ea_user_id` AND at
@@ -100,20 +107,31 @@ nothing new).
   `result_json`, `refusal_code`. Retry **resends the stored payload
   verbatim** — the wrapper's replay contract makes that idempotent;
   `request_id_reuse_mismatch` flips the job to `integrity_fault` and stops.
-- **Refusals split into two classes** (round 1 high). *Terminal business
-  refusals* (`target_name_collision`, `shared_class_unsupported`,
-  `entity_archived`, `no_current_holder`, `claimant_ambiguous`) record and
-  continue — they are per-entity final states an operator resolves out of
-  band. *Staleness refusals* (`cas_conflict`, `no_active_assignment`,
-  `group_class_holder_mismatch`) mean the world moved between job creation
-  and execution — the canonical case being the D6 organic drain minting a
-  ledger row for a scalar-only item captured with a NULL expectation. A
-  staleness refusal marks the item `stale`, **stops dispatching its
-  dependents** (a stale class vetoes its pending groups and the children
-  bucket keeps going only if independent), and finishes the pass into
-  `needs_repreview`: the UI shows exactly which entities changed and offers
-  a fresh preview → fresh job (new request ids, fresh CAS tokens) for the
-  remainder. A job with stale items never reports as complete.
+- **The wrapper-outcome decoder is exhaustive and fail-closed** (rounds
+  1–2), covering the live wrapper's entire vocabulary:
+  - *Success* (`outcome: transferred`, incl. replay) → `transferred`;
+    `remaining_foreign_claims > 0` flagged informationally.
+  - *Terminal business refusals* — `target_name_collision`,
+    `shared_class_unsupported`, `entity_archived`, `no_current_holder`,
+    `claimant_ambiguous` → `refused`, record and continue (per-entity final
+    states an operator resolves out of band).
+  - *Staleness refusals* — `cas_conflict`, `no_active_assignment`,
+    `group_class_holder_mismatch`, and `entity_not_found` /
+    `target_ea_not_found` **when returned after job creation** (both were
+    validated at creation, so their later appearance means the world
+    changed) → item `stale`, **dependents vetoed** (a stale class vetoes its
+    pending groups; the children bucket continues only where independent),
+    job finishes the pass into `needs_repreview` — which never reports as
+    complete. Canonical fixture: the D6 organic drain minting a ledger row
+    for a scalar-only item captured with a NULL expectation.
+  - *Transient operational* — `seed_lease_busy` (a seed/restore holds the
+    lease) and per-call timeouts → item stays `pending`/`error`,
+    re-dispatched on a later continuation; job state `retryable`, never
+    terminal.
+  - *Invariant breaches* — `request_id_reuse_mismatch`, `from_equals_to`
+    (impossible post-validation), and **any code this decoder does not
+    recognize** → `integrity_fault`, stop. Unknown never maps to
+    completion.
 
 ### 2.3 Endpoints (`api/mobile/handover.py`, wired in `api/urls.py`)
 
@@ -137,10 +155,19 @@ nothing new).
      invent — confirmed at build).
    Response: grouped roster + counts + unresolved list.
 2. `POST api/mobile/handover/jobs/` `{from_ea, to_ea, scope, scope_class_id?,
-   reason}` — re-runs the roster query server-side (never trusts the
-   browser's list), materializes items in execution order — classes →
-   parented groups (each after its class) → classless groups → children —
-   with per-item `request_id` + CAS token captured **now**; returns job id.
+   reason, unresolved_decisions?}` — re-runs the roster query server-side
+   (never trusts the browser's list). **Unresolved items are a server-side
+   creation gate** (round 2 high): if the re-run finds parent-misaligned
+   groups or class-scope membership orphans, creation is REJECTED unless the
+   payload carries a decision (`move` | `leave`) for **every** unresolved
+   entity, validated against the server's own unresolved set (ids must match
+   exactly — a direct POST cannot silently omit them). Decisions persist as
+   job rows: `move` materializes the entity into the execution order;
+   `leave` records an acknowledged-leave item, and a job containing any
+   leave finishes as `complete_with_exclusions`, never `complete`.
+   Materializes items in execution order — classes → parented groups (each
+   after its class) → classless groups → children — with per-item
+   `request_id` + CAS token captured **now**; returns job id.
    For `scope=class`: that class, its groups, and the children assigned to A
    who are members of that class (`child_class_memberships` join) — plus an
    **orphan bucket** (round 1): children actively assigned to A whose
@@ -151,18 +178,25 @@ nothing new).
    child left behind is exactly the invisible-stranding this feature exists
    to end.
 3. `POST api/mobile/handover/jobs/<id>/execute/` — **bounded continuation,
-   not run-to-completion** (round 1: the shared Supabase client's per-call
-   timeout is 20s and the host runs bare Gunicorn — two degraded RPCs would
-   eat a worker's request budget). Each call takes the job lease, processes
-   pending items in `position` order under a fixed budget (default: 10 items
-   or 15 seconds of wall clock, whichever first), persists the cursor, and
-   returns `running` + cursor (or the terminal status). The UI polls status
-   and submits the next bounded continuation until terminal. The lease
-   (short expiry, holder token) prevents concurrent-worker duplication;
-   per-item outcomes follow §2.2's refusal split;
-   `request_id_reuse_mismatch` → `integrity_fault`, stop. Safe after any
-   interruption: `transferred`/`refused`/`stale` items are skipped,
-   `pending`/`error` items are re-dispatched with their stored payloads.
+   not run-to-completion** (round 1: bare Gunicorn; round 2: a budget
+   checked only *between* items is theatre if a single in-flight call can
+   block 20s). The handover path gets its **own RPC client configuration
+   with a 5-second per-call timeout** (the wrapper holds a 4s
+   `lock_timeout`, so anything slower is already failing) — never the shared
+   20s client — and the executor **refuses to start an item unless its
+   worst-case call time fits in the remaining budget**, reserving
+   finalization time. Budget: 10 items or 15 seconds, whichever first;
+   worst case one straggler ≈ budget + 5s, bounded. A per-call timeout marks
+   the item `error` WITHOUT advancing the cursor past it (its stored payload
+   re-dispatches next continuation — the wrapper's replay/idempotency makes
+   that safe whichever side of the timeout the truth landed on). Each call
+   takes the job lease, processes pending items in `position` order,
+   persists the cursor, returns `running` + cursor or the terminal status;
+   the UI polls and continues until terminal. The lease (short expiry,
+   holder token) prevents concurrent-worker duplication; per-item outcomes
+   follow §2.2's decoder; `request_id_reuse_mismatch` → `integrity_fault`,
+   stop. Safe after any interruption: `transferred`/`refused`/`stale` items
+   are skipped, `pending`/`error` items re-dispatch stored payloads.
 4. `GET  api/mobile/handover/jobs/<id>/` — status + per-item results +
    plain-English summary.
 
@@ -222,7 +256,15 @@ this name at this school — rename one first"; `shared_class_unsupported` →
   row appears before execution); interrupted-then-retried job resends stored
   payloads verbatim (assert byte-equal RPC bodies) and skips terminal items;
   `request_id_reuse_mismatch` → `integrity_fault` + stop; concurrent-job
-  refusal (unique active job per from-EA and per to-EA); capability-contract
+  refusal (unique active job per from-EA and per to-EA); the exhaustive
+  decoder — one test per wrapper code incl. post-creation
+  `entity_not_found`/`target_ea_not_found` → stale, `seed_lease_busy` →
+  retryable-pending, and an unrecognized code → `integrity_fault`; the
+  unresolved-item creation gate via **direct POST** (missing decisions →
+  rejected; decisions not matching the server's unresolved set → rejected;
+  `leave` → `complete_with_exclusions`); a timed-out RPC (endpoint returns
+  within the advertised bound, cursor not advanced past the item, item
+  re-dispatches with the same payload next continuation); capability-contract
   fixture test.
 - **Next**: capability-gated rendering test; one route-handler test per
   helper; e2e smoke of the page shell (Playwright, mocked API).
