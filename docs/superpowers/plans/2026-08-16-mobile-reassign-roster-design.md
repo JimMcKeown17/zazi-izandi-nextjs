@@ -1,6 +1,13 @@
 # Mobile-app "EA left — reassign roster" — implementation design (Slice 1, step 4)
 
-**Status:** DESIGN / **revision 3** — round 2 (Codex, static): 2 high (the
+**Status:** DESIGN / **revision 4** — round 3 (Codex, static): 2 high (an
+unresolved entity could also sit in the ordinary ledger-backed set, so a
+`leave` decision could still dispatch it — materialization is now mutually
+exclusive by `(entity_kind, entity_id)` with a per-job uniqueness constraint;
+the lease was not token-fenced across a 5s call — every write is now
+conditioned on the unexpired holder token) and 1 medium (`retryable` was not
+a declared state — `running` is now the sole persisted non-terminal in-flight
+state with a computed API flag). Round 2 (Codex, static): 2 high (the
 execute budget was unenforceable while the RPC client's per-call timeout was
 20s — the handover client now runs a 5s per-call timeout with a
 fits-in-remaining-budget gate; unresolved roster items had no server-side
@@ -103,7 +110,7 @@ nothing new).
   `entity_kind`/`entity_id`, **immutable dispatch payload** captured at job
   creation: `request_id` (uuid4, server-generated), `expected_assignment_id`
   (nullable — NULL for the scalar-only set), plus the shared from/to/reason;
-  `state` (`pending`/`transferred`/`refused`/`stale`/`error`),
+  `state` (`pending`/`transferred`/`refused`/`stale`/`error`/`excluded`),
   `result_json`, `refusal_code`. Retry **resends the stored payload
   verbatim** — the wrapper's replay contract makes that idempotent;
   `request_id_reuse_mismatch` flips the job to `integrity_fault` and stops.
@@ -126,8 +133,14 @@ nothing new).
     for a scalar-only item captured with a NULL expectation.
   - *Transient operational* — `seed_lease_busy` (a seed/restore holds the
     lease) and per-call timeouts → item stays `pending`/`error`,
-    re-dispatched on a later continuation; job state `retryable`, never
-    terminal.
+    re-dispatched on a later continuation. **`running` is the sole persisted
+    non-terminal in-flight state** (round 3): the job remains `running` with
+    the job lease released; the API's job payload carries a computed
+    `retryable: true` (pending/error items exist, no live lease) so the UI
+    can distinguish continue-now from in-flight. Transitions pinned in the
+    timeout and `seed_lease_busy` tests: `created` →(first execute)→
+    `running` →(all items terminal)→ one of the terminal states; never
+    terminal while a pending/error item remains.
   - *Invariant breaches* — `request_id_reuse_mismatch`, `from_equals_to`
     (impossible post-validation), and **any code this decoder does not
     recognize** → `integrity_fault`, stop. Unknown never maps to
@@ -192,11 +205,19 @@ nothing new).
    that safe whichever side of the timeout the truth landed on). Each call
    takes the job lease, processes pending items in `position` order,
    persists the cursor, returns `running` + cursor or the terminal status;
-   the UI polls and continues until terminal. The lease (short expiry,
-   holder token) prevents concurrent-worker duplication; per-item outcomes
-   follow §2.2's decoder; `request_id_reuse_mismatch` → `integrity_fault`,
-   stop. Safe after any interruption: `transferred`/`refused`/`stale` items
-   are skipped, `pending`/`error` items re-dispatch stored payloads.
+   the UI polls and continues until terminal. **The lease is token-fenced**
+   (round 3): TTL = execute budget + max per-call timeout + a persistence
+   margin (15 + 5 + 10 = 30s); the holder revalidates (and renews) the lease
+   **before every dispatch**, and **every item-result, cursor, and status
+   write is conditioned on the current unexpired holder token** (compare-and
+   -set in the UPDATE's WHERE) — an expired holder's writes affect zero rows
+   and it stops immediately, so a successor worker can never interleave with
+   a straggler's late writes or break class-before-group ordering. Test: an
+   RPC outliving the original lease — the expired holder cannot advance the
+   cursor or start another item. Per-item outcomes follow §2.2's decoder;
+   `request_id_reuse_mismatch` → `integrity_fault`, stop. Safe after any
+   interruption: `transferred`/`refused`/`stale`/`excluded` items are
+   skipped, `pending`/`error` items re-dispatch stored payloads.
 4. `GET  api/mobile/handover/jobs/<id>/` — status + per-item results +
    plain-English summary.
 
