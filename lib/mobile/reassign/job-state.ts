@@ -39,11 +39,3 @@ export function getMobileReassignJobUrl(
   query.set(MOBILE_REASSIGN_JOB_QUERY_KEY, validatedJobId);
   return `${pathname}?${query.toString()}`;
 }
-
-export function compactMobileHandoverProgress(
-  job: MobileHandoverJobResponse
-): string {
-  return `${job.job.status}:${job.job.progress_cursor}:${job.items
-    .map((item) => item.state)
-    .join(",")}`;
-}

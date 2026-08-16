@@ -129,7 +129,10 @@ export type MobileReassignErrorCode =
   | "unresolved_decisions_required"
   | "successor_not_eligible"
   | "integrity_fault"
-  | "handover_job_not_found";
+  | "handover_job_not_found"
+  // Client-side only: the continuation runner stopped a retryable loop that
+  // made no semantic progress (never produced by the response decoder).
+  | "handover_stalled";
 
 export type MobileReassignResult<T> =
   | { ok: true; data: T }
