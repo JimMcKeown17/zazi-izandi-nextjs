@@ -1,11 +1,18 @@
 # Mobile-app "EA left — reassign roster" — implementation design (Slice 1, step 4)
 
-**Status:** AS-BUILT (Django half) / **revision 6** — the Django implementation
-is complete and runtime-proven (107 feature tests green on real PostgreSQL,
-network-guarded; migration 0058 applies cleanly after 0001→0057; full `api`
-suite delta clean against a stashed baseline). §6 records the build-time
-resolutions and the one flagged scope note (zero-history children). The
-Next.js half is still to build against this contract.
+**Status:** AS-BUILT (both halves) / **revision 6** — Django complete and
+runtime-proven (115 feature tests on real PostgreSQL, network-guarded;
+migration 0058 applies after 0001→0057; 2-round adversarial review approve;
+branch `feat/mobile-reassign-roster` @ `5f52bbf`). Next.js complete
+(205 mobile tests, tsc/lint clean; 3-round adversarial review approve — the
+rounds fixed the zero-item first-execute dead end, reload/resume via
+`?job=<uuid>`, and the semantic continuation bound: automatic passes require
+the dispatchable-item set to shrink and a forward in-range cursor, else a
+recoverable client-only `handover_stalled` error, with a
+min(total_items+2, 1001) pass ceiling; same branch @ `b1b69c5`). §6 records
+the build-time resolutions and the zero-history-children scope note.
+Outstanding: a signed-in browser (Playwright/Clerk) run, and the supervised
+deploys — Django (Render) before Next (Vercel); neither main is merged.
 Review history — round 4 (Codex, static): 1 high — the round-3 materialization invariant was asserted in the header but a silent edit-miss left it out of the operative creation algorithm; it is now spelled out in the jobs-POST contract (subtract-first, decision materialized exactly once, UNIQUE(job_id, entity_kind, entity_id) with duplicate = integrity fault). Round 3 (Codex, static): 2 high (an
 unresolved entity could also sit in the ordinary ledger-backed set, so a
 `leave` decision could still dispatch it — materialization is now mutually
