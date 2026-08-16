@@ -1,6 +1,6 @@
 # Mobile-app "EA left — reassign roster" — implementation design (Slice 1, step 4)
 
-**Status:** DESIGN / **revision 4** — round 3 (Codex, static): 2 high (an
+**Status:** DESIGN / **revision 5** — round 4 (Codex, static): 1 high — the round-3 materialization invariant was asserted in the header but a silent edit-miss left it out of the operative creation algorithm; it is now spelled out in the jobs-POST contract (subtract-first, decision materialized exactly once, UNIQUE(job_id, entity_kind, entity_id) with duplicate = integrity fault). Round 3 (Codex, static): 2 high (an
 unresolved entity could also sit in the ordinary ledger-backed set, so a
 `leave` decision could still dispatch it — materialization is now mutually
 exclusive by `(entity_kind, entity_id)` with a per-job uniqueness constraint;
@@ -174,13 +174,24 @@ nothing new).
    groups or class-scope membership orphans, creation is REJECTED unless the
    payload carries a decision (`move` | `leave`) for **every** unresolved
    entity, validated against the server's own unresolved set (ids must match
-   exactly — a direct POST cannot silently omit them). Decisions persist as
-   job rows: `move` materializes the entity into the execution order;
-   `leave` records an acknowledged-leave item, and a job containing any
-   leave finishes as `complete_with_exclusions`, never `complete`.
-   Materializes items in execution order — classes → parented groups (each
-   after its class) → classless groups → children — with per-item
-   `request_id` + CAS token captured **now**; returns job id.
+   exactly — a direct POST cannot silently omit them). **The creation
+   algorithm is canonical and mutually exclusive** (rounds 3–4 — a
+   parent-misaligned group is often ALSO an active ledger row, so without
+   this a `leave` would still dispatch it via the ordinary set): (i) build
+   the unresolved key set `{(entity_kind, entity_id)}`; (ii) **subtract
+   those keys from every automatic set** (ledger-backed, scalar-only,
+   children) *before any item insert*; (iii) materialize each decision
+   exactly once — `move` inserts one `pending` item at its correct position,
+   `leave` inserts one non-dispatchable `excluded` item; (iv) the item
+   table carries a migration-level **`UNIQUE (job_id, entity_kind,
+   entity_id)`** constraint, and a duplicate-key violation during creation
+   is an **integrity fault** (abort creation), never a silent row choice. A
+   job containing any `leave` finishes as `complete_with_exclusions`, never
+   `complete`. Automatic items materialize in execution order — classes →
+   parented groups (each after its class) → classless groups → children —
+   with per-item `request_id` + CAS token captured **now**; returns job id.
+   Overlap tests: an active-ledger parent-misaligned group under `move`
+   produces exactly one RPC, under `leave` produces zero.
    For `scope=class`: that class, its groups, and the children assigned to A
    who are members of that class (`child_class_memberships` join) — plus an
    **orphan bucket** (round 1): children actively assigned to A whose
