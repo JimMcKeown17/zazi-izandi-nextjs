@@ -14,7 +14,7 @@ import type {
   MobileReassignScope,
 } from "@/lib/mobile/reassign/types";
 
-export function previewMobileReassignRoster(input: {
+export async function previewMobileReassignRoster(input: {
   fromEa: string;
   scope?: MobileReassignScope;
   scopeClassId?: string | null;
@@ -22,19 +22,19 @@ export function previewMobileReassignRoster(input: {
   return getMobileReassignRoster(input);
 }
 
-export function createMobileReassignment(
+export async function createMobileReassignment(
   input: MobileReassignCreateJobInput
 ): Promise<MobileReassignResult<MobileHandoverJobResponse>> {
   return createMobileReassignJob(input);
 }
 
-export function executeMobileReassignment(
+export async function executeMobileReassignment(
   jobId: string
 ): Promise<MobileReassignResult<MobileHandoverJobResponse>> {
   return executeMobileReassignJob(jobId);
 }
 
-export function loadMobileReassignment(
+export async function loadMobileReassignment(
   jobId: string
 ): Promise<MobileReassignResult<MobileHandoverJobResponse>> {
   return getMobileReassignJob(jobId);
