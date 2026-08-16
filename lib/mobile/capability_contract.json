@@ -1,0 +1,8 @@
+{
+  "_comment": "Cross-repo mobile capability contract. Byte-identical copies live in this repo at api/mobile/capability_contract.json and in the PM site at lib/mobile/capability-contract.json. Each repo asserts its own ROLE_CAPABILITIES map against this file, so an asymmetric edit fails one repo's suite instead of shipping silent drift. digest = sha256 of json.dumps(capabilities, sort_keys=True, separators=(',', ':')).",
+  "contract_version": 1,
+  "digest": "sha256:0fd14424876ccc7decfe6ab3b2b85039e860ef29cc4c072ac1cf98f23e2c809f",
+  "capabilities": {
+    "mobile.assignments.reassign": ["admin", "zz_data_manager"]
+  }
+}

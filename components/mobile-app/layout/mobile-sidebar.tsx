@@ -11,6 +11,7 @@ import {
   HeartPulse,
   LayoutDashboard,
   School,
+  Shuffle,
   Users,
 } from "lucide-react";
 
@@ -55,6 +56,12 @@ const NAV_ITEMS: NavItem[] = [
     enabled: true,
   },
   {
+    name: "Reassign roster",
+    href: "/mobile-app/reassign",
+    icon: Shuffle,
+    enabled: true,
+  },
+  {
     name: "Schools",
     href: "/mobile-app/schools",
     icon: School,
@@ -72,12 +79,14 @@ export function MobileSidebarNavigation({
   canReadSessions,
   canReadTimeEntries,
   canReadUserHealth,
+  canReassign = false,
   accountButton = null,
 }: {
   pathname: string;
   canReadSessions: boolean;
   canReadTimeEntries: boolean;
   canReadUserHealth: boolean;
+  canReassign?: boolean;
   accountButton?: ReactNode;
 }) {
   if (!canReadSessions && !canReadTimeEntries && !canReadUserHealth) return null;
@@ -88,6 +97,7 @@ export function MobileSidebarNavigation({
     if (item.href === "/mobile-app/attendance") return canReadTimeEntries;
     if (item.href === "/mobile-app/user-health") return canReadUserHealth;
     if (item.href === "/mobile-app/users") return canReadUserHealth;
+    if (item.href === "/mobile-app/reassign") return canReassign;
     return canReadSessions;
   };
 
@@ -218,10 +228,12 @@ export function MobileSidebar({
   canReadSessions,
   canReadTimeEntries,
   canReadUserHealth,
+  canReassign = false,
 }: {
   canReadSessions: boolean;
   canReadTimeEntries: boolean;
   canReadUserHealth: boolean;
+  canReassign?: boolean;
 }) {
   const pathname = usePathname();
 
@@ -231,6 +243,7 @@ export function MobileSidebar({
       canReadSessions={canReadSessions}
       canReadTimeEntries={canReadTimeEntries}
       canReadUserHealth={canReadUserHealth}
+      canReassign={canReassign}
       accountButton={<UserButton afterSignOutUrl="/" />}
     />
   );
