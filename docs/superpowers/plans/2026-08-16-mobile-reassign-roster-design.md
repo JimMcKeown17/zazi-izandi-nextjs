@@ -351,8 +351,24 @@ the contract. Where earlier sections were ambiguous, these win.
    groups → children. `MobileHandoverItem.parent_class_id` (nullable UUID)
    scopes the stale-class veto to that class's own dependent groups.
 6. **`retryable`** is computed for every non-terminal status (including
-   `created`), never persisted. Adapter/upstream failures map to HTTP 502,
-   timeouts 504.
+   `created`), never persisted. **HTTP-code contract, by endpoint class**
+   (pinned after review round 1 of the Django diff flagged the ambiguity):
+   - *Reads and creation* (`roster/`, `jobs/` POST): upstream/adapter
+     failures → 502 (`mobile_handover_unavailable`, including malformed 2xx
+     bodies, which the adapter translates to the same typed error rather than
+     letting an untyped 500 escape), timeouts → 504, ceiling → 502,
+     `scope=class` naming a class the departing EA does not hold → 422
+     `scope_class_not_owned` (refused at the server-side roster re-query, so
+     a direct POST cannot materialize an empty class-scope job that would
+     complete with zero transfers).
+   - *Execute continuation* (`jobs/<id>/execute/`): **200 whenever the pass
+     ran and persisted durable state** — a per-item timeout or upstream
+     failure is recorded on the item (`error` + code), the job stays
+     retryable, and the lease is released by the pass finalizer. The HTTP
+     status describes the continuation request, not the downstream item
+     call; callers read `job.status`/`retryable`/item states from the body.
+     Non-2xx only for auth (401/403), unknown job (404), lease/terminal
+     conflict (409), or a failure before any durable write existed.
 7. **Flagged scope note — zero-history children.** §2.3.1's scalar-only
    bucket covers classes/groups only, yet the wrapper also supports
    zero-history children (`staff_children` sole-claimant branch). A child
