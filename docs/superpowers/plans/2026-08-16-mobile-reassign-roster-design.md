@@ -1,6 +1,12 @@
 # Mobile-app "EA left — reassign roster" — implementation design (Slice 1, step 4)
 
-**Status:** DESIGN / **revision 5** — round 4 (Codex, static): 1 high — the round-3 materialization invariant was asserted in the header but a silent edit-miss left it out of the operative creation algorithm; it is now spelled out in the jobs-POST contract (subtract-first, decision materialized exactly once, UNIQUE(job_id, entity_kind, entity_id) with duplicate = integrity fault). Round 3 (Codex, static): 2 high (an
+**Status:** AS-BUILT (Django half) / **revision 6** — the Django implementation
+is complete and runtime-proven (107 feature tests green on real PostgreSQL,
+network-guarded; migration 0058 applies cleanly after 0001→0057; full `api`
+suite delta clean against a stashed baseline). §6 records the build-time
+resolutions and the one flagged scope note (zero-history children). The
+Next.js half is still to build against this contract.
+Review history — round 4 (Codex, static): 1 high — the round-3 materialization invariant was asserted in the header but a silent edit-miss left it out of the operative creation algorithm; it is now spelled out in the jobs-POST contract (subtract-first, decision materialized exactly once, UNIQUE(job_id, entity_kind, entity_id) with duplicate = integrity fault). Round 3 (Codex, static): 2 high (an
 unresolved entity could also sit in the ordinary ledger-backed set, so a
 `leave` decision could still dispatch it — materialization is now mutually
 exclusive by `(entity_kind, entity_id)` with a per-job uniqueness constraint;
@@ -309,3 +315,58 @@ this name at this school — rename one first"; `shared_class_unsupported` →
 1. Django: capability + models + migration + endpoints + tests.
 2. Next: capability + page + helpers + tests.
 3. Review (adversarial, both diffs), gates, deploy Django then Next.
+
+## 6. As-built resolutions (Django half, 2026-08-16)
+
+Build-time decisions the Next.js half and future readers must treat as part of
+the contract. Where earlier sections were ambiguous, these win.
+
+1. **Wrapper call signature is pinned to the applied migration**, not the
+   revision-5 sketch: `p_entity_kind, p_entity_id, p_expected_assignment_id,
+   p_from_ea, p_to_ea, p_request_id, p_reason, p_requested_by`. The wrapper's
+   own constraints are enforced at job creation (`reason` non-empty, ≤200
+   chars). `p_requested_by` is `clerk:<user_id>` — deterministic, no PII in
+   the mobile audit table; the requester email snapshot stays Django-side.
+   The decoder's vocabulary is asserted (in tests) equal to the 13 codes the
+   wrapper SQL can actually emit.
+2. **Requester email** comes only from a verified claim in the
+   signature-checked Clerk JWT (`email`, else Clerk's
+   `primary_email_address`), never from any client-supplied body or header;
+   absent/malformed → empty string. No Clerk API call.
+3. **Terminal-status precedence** when one job carries several outcome kinds:
+   `needs_repreview` > `complete_with_exclusions` > `complete_with_refusals`
+   > `complete`. Preserves both absolute rules (stale never reports complete;
+   any `leave` never reports plain complete); per-item states all ship in the
+   status payload.
+4. **Executor selection**: the lowest-`position` dispatchable item, not
+   `position > cursor`; the cursor records only the last *completed*
+   position. Structurally prevents skipping an item whose cursor was
+   deliberately not advanced (timeout case). All executor writes — lease
+   renew-before-dispatch, item result, cursor, finalize — are single
+   `UPDATE … WHERE lease_token = <held> AND lease_expires_at >
+   statement_timestamp()` compare-and-sets; rowcount 0 → stop with no
+   further writes.
+5. **Ordering** is sectional: classes → parented groups (each after its
+   parent's index) → moved groups whose parent is outside the job → classless
+   groups → children. `MobileHandoverItem.parent_class_id` (nullable UUID)
+   scopes the stale-class veto to that class's own dependent groups.
+6. **`retryable`** is computed for every non-terminal status (including
+   `created`), never persisted. Adapter/upstream failures map to HTTP 502,
+   timeouts 504.
+7. **Flagged scope note — zero-history children.** §2.3.1's scalar-only
+   bucket covers classes/groups only, yet the wrapper also supports
+   zero-history children (`staff_children` sole-claimant branch). A child
+   held only via `staff_children` with no ledger row is therefore not in the
+   roster union. This is accepted, not an oversight: the 15-minute child
+   reconciler cron continuously projects exactly that population into
+   `child_ea_assignments` (measured at zero backlog since 2026-08-15), so
+   the window is transient. Operational remedy, which the Next.js UI must
+   surface: after a job completes, re-run the preview; any straggler then
+   appears ledger-backed under the departed EA and a follow-up job (admissible
+   once the prior job is terminal, per the partial-unique constraints) moves
+   it. Do not widen the union without also deciding `claimant_ambiguous`
+   handling.
+8. **Preview cost note**: roster preview makes two extra GoTrue calls to
+   resolve the departing EA's name (works for already-deactivated EAs);
+   successor candidates come from the existing user-health endpoint, and
+   creation re-validates eligibility server-side from the same source.
