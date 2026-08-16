@@ -9,7 +9,7 @@ const ids = {
   assignment: "00000000-0000-4000-8000-000000000100",
   job: "00000000-0000-4000-8000-000000000200",
 };
-let executed = false;
+let executeCount = 0;
 
 function job(status, state, retryable) {
   return {
@@ -30,7 +30,7 @@ function job(status, state, retryable) {
 }
 
 function roster() {
-  const classes = executed ? [] : [{
+  const classes = executeCount > 1 ? [] : [{
     entity_kind: "class", entity_id: ids.class, name: "Mock Grade R", parent_class_id: null,
     expected_assignment_id: ids.assignment, source: "ledger",
   }];
@@ -54,9 +54,17 @@ createServer((request, response) => {
   if (pathname === "/api/mobile/handover/roster/" && request.method === "GET") return send(response, 200, roster());
   if (pathname === "/api/mobile/handover/jobs/" && request.method === "POST") return send(response, 201, job("created", "pending", true));
   if (pathname === `/api/mobile/handover/jobs/${ids.job}/execute/` && request.method === "POST") {
-    executed = true;
+    executeCount += 1;
+    // Deliberately pause after the first pass. This represents a durable job
+    // that needs a later browser continuation and lets the smoke test prove a
+    // page reload recovers the job from its URL.
+    if (executeCount === 1) return send(response, 200, job("running", "pending", false));
     return send(response, 200, job("complete", "transferred", false));
   }
-  if (pathname === `/api/mobile/handover/jobs/${ids.job}/` && request.method === "GET") return send(response, 200, job(executed ? "complete" : "created", executed ? "transferred" : "pending", !executed));
+  if (pathname === `/api/mobile/handover/jobs/${ids.job}/` && request.method === "GET") {
+    if (executeCount === 0) return send(response, 200, job("created", "pending", true));
+    if (executeCount === 1) return send(response, 200, job("running", "pending", true));
+    return send(response, 200, job("complete", "transferred", false));
+  }
   return send(response, 404, { error: "handover job not found" });
 }).listen(port, host);

@@ -4,7 +4,7 @@ const FROM_EA = "00000000-0000-4000-8000-000000000001";
 const TO_EA = "00000000-0000-4000-8000-000000000002";
 
 test.describe("EA roster reassignment — locally mocked Django API", () => {
-  test("admin can preview, confirm, execute, and re-preview a mocked handover", async ({
+  test("admin reloads between continuations, recovers the durable job, and completes it", async ({
     page,
     signInAsRole,
   }, testInfo) => {
@@ -27,6 +27,12 @@ test.describe("EA roster reassignment — locally mocked Django API", () => {
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.getByRole("button", { name: "Create and execute handover" }).click();
 
+    await expect(page).toHaveURL(/\/mobile-app\/reassign\?job=00000000-0000-4000-8000-000000000200/);
+    await expect(page.getByText(/Handover running/i)).toBeVisible();
+    await page.reload();
+    await expect(page.getByText(/Handover running/i)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continue handover" })).toBeVisible();
+    await page.getByRole("button", { name: "Continue handover" }).click();
     await expect(page.getByText(/Handover complete/i)).toBeVisible();
     await expect(page.getByText("If this EA is leaving permanently, also deactivate their account in")).toBeVisible();
     await page.getByRole("button", { name: "Re-run roster preview" }).click();
