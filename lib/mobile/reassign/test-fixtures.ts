@@ -1,0 +1,55 @@
+export const REASSIGN_UUIDS = {
+  fromEa: "00000000-0000-4000-8000-000000000001",
+  toEa: "00000000-0000-4000-8000-000000000002",
+  class: "00000000-0000-4000-8000-000000000010",
+  group: "00000000-0000-4000-8000-000000000020",
+  child: "00000000-0000-4000-8000-000000000030",
+  assignment: "00000000-0000-4000-8000-000000000100",
+  job: "00000000-0000-4000-8000-000000000200",
+};
+
+export const VALID_REASSIGN_ROSTER_PAYLOAD = {
+  from_ea: REASSIGN_UUIDS.fromEa,
+  from_ea_name: "Nomsa Dlamini",
+  scope: "roster",
+  scope_class_id: null,
+  classes: [{ entity_kind: "class", entity_id: REASSIGN_UUIDS.class, name: "Grade R A", parent_class_id: null, expected_assignment_id: REASSIGN_UUIDS.assignment, source: "ledger" }],
+  groups: [{ entity_kind: "group", entity_id: REASSIGN_UUIDS.group, name: "Group 1", parent_class_id: REASSIGN_UUIDS.class, expected_assignment_id: REASSIGN_UUIDS.assignment, source: "ledger" }],
+  children: [{ entity_kind: "child", entity_id: REASSIGN_UUIDS.child, name: "", parent_class_id: null, expected_assignment_id: REASSIGN_UUIDS.assignment, source: "ledger" }],
+  scalar_only: [],
+  unresolved: [],
+  source_counts: { class_ledger_active: 1, group_ledger_active: 1, child_ledger_active: 1, scalar_class_rows: 1, scalar_group_rows: 1 },
+  counts: { classes: 1, groups: 1, children: 1, scalar_only: 0, unresolved: 0 },
+};
+
+export const VALID_REASSIGN_JOB_PAYLOAD = {
+  job: {
+    id: REASSIGN_UUIDS.job,
+    status: "created",
+    retryable: true,
+    in_flight: false,
+    scope: "roster",
+    scope_class_id: null,
+    from_ea_user_id: REASSIGN_UUIDS.fromEa,
+    to_ea_user_id: REASSIGN_UUIDS.toEa,
+    reason: "EA resigned",
+    requested_by: { clerk_user_id: "user_pm_1", email: "pm@example.test" },
+    progress_cursor: -1,
+    total_items: 1,
+    created_at: "2026-08-16T12:00:00+00:00",
+    updated_at: "2026-08-16T12:00:00+00:00",
+    summary: "0 of 1 records moved. 1 still to go.",
+  },
+  items: [{
+    position: 0,
+    entity_kind: "class",
+    entity_id: REASSIGN_UUIDS.class,
+    parent_class_id: null,
+    state: "pending",
+    refusal_code: "",
+    message: "waiting",
+    expected_assignment_id: REASSIGN_UUIDS.assignment,
+    remaining_foreign_claims: null,
+    result: {},
+  }],
+};

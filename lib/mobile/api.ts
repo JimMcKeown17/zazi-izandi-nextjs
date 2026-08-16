@@ -5,10 +5,28 @@ import { redirect } from "next/navigation";
 import { djangoFetch } from "@/lib/django-fetch";
 import {
   requireMobileSessionsSession,
+  requireMobileReassignSession,
   requireMobileSyncIncidentsSession,
   requireMobileTimeEntriesSession,
   requireMobileUserHealthSession,
 } from "./auth";
+import {
+  buildMobileReassignCreateJobRequest,
+  buildMobileReassignExecuteRequest,
+  buildMobileReassignJobStatusRequest,
+  buildMobileReassignRosterRequest,
+} from "./reassign/request";
+import {
+  decodeMobileReassignJobResponse,
+  decodeMobileReassignRosterResponse,
+} from "./reassign/response";
+import type {
+  MobileHandoverJobResponse,
+  MobileReassignCreateJobInput,
+  MobileReassignResult,
+  MobileReassignRosterPreview,
+  MobileReassignScope,
+} from "./reassign/types";
 import {
   buildSessionsActivityRequest,
   type MobileSessionsActivityFilters,
@@ -164,4 +182,68 @@ export async function getMobileUserProfile(
   if (response.status === 401) redirect("/login?error=session_expired");
   if (response.status === 403) redirect("/login?error=insufficient_role");
   return decodeMobileUserProfileResponse(response);
+}
+
+async function withMobileReassignRequest<T>(
+  buildRequest: (token: string) => { path: string; init: RequestInit },
+  decode: (response: Response) => Promise<MobileReassignResult<T>>
+): Promise<MobileReassignResult<T>> {
+  const session = await requireMobileReassignSession();
+  const token = await session.getToken();
+  if (!token) redirect("/login?error=session_expired");
+
+  let response: Response;
+  try {
+    const request = buildRequest(token);
+    response = await djangoFetch(request.path, request.init);
+  } catch (error) {
+    console.error("[mobile/api] Django roster-handover request failed:", error);
+    return {
+      ok: false,
+      status: 502,
+      code: "mobile_handover_unavailable",
+      message: "The roster handover service is currently unavailable.",
+    };
+  }
+  if (response.status === 401) redirect("/login?error=session_expired");
+  if (response.status === 403) redirect("/login?error=insufficient_role");
+  return decode(response);
+}
+
+export function getMobileReassignRoster(input: {
+  fromEa: string;
+  scope?: MobileReassignScope;
+  scopeClassId?: string | null;
+}): Promise<MobileReassignResult<MobileReassignRosterPreview>> {
+  return withMobileReassignRequest(
+    (token) => buildMobileReassignRosterRequest(token, input),
+    decodeMobileReassignRosterResponse
+  );
+}
+
+export function createMobileReassignJob(
+  input: MobileReassignCreateJobInput
+): Promise<MobileReassignResult<MobileHandoverJobResponse>> {
+  return withMobileReassignRequest(
+    (token) => buildMobileReassignCreateJobRequest(token, input),
+    decodeMobileReassignJobResponse
+  );
+}
+
+export function executeMobileReassignJob(
+  jobId: string
+): Promise<MobileReassignResult<MobileHandoverJobResponse>> {
+  return withMobileReassignRequest(
+    (token) => buildMobileReassignExecuteRequest(token, jobId),
+    decodeMobileReassignJobResponse
+  );
+}
+
+export function getMobileReassignJob(
+  jobId: string
+): Promise<MobileReassignResult<MobileHandoverJobResponse>> {
+  return withMobileReassignRequest(
+    (token) => buildMobileReassignJobStatusRequest(token, jobId),
+    decodeMobileReassignJobResponse
+  );
 }

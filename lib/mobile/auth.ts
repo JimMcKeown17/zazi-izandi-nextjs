@@ -77,3 +77,7 @@ export function requireMobileUserHealthSession() {
 export function requireMobileSyncIncidentsSession() {
   return requireMobileCapability("mobile.sync_incidents.read");
 }
+
+export function requireMobileReassignSession() {
+  return requireMobileCapability("mobile.assignments.reassign");
+}

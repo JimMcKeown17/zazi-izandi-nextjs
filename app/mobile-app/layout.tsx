@@ -30,6 +30,10 @@ export default async function MobileAppLayout({
           session.role,
           "mobile.user_health.read"
         )}
+        canReassign={hasCapability(
+          session.role,
+          "mobile.assignments.reassign"
+        )}
       />
       <main className="min-w-0 flex-1 overflow-x-hidden p-4 pb-24 md:p-6 md:pb-6">
         {children}

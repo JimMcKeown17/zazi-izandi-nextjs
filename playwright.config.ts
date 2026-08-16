@@ -8,6 +8,7 @@ const clerkConfigured = Boolean(
     process.env.CLERK_PUBLISHABLE_KEY) &&
     (process.env.CLERK_SECRET_KEY || process.env.CLERK_TESTING_TOKEN)
 );
+const mockedReassignDjango = process.env.E2E_REASSIGN_DJANGO_MOCKED === "1";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -15,11 +16,29 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:3000",
   },
-  webServer: {
-    command: "npm run dev",
-    url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer: mockedReassignDjango
+    ? [
+        {
+          command: "node e2e/reassign-django-mock.mjs",
+          url: "http://127.0.0.1:4010/health",
+          reuseExistingServer: !process.env.CI,
+        },
+        {
+          command: "npm run dev",
+          url: "http://localhost:3000",
+          reuseExistingServer: !process.env.CI,
+          env: {
+            ...process.env,
+            DJANGO_API_URL: "http://127.0.0.1:4010",
+            INTERNAL_API_SECRET: "offline-reassign-test-secret",
+          },
+        },
+      ]
+    : {
+        command: "npm run dev",
+        url: "http://localhost:3000",
+        reuseExistingServer: !process.env.CI,
+      },
   projects: [
     ...(clerkConfigured
       ? [

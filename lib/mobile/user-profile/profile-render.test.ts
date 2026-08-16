@@ -417,3 +417,28 @@ test("the sidebar omits Users entirely for junior-staff capabilities in both nav
   assert.match(desktop, /Schools/);
   assert.match(desktop, /Soon/);
 });
+
+test("the sidebar renders roster reassignment only for the explicit capability holder", () => {
+  const permitted = renderToStaticMarkup(
+    createElement(MobileSidebarNavigation, {
+      pathname: "/mobile-app/reassign",
+      canReadSessions: true,
+      canReadTimeEntries: true,
+      canReadUserHealth: true,
+      canReassign: true,
+    })
+  );
+  const denied = renderToStaticMarkup(
+    createElement(MobileSidebarNavigation, {
+      pathname: "/mobile-app/sessions",
+      canReadSessions: true,
+      canReadTimeEntries: true,
+      canReadUserHealth: true,
+      canReassign: false,
+    })
+  );
+
+  assert.match(permitted, /href="\/mobile-app\/reassign"/);
+  assert.match(permitted, />Reassign roster</);
+  assert.doesNotMatch(denied, /href="\/mobile-app\/reassign"|>Reassign roster</);
+});

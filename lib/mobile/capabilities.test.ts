@@ -62,6 +62,16 @@ test("sync incident alerts have exactly the User Health role set", () => {
   }
 });
 
+test("roster reassignment is an explicit admin and data-manager allow-list", () => {
+  for (const role of ALL_MOBILE_ROLES) {
+    assert.equal(
+      hasCapability(role, "mobile.assignments.reassign"),
+      role === "admin" || role === "zz_data_manager",
+      role
+    );
+  }
+});
+
 test("capability drift produces a section-local denial without calling the loader", async () => {
   let calls = 0;
   const result = await resolveSyncIncidentPageRequest(
