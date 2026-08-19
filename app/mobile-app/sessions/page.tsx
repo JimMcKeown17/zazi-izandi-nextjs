@@ -5,8 +5,12 @@ import { SessionDistribution } from "@/components/pm/sessions/session-distributi
 import { SessionsSchoolTable } from "@/components/pm/sessions/sessions-school-table";
 import { SessionsTrendChart } from "@/components/pm/sessions/sessions-trend-chart";
 import { SessionFilters } from "@/components/mobile-app/sessions/session-filters";
+import { SessionReviewAlerts } from "@/components/mobile-app/sessions/session-review-alerts";
 import { SessionSummaryTiles } from "@/components/mobile-app/sessions/session-summary-tiles";
-import { getMobileSessionsActivity } from "@/lib/mobile/api";
+import {
+  getMobileSessionReviewFlags,
+  getMobileSessionsActivity,
+} from "@/lib/mobile/api";
 import { requireMobileSessionsSession } from "@/lib/mobile/auth";
 import { hasCapability } from "@/lib/mobile/capabilities";
 import {
@@ -37,7 +41,10 @@ export default async function MobileSessionsPage({
   ]);
   const days = parseDays(firstValue(params.days));
   const schoolId = firstValue(params.school_id) || null;
-  const result = await getMobileSessionsActivity({ days, schoolId });
+  const [result, reviewFlags] = await Promise.all([
+    getMobileSessionsActivity({ days, schoolId }),
+    getMobileSessionReviewFlags({ schoolId }),
+  ]);
 
   if (!result.ok) {
     return (
@@ -84,6 +91,8 @@ export default async function MobileSessionsPage({
           historical session-time attribution.
         </p>
       </div>
+
+      <SessionReviewAlerts result={reviewFlags} />
 
       <SessionFilters
         days={data.days}

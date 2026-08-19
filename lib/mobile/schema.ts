@@ -93,3 +93,37 @@ export const mobileSessionsActivitySchema = z
       }
     });
   });
+
+export const mobileSessionReviewFlagsSchema = z
+  .object({
+    count: count,
+    flags: z
+      .array(
+        z
+          .object({
+            session_date: date,
+            started_at: absoluteTimestamp.nullable(),
+            ended_at: absoluteTimestamp.nullable(),
+            submitting_ea_name: z.string().min(1),
+            school_id: uuid,
+            school_name: z.string().min(1),
+            child_first_name: z.string().min(1),
+            child_last_name: z.string().min(1),
+            reason_code: z.literal("same_school_child_not_assigned_to_actor"),
+            created_at: absoluteTimestamp,
+            last_observed_at: absoluteTimestamp,
+          })
+          .strict()
+      )
+      .max(100),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.count < value.flags.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["count"],
+        message: "count must be at least the number of returned flags",
+      });
+    }
+  });

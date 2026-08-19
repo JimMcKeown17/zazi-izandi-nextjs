@@ -32,3 +32,34 @@ export function buildSessionsActivityRequest(
     },
   };
 }
+
+export interface MobileSessionReviewFlagsFilters {
+  limit?: number;
+  schoolId?: string | null;
+}
+
+export function buildSessionReviewFlagsRequest(
+  clerkSessionToken: string,
+  filters: MobileSessionReviewFlagsFilters = {}
+): MobileSessionsActivityRequest {
+  const limit = filters.limit ?? 50;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new RangeError("limit must be an integer between 1 and 100");
+  }
+  if (!clerkSessionToken) {
+    throw new Error("A Clerk session token is required");
+  }
+
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (filters.schoolId) query.set("school_id", filters.schoolId);
+
+  return {
+    path: `/api/mobile/session-review-flags/?${query.toString()}`,
+    init: {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${clerkSessionToken}`,
+      },
+    },
+  };
+}
