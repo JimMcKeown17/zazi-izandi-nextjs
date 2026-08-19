@@ -14,12 +14,14 @@ const WINDOW_OPTIONS = [
 interface SessionFiltersProps {
   days: number;
   selectedSchoolId: string | null;
+  selectedSchoolType: string | null;
   schoolOptions: MobileSchoolOption[];
 }
 
 export function SessionFilters({
   days,
   selectedSchoolId,
+  selectedSchoolType,
   schoolOptions,
 }: SessionFiltersProps) {
   const hasCustomDays = !WINDOW_OPTIONS.some((option) => option.value === days);
@@ -28,7 +30,7 @@ export function SessionFilters({
     <form
       action="/mobile-app/sessions"
       method="get"
-      className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-[10rem_minmax(15rem,1fr)_auto_auto] sm:items-end"
+      className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-[10rem_minmax(12rem,1fr)_9rem_auto_auto] sm:items-end"
     >
       <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
         Reporting window
@@ -62,6 +64,19 @@ export function SessionFilters({
         </select>
       </label>
 
+      <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        School type
+        <select
+          name="school_type"
+          defaultValue={selectedSchoolType ?? ""}
+          className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+        >
+          <option value="">All school types</option>
+          <option value="primary">Primary</option>
+          <option value="ecd">ECD</option>
+        </select>
+      </label>
+
       <button
         type="submit"
         className="h-10 rounded-md bg-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-2"
@@ -71,7 +86,9 @@ export function SessionFilters({
 
       {selectedSchoolId ? (
         <Link
-          href={`/mobile-app/sessions?days=${days}`}
+          href={`/mobile-app/sessions?days=${days}${
+            selectedSchoolType ? `&school_type=${selectedSchoolType}` : ""
+          }`}
           className="flex h-10 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
         >
           Clear school

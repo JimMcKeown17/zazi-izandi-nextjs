@@ -39,7 +39,10 @@ export default async function MobileAttendancePage({
   const initialQuery = firstValue(params.q) ?? "";
   const view = firstValue(params.view) === "ea" ? "ea" : "shifts";
   const schoolId = firstValue(params.school_id) || null;
-  const result = await getMobileTimeEntriesActivity({ days, schoolId });
+  const rawSchoolType = firstValue(params.school_type);
+  const schoolType =
+    rawSchoolType === "ecd" || rawSchoolType === "primary" ? rawSchoolType : null;
+  const result = await getMobileTimeEntriesActivity({ days, schoolId, schoolType });
 
   if (!result.ok) {
     return (
@@ -101,9 +104,10 @@ export default async function MobileAttendancePage({
       </div>
 
       <AttendanceFilters
-        key={`${data.days}|${data.applied_filters.school_id ?? ""}`}
+        key={`${data.days}|${data.applied_filters.school_id ?? ""}|${schoolType ?? ""}`}
         days={data.days}
         selectedSchoolId={data.applied_filters.school_id}
+        selectedSchoolType={schoolType}
         schoolOptions={data.school_options}
         canExport={hasCapability(session.role, "mobile.csv.export")}
       />

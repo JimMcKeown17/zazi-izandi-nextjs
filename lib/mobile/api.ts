@@ -92,7 +92,9 @@ export async function getMobileSessionsActivity(
 
   if (response.status === 401) redirect("/login?error=session_expired");
   if (response.status === 403) redirect("/login?error=insufficient_role");
-  return decodeMobileSessionsActivityResponse(response);
+  return decodeMobileSessionsActivityResponse(response, {
+    schoolType: filters.schoolType ?? null,
+  });
 }
 
 export async function getMobileSessionReviewFlags(
@@ -156,7 +158,9 @@ export async function getMobileTimeEntriesActivity(
 
   if (response.status === 401) redirect("/login?error=session_expired");
   if (response.status === 403) redirect("/login?error=insufficient_role");
-  return decodeMobileTimeEntriesActivityResponse(response);
+  return decodeMobileTimeEntriesActivityResponse(response, {
+    schoolType: filters.schoolType ?? null,
+  });
 }
 
 export async function getMobileUserHealth(

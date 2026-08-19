@@ -1,6 +1,7 @@
 export interface MobileSessionsActivityFilters {
   days: number;
   schoolId?: string | null;
+  schoolType?: "ecd" | "primary" | null;
 }
 
 export interface MobileSessionsActivityRequest {
@@ -21,6 +22,7 @@ export function buildSessionsActivityRequest(
 
   const query = new URLSearchParams({ days: String(filters.days) });
   if (filters.schoolId) query.set("school_id", filters.schoolId);
+  if (filters.schoolType) query.set("school_type", filters.schoolType);
 
   return {
     path: `/api/mobile/sessions-activity/?${query.toString()}`,

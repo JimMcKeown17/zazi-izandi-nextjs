@@ -18,17 +18,22 @@ const WINDOW_OPTIONS = [
 export function AttendanceFilters({
   days,
   selectedSchoolId,
+  selectedSchoolType,
   schoolOptions,
   canExport,
 }: {
   days: number;
   selectedSchoolId: string | null;
+  selectedSchoolType: string | null;
   schoolOptions: MobileSchoolOption[];
   canExport: boolean;
 }) {
   const router = useRouter();
   const [pendingDays, setPendingDays] = useState(String(days));
   const [pendingSchoolId, setPendingSchoolId] = useState(selectedSchoolId ?? "");
+  const [pendingSchoolType, setPendingSchoolType] = useState(
+    selectedSchoolType ?? ""
+  );
   const hasCustomDays = !WINDOW_OPTIONS.some(
     (option) => String(option.value) === pendingDays
   );
@@ -47,9 +52,13 @@ export function AttendanceFilters({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          navigateMerged({ days: pendingDays, school_id: pendingSchoolId || null });
+          navigateMerged({
+            days: pendingDays,
+            school_id: pendingSchoolId || null,
+            school_type: pendingSchoolType || null,
+          });
         }}
-        className="grid gap-3 sm:grid-cols-[10rem_minmax(15rem,1fr)_auto_auto] sm:items-end"
+        className="grid gap-3 sm:grid-cols-[10rem_minmax(12rem,1fr)_9rem_auto_auto] sm:items-end"
       >
         <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Reporting window
@@ -85,6 +94,20 @@ export function AttendanceFilters({
           </select>
         </label>
 
+        <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          School type
+          <select
+            name="school_type"
+            value={pendingSchoolType}
+            onChange={(event) => setPendingSchoolType(event.target.value)}
+            className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">All school types</option>
+            <option value="primary">Primary</option>
+            <option value="ecd">ECD</option>
+          </select>
+        </label>
+
         <button
           type="submit"
           className="h-10 rounded-md bg-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-2"
@@ -110,7 +133,11 @@ export function AttendanceFilters({
 
       {canExport ? (
         <div>
-          <TimeEntryExportButton days={days} schoolId={selectedSchoolId} />
+          <TimeEntryExportButton
+            days={days}
+            schoolId={selectedSchoolId}
+            schoolType={selectedSchoolType}
+          />
           <p className="mt-1 max-w-64 text-xs leading-relaxed text-slate-500">
             Exports every entry in the selected window and school — including
             GPS coordinates. On-page search does not narrow it.
