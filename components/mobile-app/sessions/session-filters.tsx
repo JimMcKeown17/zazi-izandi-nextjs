@@ -2,7 +2,14 @@ import Link from "next/link";
 
 import type { MobileSchoolOption } from "@/lib/mobile/types";
 
-const DAY_OPTIONS = [7, 14, 30, 60, 90] as const;
+const WINDOW_OPTIONS = [
+  { value: 1, label: "Today" },
+  { value: 7, label: "Last 7 days" },
+  { value: 14, label: "Last 14 days" },
+  { value: 30, label: "Last 30 days" },
+  { value: 60, label: "Last 60 days" },
+  { value: 90, label: "Last 90 days" },
+] as const;
 
 interface SessionFiltersProps {
   days: number;
@@ -15,7 +22,7 @@ export function SessionFilters({
   selectedSchoolId,
   schoolOptions,
 }: SessionFiltersProps) {
-  const hasCustomDays = !DAY_OPTIONS.some((option) => option === days);
+  const hasCustomDays = !WINDOW_OPTIONS.some((option) => option.value === days);
 
   return (
     <form
@@ -31,9 +38,9 @@ export function SessionFilters({
           className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
         >
           {hasCustomDays ? <option value={days}>{days} days</option> : null}
-          {DAY_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              Last {option} days
+          {WINDOW_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
             </option>
           ))}
         </select>

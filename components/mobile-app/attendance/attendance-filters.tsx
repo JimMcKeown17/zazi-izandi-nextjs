@@ -6,7 +6,14 @@ import { useRouter } from "next/navigation";
 import type { MobileSchoolOption } from "@/lib/mobile/types";
 import { TimeEntryExportButton } from "./time-entry-export-button";
 
-const DAY_OPTIONS = [7, 14, 30, 60, 90] as const;
+const WINDOW_OPTIONS = [
+  { value: 1, label: "Today" },
+  { value: 7, label: "Last 7 days" },
+  { value: 14, label: "Last 14 days" },
+  { value: 30, label: "Last 30 days" },
+  { value: 60, label: "Last 60 days" },
+  { value: 90, label: "Last 90 days" },
+] as const;
 
 export function AttendanceFilters({
   days,
@@ -22,7 +29,9 @@ export function AttendanceFilters({
   const router = useRouter();
   const [pendingDays, setPendingDays] = useState(String(days));
   const [pendingSchoolId, setPendingSchoolId] = useState(selectedSchoolId ?? "");
-  const hasCustomDays = !DAY_OPTIONS.some((option) => String(option) === pendingDays);
+  const hasCustomDays = !WINDOW_OPTIONS.some(
+    (option) => String(option.value) === pendingDays
+  );
 
   function navigateMerged(updates: Record<string, string | null>) {
     const params = new URLSearchParams(window.location.search);
@@ -51,9 +60,9 @@ export function AttendanceFilters({
             className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           >
             {hasCustomDays ? <option value={pendingDays}>{pendingDays} days</option> : null}
-            {DAY_OPTIONS.map((option) => (
-              <option key={option} value={String(option)}>
-                Last {option} days
+            {WINDOW_OPTIONS.map((option) => (
+              <option key={option.value} value={String(option.value)}>
+                {option.label}
               </option>
             ))}
           </select>
