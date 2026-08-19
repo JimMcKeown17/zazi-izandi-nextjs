@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Download } from "lucide-react";
 import { getEmploymentStatusDisplay } from "@/lib/mobile/presentation";
 
 export interface SessionHeatmapRow {
@@ -19,6 +20,19 @@ interface Props {
   schoolColumnLabel?: string;
   subtitle?: string;
   profileLinkEnabled?: boolean;
+  /**
+   * When set, a "Download CSV" button is shown that exports the currently
+   * visible (searched + sorted) rows. The value is the filename prefix; a
+   * YYYY-MM-DD stamp and `.csv` are appended. Omit to hide the button (e.g. on
+   * the PM dashboard where export is not offered).
+   */
+  exportFilenamePrefix?: string;
+}
+
+/** RFC 4180 field escaping: quote when the value contains a comma, quote, or newline. */
+function csvField(value: string | number): string {
+  const text = String(value ?? "");
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 function cellColor(count: number): string {
@@ -48,6 +62,7 @@ export function EAHeatmap({
   schoolColumnLabel = "School",
   subtitle = "Sessions per day — last 10 weekdays",
   profileLinkEnabled = false,
+  exportFilenamePrefix,
 }: Props) {
   const [search, setSearch] = useState("");
 
@@ -69,6 +84,47 @@ export function EAHeatmap({
     return totalB - totalA;
   });
 
+  // Exports exactly what is on screen: the searched + sorted rows, columns in
+  // the same order (most-recent weekday first), Total last. ISO dates are used
+  // for spreadsheet-friendly headers.
+  function downloadCsv() {
+    const header = [
+      "EA",
+      schoolColumnLabel,
+      "Status",
+      ...reversedDates,
+      "Total",
+    ];
+    const body = filtered.map((ea) => {
+      const reversedCells = [...ea.cells].reverse();
+      const total = ea.total_sessions ?? ea.cells.reduce((a, b) => a + b, 0);
+      const status = getEmploymentStatusDisplay(ea.employment_status);
+      return [
+        ea.ea_name,
+        ea.school,
+        status?.label ?? "",
+        ...reversedCells,
+        total,
+      ];
+    });
+    const csv = [header, ...body]
+      .map((row) => row.map(csvField).join(","))
+      .join("\r\n");
+    // Prepend a UTF-8 BOM so Excel renders accented EA names correctly.
+    const blob = new Blob(["﻿" + csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const stamp = new Date().toISOString().slice(0, 10);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${exportFilenamePrefix}-${stamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="bg-white rounded-lg shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
@@ -76,13 +132,26 @@ export function EAHeatmap({
           <p className="text-sm font-semibold text-slate-800">EA Activity Heatmap</p>
           <p className="text-xs text-slate-500">{subtitle}</p>
         </div>
-        <input
-          type="text"
-          placeholder="Search EA or school..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="text-xs border border-slate-200 rounded px-2 py-1 w-48"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="Search EA or school..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="text-xs border border-slate-200 rounded px-2 py-1 w-48"
+          />
+          {exportFilenamePrefix && eas.length > 0 ? (
+            <button
+              type="button"
+              onClick={downloadCsv}
+              className="inline-flex items-center gap-1.5 rounded border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+              title="Download the rows shown as a CSV"
+            >
+              <Download className="h-3.5 w-3.5" />
+              CSV
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {eas.length === 0 ? (

@@ -121,6 +121,7 @@ export default async function MobileSessionsPage({
           session.role,
           "mobile.user_health.read"
         )}
+        exportFilenamePrefix="zazi-ea-activity"
       />
 
       <SessionsSchoolTable
