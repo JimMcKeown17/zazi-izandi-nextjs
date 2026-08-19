@@ -101,6 +101,8 @@ export const mobileSessionReviewFlagsSchema = z
       .array(
         z
           .object({
+            session_id: uuid,
+            child_id: uuid,
             session_date: date,
             started_at: absoluteTimestamp.nullable(),
             ended_at: absoluteTimestamp.nullable(),

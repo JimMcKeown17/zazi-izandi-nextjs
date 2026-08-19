@@ -1,8 +1,13 @@
 import { AlertTriangle } from "lucide-react";
 
 import { formatSastTimestamp } from "@/lib/mobile/sync-incidents/presentation";
-import { SESSION_REVIEW_REASON_COPY } from "@/lib/mobile/session-review-copy";
+import {
+  SESSION_REVIEW_ALERTS_UNAVAILABLE,
+  SESSION_REVIEW_REASON_COPY,
+} from "@/lib/mobile/session-review-copy";
 import type { MobileSessionReviewFlagsResult } from "@/lib/mobile/response";
+
+export const SESSION_REVIEW_ALERTS_VISIBLE_LIMIT = 8;
 
 function formatSessionWhen(flag: {
   session_date: string;
@@ -29,6 +34,8 @@ export function SessionReviewAlerts({
   result: MobileSessionReviewFlagsResult;
 }) {
   if (!result.ok) {
+    const duplicateUnavailableCopy =
+      result.message === SESSION_REVIEW_ALERTS_UNAVAILABLE;
     return (
       <div
         data-testid="mobile-session-review-unavailable"
@@ -36,8 +43,10 @@ export function SessionReviewAlerts({
       >
         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
         <div>
-          <p className="font-semibold">Session review alerts are unavailable</p>
-          <p className="mt-1 text-amber-800">{result.message}</p>
+          <p className="font-semibold">{SESSION_REVIEW_ALERTS_UNAVAILABLE}</p>
+          {duplicateUnavailableCopy ? null : (
+            <p className="mt-1 text-amber-800">{result.message}</p>
+          )}
         </div>
       </div>
     );
@@ -47,6 +56,9 @@ export function SessionReviewAlerts({
   if (count === 0 && flags.length === 0) {
     return null;
   }
+
+  const visibleFlags = flags.slice(0, SESSION_REVIEW_ALERTS_VISIBLE_LIMIT);
+  const truncated = count > visibleFlags.length;
 
   return (
     <section
@@ -62,11 +74,19 @@ export function SessionReviewAlerts({
             ? "1 session includes a child held by another education assistant at the same school."
             : `${count} sessions include a child held by another education assistant at the same school.`}
         </p>
+        {truncated ? (
+          <p
+            data-testid="mobile-session-review-truncated"
+            className="mt-1 text-sm text-slate-600"
+          >
+            Showing {visibleFlags.length} of {count}.
+          </p>
+        ) : null}
       </div>
       <ul className="space-y-3">
-        {flags.map((flag, index) => (
+        {visibleFlags.map((flag) => (
           <li
-            key={`${flag.school_id}-${flag.session_date}-${flag.child_first_name}-${flag.child_last_name}-${index}`}
+            key={`${flag.session_id}-${flag.child_id}`}
             className="rounded-lg border border-amber-100 bg-white px-3 py-3 text-sm"
           >
             <p className="font-medium text-slate-900">

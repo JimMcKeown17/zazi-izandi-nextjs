@@ -82,6 +82,8 @@ export const SESSION_REVIEW_REASON_CODE =
   "same_school_child_not_assigned_to_actor" as const;
 
 export interface MobileSessionReviewFlag {
+  session_id: string;
+  child_id: string;
   session_date: string;
   started_at: string | null;
   ended_at: string | null;

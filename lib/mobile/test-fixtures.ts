@@ -1,4 +1,4 @@
-import type { MobileSessionsActivityResponse } from "./types";
+import type { MobileSessionReviewFlagsResponse, MobileSessionsActivityResponse } from "./types";
 
 export const VALID_MOBILE_SESSIONS_ACTIVITY_PAYLOAD = {
   generated_at: "2026-08-10T22:50:00.000Z",
@@ -71,6 +71,8 @@ export const VALID_MOBILE_SESSION_REVIEW_FLAGS_PAYLOAD = {
   count: 1,
   flags: [
     {
+      session_id: "7c1f3f4a-2c8d-4a11-9c5e-2b6d1a0e9f11",
+      child_id: "0d4b8e22-91a7-4c3f-8e5b-6a1c9d2f7b44",
       session_date: "2026-08-19",
       started_at: "2026-08-19T08:00:00.000Z",
       ended_at: "2026-08-19T08:30:00.000Z",
@@ -84,4 +86,4 @@ export const VALID_MOBILE_SESSION_REVIEW_FLAGS_PAYLOAD = {
       last_observed_at: "2026-08-19T08:31:00.000Z",
     },
   ],
-} as const;
+} as const satisfies MobileSessionReviewFlagsResponse;
