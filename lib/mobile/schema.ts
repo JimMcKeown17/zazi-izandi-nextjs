@@ -31,7 +31,13 @@ export const mobileSessionsActivitySchema = z
   .object({
     generated_at: absoluteTimestamp,
     days: z.number().int().min(1).max(90),
-    applied_filters: z.object({ school_id: uuid.nullable() }),
+    applied_filters: z.object({
+      school_id: uuid.nullable(),
+      // Optional so a legacy backend that predates the filter still decodes;
+      // decodeMobileSessionsActivityResponse then fails closed if the echo does
+      // not confirm the requested school type.
+      school_type: z.enum(["ecd", "primary"]).nullish(),
+    }),
     school_options: z.array(
       z.object({
         id: uuid,

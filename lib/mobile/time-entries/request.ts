@@ -1,6 +1,7 @@
 export interface MobileTimeEntriesFilters {
   days: number;
   schoolId?: string | null;
+  schoolType?: "ecd" | "primary" | null;
 }
 interface MobileTimeEntriesRequest {
   path: string;
@@ -17,6 +18,7 @@ function buildQuery(filters: MobileTimeEntriesFilters): string {
   validateFilters(filters);
   const query = new URLSearchParams({ days: String(filters.days) });
   if (filters.schoolId) query.set("school_id", filters.schoolId);
+  if (filters.schoolType) query.set("school_type", filters.schoolType);
   return query.toString();
 }
 

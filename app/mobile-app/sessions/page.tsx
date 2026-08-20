@@ -39,15 +39,16 @@ export default async function MobileSessionsPage({
   ]);
   const days = parseDays(firstValue(params.days));
   const schoolId = firstValue(params.school_id) || null;
+  const rawSchoolType = firstValue(params.school_type);
+  const schoolType =
+    rawSchoolType === "ecd" || rawSchoolType === "primary" ? rawSchoolType : null;
   const [result, reviewFlags] = await Promise.all([
-    getMobileSessionsActivity({ days, schoolId }),
+    getMobileSessionsActivity({ days, schoolId, schoolType }),
     getMobileSessionReviewFlags({ schoolId }),
   ]);
 
   if (!result.ok) {
-    return (
-      <SessionsPageContent result={result} reviewFlags={reviewFlags} />
-    );
+    return <SessionsPageContent result={result} reviewFlags={reviewFlags} />;
   }
 
   const { data } = result;
@@ -60,6 +61,7 @@ export default async function MobileSessionsPage({
       <SessionFilters
         days={data.days}
         selectedSchoolId={data.applied_filters.school_id}
+        selectedSchoolType={data.applied_filters.school_type ?? null}
         schoolOptions={data.school_options}
       />
 

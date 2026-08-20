@@ -6,7 +6,8 @@ export type MobileTimeEntriesActivityResult =
   | { ok: false; status: number; message: string };
 
 export async function decodeMobileTimeEntriesActivityResponse(
-  response: Response
+  response: Response,
+  expected: { schoolType: "ecd" | "primary" | null }
 ): Promise<MobileTimeEntriesActivityResult> {
   if (!response.ok) {
     return {
@@ -36,6 +37,18 @@ export async function decodeMobileTimeEntriesActivityResponse(
       ok: false,
       status: 502,
       message: "The clock report returned an unexpected data format.",
+    };
+  }
+
+  // Fail closed: the report must confirm it applied the requested school-type
+  // filter. A backend that silently ignores the filter echoes a mismatched or
+  // absent school_type; we must never present its unfiltered data as an
+  // ECD/Primary-filtered clock report.
+  if ((parsed.data.applied_filters.school_type ?? null) !== expected.schoolType) {
+    return {
+      ok: false,
+      status: 502,
+      message: "The mobile-app report could not confirm the ECD/Primary filter was applied.",
     };
   }
 

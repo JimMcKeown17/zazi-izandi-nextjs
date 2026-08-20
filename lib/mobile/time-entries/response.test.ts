@@ -10,10 +10,13 @@ test("a complete clock report with open and automatic entries is accepted", asyn
     { status: 200, headers: { "Content-Type": "application/json" } }
   );
 
-  assert.deepEqual(await decodeMobileTimeEntriesActivityResponse(response), {
-    ok: true,
-    data: VALID_MOBILE_TIME_ENTRIES_ACTIVITY_PAYLOAD,
-  });
+  assert.deepEqual(
+    await decodeMobileTimeEntriesActivityResponse(response, { schoolType: null }),
+    {
+      ok: true,
+      data: VALID_MOBILE_TIME_ENTRIES_ACTIVITY_PAYLOAD,
+    }
+  );
 });
 
 test("clock responses fail closed when active state and nullable fields disagree", async () => {
@@ -29,7 +32,8 @@ test("clock responses fail closed when active state and nullable fields disagree
   };
 
   const result = await decodeMobileTimeEntriesActivityResponse(
-    new Response(JSON.stringify(invalid), { status: 200 })
+    new Response(JSON.stringify(invalid), { status: 200 }),
+    { schoolType: null }
   );
   assert.deepEqual(result, {
     ok: false,
@@ -48,14 +52,17 @@ test("clock responses fail closed when summary totals do not reconcile", async (
   };
 
   const result = await decodeMobileTimeEntriesActivityResponse(
-    new Response(JSON.stringify(invalid), { status: 200 })
+    new Response(JSON.stringify(invalid), { status: 200 }),
+    { schoolType: null }
   );
   assert.equal(result.ok, false);
 });
 
 test("clock HTTP and malformed-body failures are sanitized", async () => {
   assert.deepEqual(
-    await decodeMobileTimeEntriesActivityResponse(new Response("", { status: 503 })),
+    await decodeMobileTimeEntriesActivityResponse(new Response("", { status: 503 }), {
+      schoolType: null,
+    }),
     {
       ok: false,
       status: 503,
@@ -63,11 +70,44 @@ test("clock HTTP and malformed-body failures are sanitized", async () => {
     }
   );
   assert.deepEqual(
-    await decodeMobileTimeEntriesActivityResponse(new Response("{", { status: 200 })),
+    await decodeMobileTimeEntriesActivityResponse(new Response("{", { status: 200 }), {
+      schoolType: null,
+    }),
     {
       ok: false,
       status: 502,
       message: "The clock report returned an unexpected data format.",
     }
+  );
+});
+
+test("a clock report that does not confirm the requested school type fails closed", async () => {
+  const response = new Response(
+    JSON.stringify(VALID_MOBILE_TIME_ENTRIES_ACTIVITY_PAYLOAD),
+    { status: 200, headers: { "Content-Type": "application/json" } }
+  );
+  assert.deepEqual(
+    await decodeMobileTimeEntriesActivityResponse(response, { schoolType: "primary" }),
+    {
+      ok: false,
+      status: 502,
+      message:
+        "The mobile-app report could not confirm the ECD/Primary filter was applied.",
+    }
+  );
+
+  const filtered = {
+    ...VALID_MOBILE_TIME_ENTRIES_ACTIVITY_PAYLOAD,
+    applied_filters: {
+      ...VALID_MOBILE_TIME_ENTRIES_ACTIVITY_PAYLOAD.applied_filters,
+      school_type: "primary",
+    },
+  };
+  assert.deepEqual(
+    await decodeMobileTimeEntriesActivityResponse(
+      new Response(JSON.stringify(filtered), { status: 200 }),
+      { schoolType: "primary" }
+    ),
+    { ok: true, data: filtered }
   );
 });

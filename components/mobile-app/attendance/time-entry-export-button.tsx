@@ -6,9 +6,11 @@ import { Download, LoaderCircle } from "lucide-react";
 export function TimeEntryExportButton({
   days,
   schoolId,
+  schoolType,
 }: {
   days: number;
   schoolId: string | null;
+  schoolType: string | null;
 }) {
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -18,6 +20,7 @@ export function TimeEntryExportButton({
     setMessage("");
     const query = new URLSearchParams({ days: String(days) });
     if (schoolId) query.set("school_id", schoolId);
+    if (schoolType) query.set("school_type", schoolType);
 
     try {
       const response = await fetch(

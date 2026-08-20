@@ -67,6 +67,7 @@ export interface MobileSessionsActivityResponse {
   days: number;
   applied_filters: {
     school_id: string | null;
+    school_type?: "ecd" | "primary" | null;
   };
   school_options: MobileSchoolOption[];
   daily_trend: MobileSessionTrendPoint[];
