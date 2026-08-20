@@ -77,3 +77,27 @@ export interface MobileSessionsActivityResponse {
   distribution: MobileSessionDistributionBucket[];
   school_summary: MobileSessionSchoolSummary[];
 }
+
+export const SESSION_REVIEW_REASON_CODE =
+  "same_school_child_not_assigned_to_actor" as const;
+
+export interface MobileSessionReviewFlag {
+  session_id: string;
+  child_id: string;
+  session_date: string;
+  started_at: string | null;
+  ended_at: string | null;
+  submitting_ea_name: string;
+  school_id: string;
+  school_name: string;
+  child_first_name: string;
+  child_last_name: string;
+  reason_code: typeof SESSION_REVIEW_REASON_CODE;
+  created_at: string;
+  last_observed_at: string;
+}
+
+export interface MobileSessionReviewFlagsResponse {
+  count: number;
+  flags: MobileSessionReviewFlag[];
+}

@@ -1,12 +1,14 @@
-import { AlertTriangle } from "lucide-react";
-
 import { EAHeatmap } from "@/components/pm/sessions/ea-heatmap";
 import { SessionDistribution } from "@/components/pm/sessions/session-distribution";
 import { SessionsSchoolTable } from "@/components/pm/sessions/sessions-school-table";
 import { SessionsTrendChart } from "@/components/pm/sessions/sessions-trend-chart";
 import { SessionFilters } from "@/components/mobile-app/sessions/session-filters";
 import { SessionSummaryTiles } from "@/components/mobile-app/sessions/session-summary-tiles";
-import { getMobileSessionsActivity } from "@/lib/mobile/api";
+import { SessionsPageContent } from "@/components/mobile-app/sessions/sessions-page-content";
+import {
+  getMobileSessionReviewFlags,
+  getMobileSessionsActivity,
+} from "@/lib/mobile/api";
 import { requireMobileSessionsSession } from "@/lib/mobile/auth";
 import { hasCapability } from "@/lib/mobile/capabilities";
 import {
@@ -37,29 +39,14 @@ export default async function MobileSessionsPage({
   ]);
   const days = parseDays(firstValue(params.days));
   const schoolId = firstValue(params.school_id) || null;
-  const result = await getMobileSessionsActivity({ days, schoolId });
+  const [result, reviewFlags] = await Promise.all([
+    getMobileSessionsActivity({ days, schoolId }),
+    getMobileSessionReviewFlags({ schoolId }),
+  ]);
 
   if (!result.ok) {
     return (
-      <div
-        data-testid="mobile-sessions-report-error"
-        className="mx-auto max-w-7xl space-y-4"
-      >
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Sessions</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Teaching activity uploaded by the Zazi iZandi mobile app.
-          </p>
-        </div>
-        <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-800">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
-          <div>
-            <p className="font-semibold">Session report unavailable</p>
-            <p className="mt-1">{result.message}</p>
-            <p className="mt-2 text-xs text-red-600">Status {result.status}</p>
-          </div>
-        </div>
-      </div>
+      <SessionsPageContent result={result} reviewFlags={reviewFlags} />
     );
   }
 
@@ -69,22 +56,7 @@ export default async function MobileSessionsPage({
   );
 
   return (
-    <div
-      data-testid="mobile-sessions-report-success"
-      className="mx-auto max-w-7xl space-y-4"
-    >
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
-          Mobile app reporting
-        </p>
-        <h1 className="mt-1 text-2xl font-bold text-slate-900">Sessions</h1>
-        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500">
-          Teaching activity uploaded by the Zazi iZandi mobile app. School
-          groupings use each EA&apos;s <strong>current roster school</strong>, not
-          historical session-time attribution.
-        </p>
-      </div>
-
+    <SessionsPageContent result={result} reviewFlags={reviewFlags}>
       <SessionFilters
         days={data.days}
         selectedSchoolId={data.applied_filters.school_id}
@@ -131,6 +103,6 @@ export default async function MobileSessionsPage({
         schoolColumnLabel="Current school"
         activeEasLabel="EAs with sessions"
       />
-    </div>
+    </SessionsPageContent>
   );
 }

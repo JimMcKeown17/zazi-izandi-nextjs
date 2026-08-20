@@ -1,4 +1,4 @@
-import type { MobileSessionsActivityResponse } from "./types";
+import type { MobileSessionReviewFlagsResponse, MobileSessionsActivityResponse } from "./types";
 
 export const VALID_MOBILE_SESSIONS_ACTIVITY_PAYLOAD = {
   generated_at: "2026-08-10T22:50:00.000Z",
@@ -66,3 +66,24 @@ export const VALID_MOBILE_SESSIONS_ACTIVITY_PAYLOAD = {
     },
   ],
 } as const satisfies MobileSessionsActivityResponse;
+
+export const VALID_MOBILE_SESSION_REVIEW_FLAGS_PAYLOAD = {
+  count: 1,
+  flags: [
+    {
+      session_id: "7c1f3f4a-2c8d-4a11-9c5e-2b6d1a0e9f11",
+      child_id: "0d4b8e22-91a7-4c3f-8e5b-6a1c9d2f7b44",
+      session_date: "2026-08-19",
+      started_at: "2026-08-19T08:00:00.000Z",
+      ended_at: "2026-08-19T08:30:00.000Z",
+      submitting_ea_name: "Amahle Nkosi",
+      school_id: "a0c54f15-e176-42c5-ad0e-300947557005",
+      school_name: "Charles Duna Primary",
+      child_first_name: "Sipho",
+      child_last_name: "Dlamini",
+      reason_code: "same_school_child_not_assigned_to_actor",
+      created_at: "2026-08-19T08:31:00.000Z",
+      last_observed_at: "2026-08-19T08:31:00.000Z",
+    },
+  ],
+} as const satisfies MobileSessionReviewFlagsResponse;
