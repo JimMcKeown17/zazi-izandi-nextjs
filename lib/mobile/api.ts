@@ -133,7 +133,10 @@ export async function getMobileSessionReviewFlags(
       message: SESSION_REVIEW_ALERTS_UNAVAILABLE,
     };
   }
-  return decodeMobileSessionReviewFlagsResponse(response);
+  return decodeMobileSessionReviewFlagsResponse(response, {
+    schoolId: filters.schoolId ?? null,
+    schoolType: filters.schoolType ?? null,
+  });
 }
 
 export async function getMobileTimeEntriesActivity(

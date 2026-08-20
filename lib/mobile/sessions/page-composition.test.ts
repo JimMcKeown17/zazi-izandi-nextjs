@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -69,4 +71,15 @@ test("the sessions heading exists even when both reports fail", () => {
   const html = render(reportFailure, flagsFailure);
   assert.match(html, /Mobile app reporting/);
   assert.match(html, />Sessions</);
+});
+
+test("the page passes the selected school type to the independent review-alert loader", () => {
+  const source = fs.readFileSync(
+    path.join(process.cwd(), "app/mobile-app/sessions/page.tsx"),
+    "utf8"
+  );
+  assert.match(
+    source,
+    /getMobileSessionReviewFlags\(\{\s*schoolId,\s*schoolType\s*\}\)/
+  );
 });

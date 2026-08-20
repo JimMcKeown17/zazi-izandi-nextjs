@@ -66,7 +66,11 @@ export async function decodeMobileSessionsActivityResponse(
 }
 
 export async function decodeMobileSessionReviewFlagsResponse(
-  response: Response
+  response: Response,
+  expected: {
+    schoolId: string | null;
+    schoolType: "ecd" | "primary" | null;
+  }
 ): Promise<MobileSessionReviewFlagsResult> {
   if (!response.ok) {
     return {
@@ -89,6 +93,21 @@ export async function decodeMobileSessionReviewFlagsResponse(
 
   const parsed = mobileSessionReviewFlagsSchema.safeParse(payload);
   if (!parsed.success) {
+    return {
+      ok: false,
+      status: 502,
+      message: SESSION_REVIEW_ALERTS_UNAVAILABLE,
+    };
+  }
+
+  const appliedFilters = parsed.data.applied_filters;
+  if (
+    (appliedFilters?.school_type ?? null) !== expected.schoolType
+    || (
+      appliedFilters !== undefined
+      && appliedFilters.school_id !== expected.schoolId
+    )
+  ) {
     return {
       ok: false,
       status: 502,

@@ -38,6 +38,7 @@ export function buildSessionsActivityRequest(
 export interface MobileSessionReviewFlagsFilters {
   limit?: number;
   schoolId?: string | null;
+  schoolType?: "ecd" | "primary" | null;
 }
 
 export function buildSessionReviewFlagsRequest(
@@ -54,6 +55,7 @@ export function buildSessionReviewFlagsRequest(
 
   const query = new URLSearchParams({ limit: String(limit) });
   if (filters.schoolId) query.set("school_id", filters.schoolId);
+  if (filters.schoolType) query.set("school_type", filters.schoolType);
 
   return {
     path: `/api/mobile/session-review-flags/?${query.toString()}`,

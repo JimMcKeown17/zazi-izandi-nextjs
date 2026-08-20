@@ -103,6 +103,13 @@ export const mobileSessionsActivitySchema = z
 export const mobileSessionReviewFlagsSchema = z
   .object({
     count: count,
+    applied_filters: z
+      .object({
+        school_id: uuid.nullable(),
+        school_type: z.enum(["ecd", "primary"]).nullable(),
+      })
+      .strict()
+      .optional(),
     flags: z
       .array(
         z

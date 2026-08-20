@@ -82,7 +82,10 @@ test("a complete valid frozen session-review payload is accepted", async () => {
     }
   );
 
-  assert.deepEqual(await decodeMobileSessionReviewFlagsResponse(response), {
+  assert.deepEqual(await decodeMobileSessionReviewFlagsResponse(response, {
+    schoolId: null,
+    schoolType: null,
+  }), {
     ok: true,
     data: VALID_MOBILE_SESSION_REVIEW_FLAGS_PAYLOAD,
   });
@@ -93,7 +96,10 @@ test("session review HTTP and schema failures stay unavailable, never a false ze
     JSON.stringify(VALID_MOBILE_SESSION_REVIEW_FLAGS_PAYLOAD),
     { status: 503 }
   );
-  assert.deepEqual(await decodeMobileSessionReviewFlagsResponse(failed), {
+  assert.deepEqual(await decodeMobileSessionReviewFlagsResponse(failed, {
+    schoolId: null,
+    schoolType: null,
+  }), {
     ok: false,
     status: 503,
     message: "Session review alerts are unavailable",
@@ -109,11 +115,67 @@ test("session review HTTP and schema failures stay unavailable, never a false ze
       headers: { "Content-Type": "application/json" },
     }
   );
-  assert.deepEqual(await decodeMobileSessionReviewFlagsResponse(malformed), {
+  assert.deepEqual(await decodeMobileSessionReviewFlagsResponse(malformed, {
+    schoolId: null,
+    schoolType: null,
+  }), {
     ok: false,
     status: 502,
     message: "Session review alerts are unavailable",
   });
+});
+
+test("session review flags fail closed unless their school-type echo matches", async () => {
+  const missingEcho = new Response(
+    JSON.stringify(VALID_MOBILE_SESSION_REVIEW_FLAGS_PAYLOAD),
+    { status: 200, headers: { "Content-Type": "application/json" } }
+  );
+  assert.deepEqual(
+    await decodeMobileSessionReviewFlagsResponse(missingEcho, {
+      schoolId: null,
+      schoolType: "ecd",
+    }),
+    {
+      ok: false,
+      status: 502,
+      message: "Session review alerts are unavailable",
+    }
+  );
+
+  const filtered = {
+    ...VALID_MOBILE_SESSION_REVIEW_FLAGS_PAYLOAD,
+    applied_filters: {
+      school_id: "a0c54f15-e176-42c5-ad0e-300947557005",
+      school_type: "ecd" as const,
+    },
+  };
+  const confirmed = new Response(JSON.stringify(filtered), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+  assert.deepEqual(
+    await decodeMobileSessionReviewFlagsResponse(confirmed, {
+      schoolId: "a0c54f15-e176-42c5-ad0e-300947557005",
+      schoolType: "ecd",
+    }),
+    { ok: true, data: filtered }
+  );
+
+  const wrongSchool = new Response(JSON.stringify(filtered), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+  assert.deepEqual(
+    await decodeMobileSessionReviewFlagsResponse(wrongSchool, {
+      schoolId: null,
+      schoolType: "ecd",
+    }),
+    {
+      ok: false,
+      status: 502,
+      message: "Session review alerts are unavailable",
+    }
+  );
 });
 
 test("a report that does not confirm the requested school type fails closed", async () => {

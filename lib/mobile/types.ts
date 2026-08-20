@@ -100,5 +100,9 @@ export interface MobileSessionReviewFlag {
 
 export interface MobileSessionReviewFlagsResponse {
   count: number;
+  applied_filters?: {
+    school_id: string | null;
+    school_type: "ecd" | "primary" | null;
+  };
   flags: MobileSessionReviewFlag[];
 }

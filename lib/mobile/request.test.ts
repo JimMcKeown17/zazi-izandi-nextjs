@@ -27,14 +27,15 @@ test("sessions requests forward the bearer token, filters, and disable caching",
   );
 });
 
-test("session review-flag requests forward the bearer token, school filter, and disable caching", () => {
+test("session review-flag requests forward the bearer token and both school filters", () => {
   const request = buildSessionReviewFlagsRequest("clerk-session-token", {
     schoolId: "a0c54f15-e176-42c5-ad0e-300947557005",
+    schoolType: "ecd",
   });
 
   assert.equal(
     request.path,
-    "/api/mobile/session-review-flags/?limit=50&school_id=a0c54f15-e176-42c5-ad0e-300947557005"
+    "/api/mobile/session-review-flags/?limit=50&school_id=a0c54f15-e176-42c5-ad0e-300947557005&school_type=ecd"
   );
   assert.equal(request.init.cache, "no-store");
   assert.equal(

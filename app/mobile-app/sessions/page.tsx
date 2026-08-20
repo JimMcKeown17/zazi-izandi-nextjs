@@ -44,7 +44,7 @@ export default async function MobileSessionsPage({
     rawSchoolType === "ecd" || rawSchoolType === "primary" ? rawSchoolType : null;
   const [result, reviewFlags] = await Promise.all([
     getMobileSessionsActivity({ days, schoolId, schoolType }),
-    getMobileSessionReviewFlags({ schoolId }),
+    getMobileSessionReviewFlags({ schoolId, schoolType }),
   ]);
 
   if (!result.ok) {

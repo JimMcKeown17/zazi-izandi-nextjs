@@ -1,6 +1,6 @@
 # Follow-up: scope session-review alerts by the ECD/Primary filter
 
-**Status:** deferred to merge-time (decided 2026-08-20)
+**Status:** resolved at merge-time (2026-08-20)
 **Origin:** adversarial-review round 2, finding M3
 **Owner:** whoever integrates `feat/mobile-school-type-filter` with the
 `session-review-alerts` feature.
@@ -32,21 +32,28 @@ Threading `school_type` through the alerts path would mean editing another activ
 session's unmerged work. Both features are unmerged, so the natural integration
 point is when they land on their respective `main` branches.
 
-## What to do at merge-time
+## Merge-time resolution
 
-Thread `school_type` end-to-end through the alerts path, mirroring the reporting
-RPCs' contract exactly:
+The integration stack now threads `school_type` end-to-end through the alerts
+path, mirroring the reporting RPCs' contract:
 
-1. **Supabase**: add `p_school_type TEXT` (non-defaulted 4-arg overload, same
-   expand/contract pattern) to the session-review-flags RPC; apply the same
-   normalized type filter; echo the applied `school_type`.
+1. **Supabase**: the existing two-argument reader remains available for the
+   deployed compatibility window. A non-defaulted three-argument overload adds
+   `p_school_type TEXT`, applies the normalized type filter, and echoes both
+   applied filters. Keeping the new argument non-defaulted avoids PostgREST
+   overload ambiguity.
 2. **Django**: parse/validate `school_type` (ecd/primary/null) on
    `/api/mobile/session-review-flags/`, forward it to the RPC, and **fail closed**
-   on an echo mismatch (same as `_validate_sessions_activity_payload`).
+   on an echo mismatch. Unfiltered requests deliberately continue to call the
+   two-argument RPC so an older Next.js deployment remains compatible while the
+   stack rolls forward.
 3. **Next.js**: add `schoolType` to `MobileSessionReviewFlagsFilters`, decode the
-   echo in the review-flags schema, and verify it (same `(echo ?? null) !==
-   requested` fail-closed check used in `decodeMobileSessionsActivityResponse`).
-   Pass `schoolType` from the page to `getMobileSessionReviewFlags`.
+   echo in the review-flags schema, verify exact filter agreement, and pass the
+   page's selected `schoolType` to `getMobileSessionReviewFlags`.
+
+The contract is covered by Supabase migration and disposable-PostgreSQL
+verification, Django service/view tests, and Next.js request/schema/response and
+page-composition tests.
 
 Alternative if the product decision is that data-quality alerts are intentionally
 cross-school: make that explicit in the UI (label the panel's global scope) and

@@ -29,6 +29,7 @@ test("sessions responses reject a generated_at value that is not an absolute ISO
 test("session review flags reject unexpected properties and under-counted totals", () => {
   const valid = {
     count: 1,
+    applied_filters: { school_id: null, school_type: null },
     flags: [
       {
         session_id: "7c1f3f4a-2c8d-4a11-9c5e-2b6d1a0e9f11",
