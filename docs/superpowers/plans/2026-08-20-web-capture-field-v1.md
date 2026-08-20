@@ -1,6 +1,9 @@
 # Zazi iZandi Web Field v1 — Implementation Plan
 
-> **Status:** Proposed for implementation after review. This plan was derived from
+> **Status:** Foundation-only implementation is in progress. Capture/data work
+> is paused at the transport decision in Section 0. The Supabase wrapper
+> contract is **FIX-FIRST / not authorized for SQL** after independent
+> protocol-v2 adversarial review on 2026-08-20. This plan was derived from
 > `documentation/web-capture-fallback-design-questions.md` and revalidated against
 > the live mobile-app, Supabase migration, Django, and Next.js seams on
 > 2026-08-20.
@@ -13,13 +16,78 @@
 > **Deliberate boundary:** Field v1 is online-first and install-free. It survives a
 > network failure after the page and roster have loaded, but it is not a
 > cold-start-offline PWA. True offline capture is a separately gated v2.
+>
+> **Decision amendment — 2026-08-20:** The proposed line-manager correction
+> product was rescinded before implementation. Field v1 still has no historical
+> entry. A later, separately gated phase may let the EA create a historical
+> session directly; the server will derive an immutable review flag so the
+> business backend can surface it for legitimacy checks. That later phase is
+> create-only, not staff impersonation and not an edit/delete mechanism.
+>
+> **Protocol-v2 safety decision — 2026-08-20:** Hosted read-only inspection, a
+> cold protocol inventory, and an independent adversarial review rejected the
+> original provenance-column/RPC-extension design. Adding provenance to the
+> existing exact mobile payload/hash documents could invalidate replay of
+> already accepted mutations. The hardened fallback uses separately named web
+> wrappers and private wrapper-attestation sidecars; the recommended v1a makes
+> no write-side SQL change. Existing mobile RPC
+> bodies, public names, payload shapes, hash documents, receipt/head semantics,
+> serializers, acknowledgment inventory, and client mapping are frozen. No SQL
+> may be authored until the replacement contract in Sections 7–8 receives a
+> final review against an executable RED harness.
+>
+> **Threat-boundary decision — 2026-08-20:** Web and mobile use the same
+> Supabase `authenticated` identity. A deliberately modified browser can call
+> the still-granted mobile RPCs directly and bypass web-only admission rules.
+> Field v1 therefore promises a safe **supported web lane**, not unbypassable
+> proof of client origin. Under the wrapper option, a web sidecar would attest
+> that an exact command passed through the wrapper; absence would mean
+> `mobile_or_legacy`, not proven mobile. Recommended v1a makes no source claim.
+
+## 0. Transport decision required before data work
+
+The second independent review found the hardened wrapper design substantially
+safer than changing an existing RPC, but still too much write-side surface for
+the stated v1 priority. It recommends **field v1a**:
+
+- make no write-side Supabase migration;
+- keep all five measured function bodies/hashes, three mobile serializers,
+  session mapping, acknowledgment inventory, grants, receipts/heads, SQLite,
+  and pull/reconcile behavior unchanged;
+- have one fixed typed browser adapter call the exact existing time-entry,
+  session-bundle, and Letter Mastery RPC names/envelopes;
+- add at most a bounded actor-scoped **read-only** bootstrap RPC;
+- resolve an ambiguous session after rollover only from actor-scoped bootstrap
+  readback of the already materialized root UUID; if absent, retain local
+  evidence and require support/historical entry rather than call a writer;
+- defer web provenance, sidecars, wrapper locks, stale-clock automation, and the
+  Django cron; and
+- provision one active capture browser/device per pilot EA, because the existing
+  protocol gives idempotency per command/record identity, not global prevention
+  of two distinct clock UUIDs from two devices.
+
+This is the recommended scope because the wrapper cannot make its policies
+globally authoritative while original mobile RPCs—and potentially raw RLS DML—
+remain available to the same EA token. V1a gives up server-enforced current-day
+and clock-coverage rules for browser calls; those become supported-UI
+preconditions with honest limitations. In exchange, the battle-tested write
+engine has zero migration diff.
+
+The wrapper/sidecar design below remains the documented higher-assurance option
+for supported web calls, not an authorized task list. It also still requires
+the final findings in the review record to be closed. **Do not begin Task 1,
+Task 2, Task 3, Task 5, auth, or any data-bearing UI until Jim chooses v1a or
+the wrapper option and this plan is rewritten to one internally consistent
+path.** The inert Task 4 scaffold is deliberately transport-neutral.
 
 ## 1. Executive decision
 
 Build a separate Next.js application, `zazi-izandi-web`, for EAs only. It uses
-the same Supabase email/password account as the mobile app and writes directly
-to the mobile operational store through the existing authenticated protocol-v2
-RPC boundary. It does not use Clerk, Django as a capture proxy, a service-role
+the same Supabase email/password account as the mobile app and writes to the
+mobile operational store through new authenticated web wrapper RPCs. Each
+wrapper delegates atomically to an unchanged protocol-v2 mobile RPC and then
+binds the completed mobile receipt to private web-command evidence in the same
+transaction. It does not use Clerk, Django as a capture proxy, a service-role
 key, or raw sequential multi-table inserts.
 
 Field v1 provides:
@@ -35,14 +103,15 @@ Field v1 provides:
 - recent web/mobile history and duplicate warnings;
 - explicit submission states, server-derived metrics, and local diagnostic
   evidence;
-- provenance on every web-created clock/session row; and
+- immutable wrapper-attested evidence for supported web commands and
+  web-created clock/session roots; and
 - a web-only stale-clock server sweeper.
 
 Field v1 does **not** allow an EA to enter a historical date or time. It also
-does not implement manager-entered backfill. A future approved-correction flow
-will live in the Clerk staff application and write on behalf of an EA through
-Django with a durable approval audit. That is a separate product and security
-surface, not a date picker hidden in the EA client.
+does not implement staff-entered backfill. A later phase may add the simplest
+EA-owned, create-only historical-session flow with a server-derived review flag
+visible in the business backend. It will not let staff impersonate EAs, and it
+will not add historical clock entries, edits, or deletes by implication.
 
 ## 2. Why this is the v1 boundary
 
@@ -74,17 +143,17 @@ feature.
 | 6 | Authentication | Supabase email/password, same account as the mobile app; Clerk remains unchanged for staff, funders, and partners |
 | 7 | Authorization | The EA's Supabase JWT and the existing server-side actor/RLS checks; `user_id` is never selectable or trusted from UI state |
 | 8 | Write destination | Existing Supabase `time_entries`, `sessions`, `session_attendees`, and `letter_mastery` tables |
-| 9 | Write transport | Authenticated Supabase protocol-v2 RPCs with receipts/generation semantics; no raw sequential session-family DML |
+| 9 | Write transport | New authenticated `apply_web_*_v1` wrappers that call unchanged protocol-v2 mobile RPCs atomically; no raw sequential session-family DML |
 | 10 | Django | Out of the interactive capture path; used only for the web-only stale-clock cron in v1 |
 | 11 | Session scope | Full instructional session capture, including Letter Tracker; assessments remain out |
 | 12 | Timer | Simple start-to-submit elapsed time; no pause/resume polish, background timer promises, or 20-minute coaching UI |
 | 13 | Geolocation | Attempt it; denial, unavailability, or timeout does not block clock-in; coordinates are either a complete pair or both null |
-| 14 | Backfill | No EA backfill in v1 and no manager backfill implementation in this plan |
-| 15 | Retry | Same-day delayed delivery is allowed only for a command materialized during a live, clocked-in flow; day-expired commands require manager review |
+| 14 | Historical entry | No historical entry in v1; a later phase may add EA-owned, create-only historical sessions with a server-derived review flag |
+| 15 | Retry | Same-day delayed delivery is allowed only for a command materialized during a live, clocked-in flow; unresolved day-expired commands remain local evidence for support or later historical re-entry |
 | 16 | Provisioning | Supabase account, class, roster, and groups must be provisioned and read back before the EA receives the link |
 | 17 | Offline | No service worker, offline app shell, cached roster, background sync, or cold-start-offline promise |
 | 18 | Shared logic | Pinned copy plus checksum guard now; separate shared package only after the mobile app stabilizes |
-| 19 | Provenance | `capture_source` is constrained and non-null on `time_entries` and `sessions`; mobile remains the default |
+| 19 | Provenance | Private immutable wrapper-command and accepted-root sidecars; no column or payload change to the mobile domain/protocol surface |
 | 20 | Field proof | Huawei and low-storage Samsung plus real EAs completing a school day; staff-only testing is not field proof |
 
 ## 4. Definitions that must not blur
@@ -104,26 +173,36 @@ same command.
 
 Delayed delivery is not backfill. In v1 it is eligible only while the command's
 Johannesburg capture date is still the server's current Johannesburg date.
-After rollover, the EA client may make one **receipt-resolution replay** of the
-exact immutable command. The RPC must resolve an already accepted matching
-receipt before applying the historical-date admission rule. Therefore the
-replay can discover that yesterday's command committed despite a lost response,
-but it cannot create yesterday's record. If no matching success receipt exists,
-the RPC returns `manager_review_required` and the EA client never attempts to
-create or alter the historical record.
+After rollover, the EA client may call a **read-only receipt resolver** with the
+exact immutable command arguments. The resolver recomputes the wrapper-command
+digest and reads only an existing web sidecar plus its linked completed mobile
+receipt. It never calls an `apply_mobile_*` function and never creates a domain
+row, receipt, or head. It can discover that yesterday's command committed
+despite a lost response, but a miss returns `web_capture_receipt_not_found` and
+the client moves to `historical_entry_required`. The local evidence remains
+available for support and, once separately implemented, deliberate historical
+re-entry by that EA.
 
-### 4.3 Backfill / approved correction
+### 4.3 Historical session entry
 
-A person intentionally creates or changes a record for a historical day. EAs
-cannot do this in field v1. The future manager flow must preserve two identities:
+A person intentionally creates a session for a historical day. EAs cannot do
+this in field v1. A later phase may permit the authenticated EA to create the
+historical session directly. The minimum safe version must:
 
-- the EA whose operational rows own the work; and
-- the authenticated staff actor who entered and approved the correction.
+- remain actor-owned: `auth.uid()` is the session owner;
+- be create-only, with no historical time-entry, edit, or delete capability;
+- accept an explicit historical session date and require an explicit reason;
+- derive the historical/review status on the server rather than trust a client
+  flag;
+- preserve immutable created-at, capture-date, source, and reason evidence; and
+- surface flagged records in the business backend without making prior
+  approval a prerequisite for storage.
 
-That future flow requires Clerk capability enforcement, a Django-side durable
-request/approval record, a dedicated service-role RPC, a reason, before/after
-payloads for edits, and immutable audit linkage. `capture_source` alone is not
-an approval audit.
+That later phase requires a separate migration, RPC contract, UI, reporting
+query, and legitimacy-review policy. It is deliberately not staff
+impersonation. Historical classification must be derived at a boundary that
+observes every relevant writer; merely using a dedicated web wrapper would be
+bypassable under the shared authenticated authority model.
 
 ### 4.4 PWA / offline
 
@@ -150,10 +229,11 @@ and receive authoritative success without duplication or cross-account leakage.
 7. **Full-save honesty:** the UI may say "Session saved" after the session bundle
    succeeds, but may say "Everything saved" only after all Letter Tracker
    mutations are authoritatively accepted.
-8. **No historical EA write:** web-source clock-in/session RPC admission rejects
-   a historical Johannesburg day even if a modified client sends one. Exact
-   receipt resolution occurs first, so an already committed command can still
-   be acknowledged after midnight without admitting a new historical write.
+8. **Supported-lane live-day admission:** the supported web clock-in/session
+   wrappers reject historical Johannesburg creation. A modified browser can
+   bypass those rules by calling an unchanged mobile RPC directly; preventing
+   that requires a separately approved authority redesign. The post-rollover
+   resolver is read-only and can acknowledge only an already attested command.
 9. **Clock coverage:** a web session is accepted only when an EA-owned time entry
    covers its start/end interval. An open entry covers through server `now()`;
    a closed entry covers only through its `sign_out_time`.
@@ -168,10 +248,15 @@ and receive authoritative success without duplication or cross-account leakage.
     are keyed by `auth.uid()`. A different login cannot read or send them.
 14. **No personalized HTTP caching:** v1 has no service worker. A future service
     worker may cache the static shell but never authenticated learner responses.
-15. **Clock sweep scope:** v1 server auto-close touches only
-    `capture_source = 'web'`. Changing mobile-created payroll records is a
-    separate decision.
-16. **No false rollout claims:** local tests, disposable PostgreSQL, hosted
+15. **Clock sweep scope:** v1 server auto-close touches only time entries with
+    immutable accepted web-creation evidence. Sidecar absence is never treated
+    as permission to sweep. Changing mobile/mobile-or-legacy payroll records is
+    a separate decision.
+16. **Mobile protocol freeze:** existing `apply_mobile_*` bodies and names,
+    private session core, exact payload keys, canonical hash documents,
+    receipt/head behavior, serializers, mappings, acknowledgment vocabulary,
+    SQLite schema, and pull/reconcile mappings have zero functional diff.
+17. **No false rollout claims:** local tests, disposable PostgreSQL, hosted
     migration, Vercel deployment, device loading, real-EA use, and no-recurrence
     evidence are separate gates.
 
@@ -184,7 +269,9 @@ actively changing.
 
 Repository: `/Users/jimmckeown/Development/zazi-izandi-app`
 
-Verified on 2026-08-20 at local branch `fix/bugs-009-017`, commit `39b864d`:
+Revalidated read-only on 2026-08-20 against `origin/main` at
+`1021d99f0264b2f53aac95bb3a16dc06d4251c0f` and the hosted database at 67
+migrations through `20260820220000_reporting_school_attribution_option_b`:
 
 - `src/utils/activeSessionState.js` builds the session row and attendee array,
   then applies Letter Tracker mutations separately.
@@ -194,20 +281,28 @@ Verified on 2026-08-20 at local branch `fix/bugs-009-017`, commit `39b864d`:
   attendee wire columns and stable-attendee-ID requirement.
 - `src/services/syncProtocolV2TimeEntryRpc.js` targets
   `apply_mobile_time_entry_mutation`.
-- `src/services/syncProtocolV2SessionBundleRpc.js` targets
-  `apply_mobile_session_bundle_mutation`; an in-flight successor RPC exists on
-  the reviewed branch and must be reconciled before this plan replaces a body.
+- `src/services/syncProtocolV2SessionBundleRpc.js` intentionally still targets
+  `apply_mobile_session_bundle_mutation`; the current session implementation is
+  generated by `20260819140000_session_capture_flag_v1.sql` and must not be
+  replaced or remapped by this work.
 - `src/services/syncProtocolV2LetterMasteryRpc.js` targets
   `apply_mobile_letter_mastery_mutation` with exact-key payload validation.
 - `supabase/migrations/20260729200000_wave2b_sync_timestamp_contract.sql`
-  contains the canonical protocol-v2 receipt/head model and the three relevant
-  RPC families.
+  contains the installed Letter Mastery body and the shared protocol-v2
+  receipt/head model.
 - `supabase/migrations/20260818120000_time_entry_insert_upsert.sql` is the latest
-  reviewed time-entry body in this checkout.
+  reviewed and hosted-matching time-entry body.
 - RLS permits actor-owned capture rows, but protocol-v2 RPCs are the current
   canonical production transport and give the web client the idempotency it
   needs.
-- `capture_source` does not exist in the migration chain today.
+- The five relevant local function bodies matched hosted `pg_proc` SHA-256
+  digests exactly during the read-only preflight; those digests are recorded in
+  the app-repository contract snapshot.
+- `capture_source` does not exist in the migration chain today and field v1 no
+  longer adds it.
+- Hosted aggregate evidence showed 35 open entries older than ten hours and no
+  current provenance discriminator. That is proof that an unscoped sweeper is
+  unsafe, not proof that those rows are invalid.
 
 ### Existing Next.js house standard
 
@@ -235,8 +330,11 @@ Repository: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025`
 
 ### New repository
 
-`/Users/jimmckeown/Development/zazi-izandi-web` does not exist yet. Do not
-silently place the app inside this planning repository.
+The authorized foundation scaffold currently exists only in the staging
+repository `/private/tmp/zazi-izandi-web` on `feat/field-capture-v1`. It has no
+auth, capture, Supabase call, PWA, hosted project, or production credential.
+Moving it to the planned sibling checkout and creating its GitHub repository
+remain explicit repository/hosting actions.
 
 ## 7. Architecture
 
@@ -246,14 +344,19 @@ EA browser
       ├─ public anon key only
       ├─ Supabase email/password session
       ├─ actor-scoped local draft + exact command journal
-      └─ direct authenticated RPC calls
+      └─ direct authenticated web RPC calls
            │
            ▼
 Supabase operational store
-  ├─ web_capture_bootstrap_v1()          read model
-  ├─ apply_mobile_time_entry_mutation()  canonical v2 receipt/head path
-  ├─ apply_mobile_session_bundle_mutation() canonical v2 bundle path
-  ├─ apply_mobile_letter_mastery_mutation() canonical v2 mastery path
+  ├─ web_capture_bootstrap_v1()                bounded read model
+  ├─ resolve_web_capture_receipt_v1()          read-only rollover resolver
+  ├─ apply_web_time_entry_mutation_v1()        supported web admission
+  │    └─ apply_mobile_time_entry_mutation()   UNCHANGED v2 mutation
+  ├─ apply_web_session_bundle_mutation_v1()    supported web admission
+  │    └─ apply_mobile_session_bundle_mutation() UNCHANGED v2 mutation
+  ├─ apply_web_letter_mastery_mutation_v1()    supported web admission
+  │    └─ apply_mobile_letter_mastery_mutation() UNCHANGED v2 mutation
+  ├─ private web command/origin/sweep evidence
   └─ time_entries / sessions / session_attendees / letter_mastery
            │
            ├─ mobile app pull → real SQLite → EA history
@@ -267,6 +370,20 @@ The web client reuses protocol semantics, not mobile infrastructure. It does not
 copy SQLite, the general mobile outbox, circuit breakers, pull/reconcile logic,
 or Expo modules.
 
+Each write wrapper and the unchanged inner mobile RPC execute in one PostgreSQL
+transaction. If wrapper evidence cannot be bound after inner success, the outer
+function raises an internal invariant error and PostgreSQL rolls back the
+domain mutation, receipt/head updates, and sidecar work together. Ordinary web
+policy refusals are typed JSON results, not raised SQLSTATEs.
+
+This architecture separates **identity** from **client path**. The Supabase JWT
+proves which EA is acting. It does not prove whether the request originated in
+Expo or a browser. Because the same actor can execute the original mobile RPCs,
+the database cannot make web-only rules unbypassable without a different
+authority model. Field v1 deliberately avoids revoking or narrowing those
+mobile grants because installed-client compatibility is the higher-order
+constraint.
+
 All Supabase-specific calls stay behind `lib/supabase`, `lib/data`, and
 `lib/capture` adapters. React components consume typed domain results and never
 call `.from()`/`.rpc()` directly. This keeps the January-2027 data-residency
@@ -275,84 +392,183 @@ the UI; it does not pretend that a future store migration would be free.
 
 ## 8. Supabase contract changes
 
-### 8.1 Provenance columns
+### 8.1 Frozen mobile compatibility surface
 
-Add to the two operational event tables identified in the design decision:
+Field v1 adds no `capture_source` column and no key to a mobile payload. The
+following surface is an explicit no-touch boundary:
 
-```sql
-capture_source text NOT NULL DEFAULT 'mobile'
-  CHECK (capture_source IN ('mobile', 'web'))
-```
+- public `apply_mobile_time_entry_mutation` body, name, signature, grants, and
+  result vocabulary;
+- public `apply_mobile_session_bundle_mutation` and private
+  `apply_mobile_session_bundle_mutation_core` bodies, names, signatures,
+  grants, and result vocabulary;
+- public `apply_mobile_letter_mastery_mutation` body, name, signature, grants,
+  and result vocabulary;
+- the exact 11-key time-entry, 14-key session-root, and 10-key Letter Mastery
+  payload contracts;
+- canonical envelope/hash documents, hash versions, receipt/head ordering, and
+  replay semantics;
+- mobile JavaScript serializers, RPC mapping constants, and acknowledgment
+  inventory;
+- local SQLite schema, repository projections, pull/reconcile mappings, and
+  installed-client behavior.
 
-Tables:
+The migration must preflight and postflight the reviewed signatures,
+`SECURITY DEFINER` attributes, empty search paths, owners, execute grants, and
+exact hosted-matching `prosrc` digests. A mismatch aborts before any DDL. The
+three public mobile functions must have identical `prosrc` hashes before and
+after field-v1 migration application.
 
-- `public.time_entries`;
-- `public.sessions`.
+### 8.2 Private immutable web evidence
 
-`session_attendees` derives source through `session_id`; do not duplicate it.
-Do not overload `letter_mastery.source`, whose values describe pedagogical
-origin such as `taught` or `assessment`, not capture client. Also do not add a
-misleading scalar source to `letter_mastery`: the natural-key row is mutable, so
-a web archive/restore of an existing mobile-created row would make "source"
-ambiguous. Field v1 keeps the existing mastery RPC unchanged; a future need for
-mastery-level provenance requires an audit history, not last-writer metadata.
+Add three zero-direct-grant private ledgers. Names are versioned so later
+authority or provenance models do not silently change their meaning.
 
-`capture_source` is creator provenance and is immutable after insert. Closing a
-mobile-created time entry from web does not relabel it as web, and closing a
-web-created entry from mobile does not relabel it as mobile.
+`private.web_capture_command_receipts_v1` records one exact wrapper command
+that reached a durable completed mobile receipt:
 
-Enforce immutability at the table boundary with a narrowly scoped `BEFORE
-UPDATE` trigger on both tables; RPC carefulness alone is insufficient because
-authenticated legacy DML and service-role tools also exist. Test ordinary
-authenticated, protocol RPC, and service-role update attempts. A future
-correction records a new audit actor/action; it never rewrites creator source.
+- mobile mutation ID as the unique command identity and foreign key to
+  `private.mobile_sync_receipts`;
+- actor, wrapper name and contract version;
+- descriptor, stream, canonical identity, generation, and operation;
+- a server-computed SHA-256 wrapper-command digest and digest version;
+- the linked mobile canonical hash version/hash;
+- the exact canonical mobile result JSON plus indexed `kind` and `code`;
+- wrapper-observed server timestamp and Johannesburg date.
 
-The migration verification/runbook includes bounded read-only counts by source
-and date for the pilot. Adding source filters/columns to the existing PM
-reporting APIs and UI is useful follow-up work, not a field-v1 capture blocker.
+The digest document includes the wrapper contract version/name, authenticated
+actor, every unchanged mobile RPC argument in exact type/order, the exact raw
+`p_payload` text as a text value, and any wrapper-only parent-session mutation
+ID. The server computes it; the client never supplies or selects a digest.
 
-RPC compatibility rules:
+`private.web_capture_entity_origins_v1` records creator-path evidence only when
+the wrapper proves that it created a previously absent root:
 
-- old insert payload without the key stores the table default `mobile`;
-- web insert payload must carry `web`;
-- update payload may omit the key, in which case the stored value is preserved;
-- if update payload carries the key, it must equal the stored value; and
-- no update can change creator provenance.
+- entity kind limited to `time_entry` or `session`;
+- entity UUID and actor;
+- the creating web-command mutation ID;
+- immutable server creation time and fixed source `web`.
 
-Existing rows and old clients resolve to `mobile`. The authenticated RPCs must
-admit the optional new key for new clients while preserving the exact old wire
-shape for installed mobile versions. RPC responses must remain backward
-compatible; do not add fields to a result if a strict current client rejects
-them.
+Here, “creator-path evidence” means the wrapper observed the UUID absent and
+received the accepted insert result while holding every lock available to the
+supported web lane. It is not forensic proof against a deliberately concurrent
+direct call to an original mobile RPC, which does not take the web actor lock.
+That residual race is part of the shared-authority limitation and remains an
+explicit executable threat-model case.
 
-### 8.2 Web-source admission
+There is no Letter Mastery entity-origin row. Letter Mastery uses a mutable
+natural-key record, so web mastery activity is represented by immutable command
+events, not misleading last-writer/creator metadata. Clock-out also never
+changes or creates root-origin evidence.
 
-When `capture_source = 'web'`:
+`private.web_capture_sweep_audit_v1` records each automatic closure with the
+time-entry/actor identifiers, previous and new closure values, the creating web
+origin, sweep timestamp, and fixed policy version. It contains no learner data.
 
-- a time-entry insert requires `sign_in_time` on the current Johannesburg day
-  and within the agreed live-clock skew window around server time;
-- coordinates are a complete pair or null;
-- a session requires `session_date`, `started_at`, and `ended_at` on the current
-  Johannesburg day;
-- `started_at <= ended_at <= server now`;
-- the group/attendees pass the existing actor and roster authorization;
-- one EA-owned time entry covers the full session interval; and
-- no payload field may request a historical mode.
+All three tables are immutable after insert and have no direct privilege for
+`PUBLIC`, `anon`, `authenticated`, `authenticator`, or `service_role`. Only the
+reviewed `SECURITY DEFINER` functions may read or write them. Foreign keys are
+not omitted merely to avoid migration work: every new table must be added to
+the current `private.seed_wipe_primary` atomic truncate and zero-count lists,
+the seed backup/restore manifest and digest, and relevant auditor/backup
+contracts. Disposable PostgreSQL must prove wipe and restore. `ON DELETE
+CASCADE` is not a substitute for deliberate immutable-evidence semantics.
 
-For exact replay, receipt lookup and matching-success return happen before the
-web live-day check. Only a command with no accepted matching receipt reaches
-date admission and DML. This ordering is what lets a post-midnight client
-resolve a lost same-day response without opening a historical-create path.
+### 8.3 Web wrapper execution contract
 
-Mobile-source behavior, including the existing mobile backfill capability,
-must remain unchanged.
+Add separately named, non-overloaded public wrappers:
 
-The exact clock-skew tolerance is a build-time constant, not an environment
-variable. Start with **15 minutes in the past and 5 minutes in the future** for
-clock-in admission, then test on the field device matrix. This tolerance handles
-ordinary low-end-phone clock drift without turning the RPC into a backfill path.
+- `apply_web_time_entry_mutation_v1`;
+- `apply_web_session_bundle_mutation_v1`;
+- `apply_web_letter_mastery_mutation_v1`.
 
-### 8.3 Bootstrap read model
+Each takes the unchanged mobile envelope arguments in the same types and order.
+Wrapper-only linkage uses an explicit additional argument, never a key inside
+`p_payload`. Functions schema-qualify every object, set `search_path = ''` and
+timezone UTC, revoke from `PUBLIC`/`anon`, and grant only to `authenticated`.
+
+The fixed execution order is:
+
+1. Read `auth.uid()` and require a non-null exact match to the envelope actor
+   before payload parsing or private lookup.
+2. Compute the server-side wrapper-command digest over all exact arguments.
+3. Resolve a prior web command before applying live-day rules: the same actor,
+   mutation ID, and digest returns the stored canonical result; a same-actor
+   digest mismatch returns `web_capture_integrity_fault`; a different actor
+   receives the same generic refusal/not-found shape used for absence.
+4. If a mobile receipt already exists without a matching web sidecar, reject it
+   as source/collision ambiguity. Never attach web evidence retroactively.
+5. Parse only the raw payload fields needed by web policy using the mobile
+   functions' safety order: byte cap, valid JSON text, duplicate-key rejection,
+   top-level/type checks, then guarded casts in exception blocks. Do not rely on
+   Boolean short-circuit evaluation for safe casts.
+6. Acquire locks in the documented global order. Web clock commands first lock
+   the actor's stable `public.staff_identity_links` row and then re-read open
+   entries. Session admission locks the covering time entry through the nested
+   session call. Clock-out and sweep take the same row lock before closure.
+7. Apply the supported web policy and return typed web-only refusal JSON for an
+   ordinary rejection; do not raise an ordinary policy SQLSTATE.
+8. Call the unchanged, schema-qualified mobile RPC with the unchanged mobile
+   arguments. Nested `SECURITY DEFINER` execution must preserve the request JWT;
+   no wrapper may alter `request.jwt.*` GUCs.
+9. Classify the exact inner `{kind, code}` and bind command evidence with
+   `INSERT ... SELECT` from the completed mobile receipt. Receipt existence or
+   HTTP 200 alone is not acceptance.
+10. Insert entity-origin evidence only for a proven previously absent root and
+    the exact accepted result: TIME_ENTRIES `{kind:"success",code:"accepted"}`
+    or SESSIONS `{kind:"success",code:"accepted"}`. LETTER_MASTERY acceptance
+    is `{kind:"success",code:"mastery_recorded"}` but creates command evidence
+    only.
+11. Return the inner canonical result unchanged. A sidecar binding/invariant
+    failure raises and rolls back the whole outer transaction.
+
+The browser maintains a small web-wrapper outcome inventory for
+`historical_entry_required`, `web_capture_receipt_not_found`, and
+`web_capture_integrity_fault`. Those codes are not added to the mobile
+acknowledgment inventory. Task 1 must freeze exact `{kind, code}` fixtures for
+every additional web-only policy refusal (access, existing root, open-clock
+conflict, clock coverage, invalid policy fields, and missing parent session)
+before SQL; no free-form database error text reaches the UI.
+
+Supported admission rules are:
+
+- clock-in is insert-only with a previously absent time-entry UUID, current
+  Johannesburg day, a fixed skew window of 15 minutes past/5 minutes future,
+  complete-or-null GPS, and no other open time entry after actor locking;
+- clock-out is an update of one actor-owned existing entry, preserves creator
+  origin, and cannot race a locked session admission;
+- session capture is create-only with a previously absent session UUID,
+  current Johannesburg `session_date`, non-null ordered start/end not after
+  server `now()`, authorized group/attendees, and one locked actor-owned time
+  entry covering the full interval;
+- Letter Mastery uses the unchanged mobile payload and requires a wrapper-only
+  parent session mutation ID bound to an accepted same-actor web session. This
+  permits exact completion after midnight without creating a new session.
+
+These rules protect the supported web lane and close ordinary multi-tab races;
+they do not constrain direct calls to the original mobile RPCs. Mobile
+historical behavior and every existing mobile result remain unchanged.
+
+### 8.4 Read-only rollover resolver
+
+Add `public.resolve_web_capture_receipt_v1` with enough original exact arguments
+to recompute the wrapper-command digest. It:
+
+- performs no call to any `apply_mobile_*` function;
+- performs no receipt, head, domain, or sidecar DML;
+- verifies the authenticated actor, mutation ID, digest, linked completed
+  receipt identity/hash, and exact stored result;
+- returns the stored canonical mobile result only on a full match;
+- returns `web_capture_receipt_not_found` on absence or a different actor,
+  without exposing an identity oracle; and
+- returns `web_capture_integrity_fault` for a same-actor digest/binding
+  mismatch.
+
+Only the exact accepted inner result advances the browser from rollover
+resolution to saved. A missing sidecar is not permission to write yesterday's
+record.
+
+### 8.5 Bootstrap read model
 
 Add `public.web_capture_bootstrap_v1()` for the current authenticated actor. It
 returns one bounded, versioned JSON object:
@@ -408,24 +624,63 @@ Properties:
 This RPC is a read optimization, not a new system of record. Its PostgreSQL
 harness must compare its sets to the underlying RLS-visible rows.
 
-Implement it as `SECURITY INVOKER` unless live-code proof shows that an explicit
-definer is required. In either case, schema-qualify every object, set a fixed
-empty search path, accept no actor argument, revoke from `PUBLIC`/`anon`, grant
-only to `authenticated`, and test the actual non-owner authenticated role.
+Because creator-path evidence is private, implement bootstrap as tightly bounded
+`SECURITY DEFINER`: schema-qualify every object, set a fixed empty search path,
+accept no actor argument, derive `auth.uid()` once, filter every query to that
+actor, revoke from `PUBLIC`/`anon`, grant only to `authenticated`, and test the
+actual non-owner role. Recent-history source is `web` only with matching
+accepted origin evidence; otherwise it is `mobile_or_legacy`. The latter is an
+operational label, not proof that the mobile app created the row.
 
-### 8.4 Web-only stale-clock RPC
+### 8.6 Web-only stale-clock RPC
 
 Add `public.close_stale_web_time_entries_v1()`:
 
-- executable only by `service_role`, not `authenticated`, `anon`, or `PUBLIC`;
-- fixed rule: open `capture_source = 'web'` entries older than ten hours;
-- sets `sign_out_time = sign_in_time + interval '10 hours'`, null sign-out
-  coordinates, and `auto_clocked_out = true`;
-- returns only a count and bounded IDs suitable for operations, not child data;
-- idempotent on repeated runs; and
-- cannot update mobile-source entries.
+- executable only by `service_role`, not `authenticated`, `authenticator`,
+  `anon`, or `PUBLIC`;
+- accepts no caller-selected table, function, actor, threshold, or batch size;
+- processes at most 100 open entries per call using `FOR UPDATE SKIP LOCKED`;
+- joins to immutable accepted `web` time-entry origin evidence and never treats
+  sidecar absence as web;
+- locks candidate `staff_identity_links` actor rows in UUID order, then their
+  time entries in UUID order with `FOR UPDATE SKIP LOCKED`, matching the
+  interactive actor-before-entry order;
+- selects only entries older than ten hours;
+- sets closure to the later of `sign_in_time + interval '10 hours'` and the
+  latest ended actor session inside that clock interval, considering **all**
+  relevant actor sessions rather than only web-attested sessions, and never
+  after server `now()`; an anomalous future session makes the entry
+  support-required instead of forcing a misleading close;
+- nulls both sign-out coordinates and sets `auto_clocked_out = true`;
+- inserts one immutable sweep-audit row per closure;
+- is idempotent and concurrency-safe; and
+- cannot update `mobile_or_legacy` entries.
 
-### 8.5 Migration collision rule
+Freeze this exact response envelope before Django Task 12 begins:
+
+```json
+{
+  "schema_version": 1,
+  "closed_count": 2,
+  "closed_ids": [
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000002"
+  ]
+}
+```
+
+The object has exactly those three keys. `schema_version` is integer `1`;
+`closed_count` is an integer from 0 through 100; `closed_ids` contains unique
+lowercase UUID strings in deterministic order; and `closed_count` equals the
+array length. Zero work returns count `0` and `[]`, never null/204/empty. Django
+may log the count but does not log IDs by default.
+
+The closure is an out-of-band server update with no mobile receipt/head advance.
+Before release, real pull/reconcile and subsequent mobile clock-out tests must
+prove it cannot silently reopen or overwrite the server closure. If that proof
+fails, the cron stays disabled even if its isolated SQL tests pass.
+
+### 8.7 Migration, grant, and collision rules
 
 The app checkout currently contains active work around
 `20260819140000_session_capture_flag_v1.sql`, including a private session core
@@ -435,10 +690,19 @@ and successor public RPC. Before authoring the web migration:
 2. Read the hosted/live migration state.
 3. Read the exact current `pg_proc` source/digest with the repository's approved
    read-only path.
-4. Extend the current reviewed body/core; never copy the older July body over a
-   newer August fix.
-5. Add an apply-time digest/preflight so drift aborts the transaction.
-6. Rerun the combined disposable-PostgreSQL harness.
+4. Add only new sidecars, wrapper/bootstrap/resolver/sweeper functions, current
+   seed-wipe/backup integration, and their exact indexes/grants. Never replace
+   or extend an existing mobile function body or payload.
+5. Verify the wrapper owner can execute the nested definer functions while
+   `auth.uid()` still reflects the request JWT; pin trusted owners and never
+   mutate request GUCs.
+6. Re-read hosted table/function grants. Migration absence is not proof that
+   Supabase hosted defaults did not grant raw authenticated DML.
+7. Add apply-time digest/preflight and postflight checks so drift or any mobile
+   function-body change aborts the transaction.
+8. Regenerate the seed archive/backup manifest digest and prove current
+   seed-wipe/restore behavior with every new FK-backed table.
+9. Rerun the full combined disposable-PostgreSQL harness under PostgreSQL 17.
 
 ## 9. Browser state model
 
@@ -455,10 +719,20 @@ zz_web:v1:<actor>:tab-lease
 zz_web:v1:<actor>:diagnostics
 ```
 
-Do not store names, email addresses, participant identifiers, or full bootstrap
-responses. Persist IDs, statuses, instructional selections, exact wire payloads,
-and submission metadata only. Rehydrate display names from a fresh authenticated
-bootstrap.
+Do not store display names, email addresses, participant identifiers, or full
+bootstrap responses. Persist only IDs required by the exact mutation, statuses,
+instructional selections, exact wire payloads, and submission metadata.
+Rehydrate display names from a fresh authenticated bootstrap.
+
+Free-text session notes are the unavoidable exception: once materialized they
+are part of the exact wire payload required for honest retry. The UI tells EAs
+not to enter surnames, contact details, health information, or other sensitive
+details. Successful drafts/commands, including notes, are purged immediately
+after full authoritative completion. An unresolved command retains its exact
+payload until authoritative resolution or an explicit evidence-preserving
+support disposition; it is never copied into diagnostics or the redacted
+support summary. Sign-out names this deletion consequence and requires explicit
+confirmation. Browser storage is not described as an encrypted vault.
 
 ### 9.2 Command state machine
 
@@ -476,8 +750,9 @@ Any network/ambiguous result:
 At Johannesburg rollover:
   materialized | submitting | retryable_same_day
     → receipt_resolution_pending
-       ├─ matching accepted receipt → session_confirmed
-       └─ no accepted receipt       → manager_review_required
+       ├─ matching attested accepted receipt → session_confirmed
+       ├─ attested non-success result         → classified exact result
+       └─ no matching web attestation         → historical_entry_required
 
 After an already confirmed session:
   mastery_pending → retryable until accepted or explicitly dispositioned
@@ -487,11 +762,10 @@ Integrity response:
 ```
 
 Nuance: after `session_confirmed`, Letter Tracker mutations may continue after
-day rollover because they complete an already accepted live session; the UI
-must not create a new session. A day-expired command whose session bundle was
-never confirmed may resend the identical envelope only to resolve the existing
-receipt. Receipt-first server ordering guarantees that a missing receipt reaches
-the historical-write rejection instead of DML.
+day rollover because the mastery wrapper verifies their accepted parent web
+session; the UI must not create a new session. A day-expired unconfirmed command
+is sent only to `resolve_web_capture_receipt_v1`, never to a mutation wrapper or
+mobile RPC. A missing sidecar performs zero DML.
 
 ### 9.3 Materialization
 
@@ -506,6 +780,7 @@ Before the first network call, materialize and persist:
 - per-record generations;
 - audit sequences;
 - exact payload JSON;
+- exact wrapper name/version and wrapper-only parent linkage;
 - client timestamps and Johannesburg capture date;
 - payload hash;
 - ordered operation list; and
@@ -538,7 +813,7 @@ Next.js to request a new route chunk midway through a session.
 - `/reset-password` — Supabase recovery callback and new-password form.
 - `/` — authenticated field shell containing Today, Clock, Group selection,
   Session capture, and status/history states.
-- `/support` — static troubleshooting and manager-contact instructions; no PII.
+- `/support` — static troubleshooting and support-contact instructions; no PII.
 
 No historical route or query parameter is accepted.
 
@@ -566,7 +841,8 @@ Clock-in:
 1. Confirm authenticated bootstrap and no unresolved clock anomaly.
 2. Request browser geolocation with a ten-second deadline.
 3. Use both coordinates or null/null.
-4. Materialize a protocol-v2 time-entry insert with `capture_source = 'web'`.
+4. Materialize the unchanged protocol-v2 time-entry insert envelope plus the
+   separately named web-wrapper contract/version.
 5. Persist it.
 6. Submit and require authoritative success before enabling Start session.
 
@@ -604,26 +880,26 @@ There is no session date input, manual clock input, or editable timestamp.
 ### 10.5 Duplicate warning
 
 Warn, never block, if a recent session exists for the same group on the current
-Johannesburg date. Show time, capture source, and recorded teaching fields so the
-EA can recognize it. Two legitimate sessions for one group in a day remain
-possible.
+Johannesburg date. Show time, the operational source label (`web` or
+`mobile_or_legacy`), and recorded teaching fields so the EA can recognize it.
+Two legitimate sessions for one group in a day remain possible.
 
 ### 10.6 Day-expired unresolved work
 
 If the server date advances before the session bundle is confirmed:
 
 - stop automatic retries;
-- make one exact receipt-resolution replay that cannot pass historical DML
-  admission without a pre-existing matching success receipt;
+- make one exact read-only receipt-resolution call that performs no mutation;
 - if that resolves to success, continue only the remaining mastery operations;
 - retain the local evidence under the same actor;
-- show `Manager review required` only when no accepted session receipt exists;
+- show `Historical entry required` only when no accepted session receipt
+  exists;
 - show a support/reference code and a read-only summary;
 - do not expose a date editor or "submit anyway" button; and
 - do not claim the data reached Supabase.
 
-Until the separate manager-correction product exists, the operational fallback
-is paper plus manager escalation. No one should patch production rows ad hoc
+Until the separate EA historical-entry phase exists, the operational fallback
+is paper plus support escalation. No one should patch production rows ad hoc
 from the browser or be instructed to clear the evidence.
 
 ## 11. Operational provisioning release gate
@@ -642,7 +918,7 @@ An EA receives the link only after all of these are true:
 - group level and language are populated;
 - the EA-token call to `web_capture_bootstrap_v1()` returns `ready` and the
   expected counts; and
-- the manager/support owner and data-bundle status are recorded.
+- the support owner and data-bundle status are recorded.
 
 The readiness check must run as the EA, not only through service role. A
 service-role query proves storage, not RLS visibility.
@@ -656,7 +932,7 @@ Keep a rollout manifest outside the web client with, at minimum:
 - credential-tested timestamp;
 - device/browser class;
 - data bundle issued; and
-- support/line-manager owner.
+- support owner.
 
 The production provisioning script/workflow is a separate workstream. If it is
 built, it must be manifest-driven, dry-runnable, idempotent, one-EA scoped,
@@ -682,34 +958,58 @@ helpers into an unreviewed bulk production writer.
 
 Using the app repo's existing combined PostgreSQL harness pattern, prove:
 
-- migration preflight and postflight;
-- old mobile payloads still succeed and default to `mobile`;
-- web payloads stamp `web`;
-- web historical clock/session payloads are rejected;
-- mobile historical session behavior remains unchanged;
-- web session requires covering time entry;
-- auth actor mismatch fails closed;
-- unauthorized group/child fails without an oracle leak;
-- session plus attendees is atomic;
-- exact replay succeeds;
-- mutation/payload reuse mismatch rejects;
-- optional GPS pair rules;
-- bootstrap set/count parity and boundedness;
-- stale-clock function touches web only; and
-- all grants/revokes are exact.
+- migration preflight/postflight and byte-identical `prosrc` hashes for all
+  three original mobile functions;
+- an accepted pre-migration TIME_ENTRIES, SESSIONS, and LETTER_MASTERY receipt
+  replays byte-for-byte after the migration through the original RPC names;
+- old mobile payloads still succeed and create no web sidecar;
+- a supported web success atomically creates domain/receipt/head, command
+  evidence, and creator origin where applicable;
+- injected failure after inner success rolls back the domain, receipt/head, and
+  every sidecar;
+- historical web clock/session creation is rejected while direct mobile
+  historical behavior remains unchanged;
+- the executable threat-model test demonstrates that a direct mobile-RPC call
+  can bypass web admission and is labelled `mobile_or_legacy`, so the plan does
+  not overclaim source enforcement;
+- a pre-existing mobile receipt or root cannot be relabelled web;
+- completed deterministic/stale receipts create no entity origin;
+- exact wrapper replay returns stored canonical result, while digest/mutation
+  reuse mismatch rejects;
+- rollover resolution after a lost response is read-only; a miss performs zero
+  receipt/head/domain/sidecar DML;
+- two concurrent web clock-ins create one accepted open entry;
+- session admission locks and requires its covering time entry;
+- concurrent session/clock-out preserves coverage;
+- actor mismatch, unauthorized group/child, and cross-actor resolver probes
+  fail without an identity oracle;
+- optional GPS pair rules and guarded raw-JSON cast ordering;
+- bootstrap set/count parity, byte/count bounds, stable order, and truthful
+  `web`/`mobile_or_legacy` labels;
+- stale sweep is bounded, idempotent, concurrency-safe, touches only accepted
+  web-origin entries, never closes before the latest covered session, and emits
+  the exact three-key response envelope;
+- seed wipe/restore includes all new ledgers and its manifest digest is current;
+- direct sidecar access fails for every untrusted role and public-function
+  grants are exact; and
+- the full combined PostgreSQL 17 release harness remains green within the
+  existing statement/lock budgets.
 
 ### 12.3 Real SQLite mobile compatibility
 
 In the mobile app integration harness:
 
-1. Insert web-source time/session/attendee/mastery rows through the authenticated
-   PostgreSQL contract.
+1. Insert time/session/attendee/mastery rows through the supported authenticated
+   web wrappers, with sidecars remaining private and outside the row shape.
 2. Pull them through the real mobile repository path into real SQLite.
 3. Close/reopen the SQLite database.
 4. Assert session history/detail, attendance, teaching fields, reading levels,
    and Letter Tracker render from the pulled rows.
-5. Assert no web row becomes a pending local mutation merely because the mobile
-   client does not store `capture_source` locally.
+5. Assert no pulled web-created row becomes pending local work and no serializer,
+   SQLite schema, repository projection, or mapping changed.
+6. Apply the stale-sweeper closure, pull/reconcile, close/reopen, and attempt the
+   next ordinary mobile clock action; prove the server closure is not silently
+   reopened or overwritten.
 
 This proves row compatibility. It does not prove a physical phone received the
 release.
@@ -730,7 +1030,7 @@ roster. Cover:
 - reload after materialization but before response;
 - duplicate warning;
 - two-tab lease;
-- day rollover to manager review;
+- day rollover with an attested receipt and with a read-only not-found result;
 - no date/time inputs anywhere;
 - actor switch cannot see prior local state; and
 - 320px-wide viewport with no horizontal overflow.
@@ -783,7 +1083,8 @@ field proof. Subsequent no-recurrence evidence remains separate.
 
 ### Planning repository
 
-- Existing branch: `plan/web-capture-field-v1`.
+- Implementation-control branch: `feat/web-capture-field-v1-foundation` from
+  merged plan commit `b6ea25a`.
 - Artifact: this file only, plus any later approved architecture documentation.
 - Do not implement the new app here.
 
@@ -797,7 +1098,8 @@ field proof. Subsequent no-recurrence evidence remains separate.
 
 ### New web repository
 
-- Repository: `zazi-izandi-web`.
+- Staging repository until the sibling/GitHub repository is created:
+  `/private/tmp/zazi-izandi-web`.
 - Main feature branch: `feat/field-capture-v1`.
 - Owns browser UI, auth, command journal, protocol adapters, E2E, and rollout
   docs.
@@ -808,6 +1110,9 @@ field proof. Subsequent no-recurrence evidence remains separate.
   `feat/web-capture-clock-sweeper-v1`.
 - Owns only the bounded service-role RPC client call and management command.
 - No capture POST endpoint and no general session writer in this plan.
+- Work must not begin until the SQL harness freezes and proves the exact
+  no-argument sweeper response contract. Render cron configuration waits until
+  the RPC is hosted and postflight-verified.
 
 ## 14. Task-level implementation plan
 
@@ -826,42 +1131,67 @@ and current function revisions must be resolved from the live branches.
 
 **Steps:**
 
-- [ ] Fetch all three existing repositories and record local/remote `main` SHAs.
-- [ ] Confirm which August session-capture migration and RPC mapping are merged.
-- [ ] Read the hosted migration list and exact relevant `pg_proc` bodies through
+- [x] Fetch/revalidate the existing repositories without touching dirty active
+      worktrees; record local/remote `main` SHAs.
+- [x] Confirm which August session-capture migration and RPC mapping are merged.
+- [x] Read the hosted migration list and exact relevant `pg_proc` bodies through
       the approved read-only path; record digests without credentials.
-- [ ] Confirm production protocol-v2 authorization and current fleet transport.
-- [ ] Confirm `capture_source` is absent and count current rows/open-clock
-      anomalies read-only.
-- [ ] Confirm no sibling `zazi-izandi-web` repository exists or reconcile if it
-      appeared after this plan.
-- [ ] Record exact shared-module upstream SHA and test files.
-- [ ] Commit the snapshot on `feat/web-capture-contract-v1`.
+- [x] Confirm source configuration authorizes protocol v2. Installed-phone
+      uptake remains a separate field fact and is not claimed by this snapshot.
+- [x] Confirm `capture_source` is absent and collect bounded aggregate
+      row/open-clock evidence read-only.
+- [x] Prove all five relevant local function bodies match hosted SHA-256 digests.
+- [x] Run the focused pre-change mobile protocol baseline: 7 suites/51 tests
+      green, including the combined PostgreSQL 17 release harness.
+- [x] Confirm no sibling repository existed and create only an inert staging
+      repository after authorization.
+- [x] Record exact shared-module upstream SHA and test files.
+- [x] Obtain independent protocol-v2 adversarial review and incorporate its
+      FIX-FIRST findings into this plan and the snapshot.
+- [ ] Commit the reviewed snapshot on `feat/web-capture-contract-v1` after the
+      final revised-contract consistency pass.
 
-**Stop condition:** If production/client transport differs from this plan, revise
-the plan before writing SQL. Do not make the plan true by overwriting live code.
+**Evidence note:** Hosted aggregate inspection found 35 open entries older than
+ten hours but no source discriminator. Those rows are not labelled invalid and
+must not be touched. No hosted write/apply/deploy/release occurred.
 
-### Task 1 — Write the Supabase contract RED harness
+**Stop condition:** If production/client transport differs from this plan, if a
+mobile function digest drifts, or if installed-client compatibility needs a
+mobile change, revise the plan before SQL. Do not make the plan true by
+overwriting live code.
+
+### Task 1 — Write the Supabase wrapper-contract RED harness
 
 **App-repo files:**
 
 - Create: `scripts/web-capture-v1-postgres-harness.cjs`.
 - Create: `supabase/verification/web-capture-v1-post-apply-verification.sql`.
-- Modify: `package.json` with `verify:web-capture:postgres`.
+- Modify: `package.json` only to add `verify:web-capture:postgres`.
 
 **RED cases:**
 
-- [ ] `capture_source` columns and constraints are missing.
-- [ ] Old mobile payload fixtures are accepted unchanged after the future
-      migration.
-- [ ] Web payloads stamp provenance.
-- [ ] Historical web clock/session payloads reject while mobile backfill fixture
-      behavior remains unchanged.
-- [ ] Covering-time-entry validation.
-- [ ] Session-family transaction rollback on bad attendee.
-- [ ] Receipt replay and mutation reuse mismatch.
-- [ ] Bootstrap shape, actor scoping, ordering, and readiness codes.
-- [ ] Stale-clock RPC grant/scope/idempotency.
+- [ ] New web wrapper/bootstrap/resolver/sweeper functions and private ledgers
+      are missing.
+- [ ] Existing mobile function source hashes must remain byte-identical.
+- [ ] Pre-migration accepted receipts replay unchanged after the future
+      migration, not merely fresh old payloads.
+- [ ] Old mobile calls create no web sidecars.
+- [ ] Web command/origin evidence is atomic with accepted domain/receipt/head
+      state, including injected rollback after inner success.
+- [ ] A pre-existing mobile row/receipt cannot be relabelled web.
+- [ ] Completed deterministic/stale receipts create no entity origin.
+- [ ] Supported historical web creation rejects, while an explicit direct
+      mobile-RPC bypass test documents the shared-authority limit.
+- [ ] Rollover resolver success is read-only and a miss performs zero DML.
+- [ ] Actor/open-clock/session-coverage locking and concurrency behavior.
+- [ ] Exact-key `{kind, code}` fixtures and durability/retry disposition for
+      every web-only outcome, separate from the unchanged mobile inventory.
+- [ ] Bootstrap shape, bounds, actor scoping, ordering, readiness codes, and
+      `web` versus `mobile_or_legacy` labels.
+- [ ] Stale-clock scope, coverage floor, audit, response envelope,
+      concurrency, and idempotency.
+- [ ] Seed wipe/restore, backup manifest, owner/search-path, nested auth, and
+      exact grant/revoke contracts.
 
 Run:
 
@@ -869,72 +1199,88 @@ Run:
 npm run verify:web-capture:postgres
 ```
 
-Expected: **FAIL** for the missing migration/RPC surface, not because the harness
-cannot start PostgreSQL.
+Expected: **FAIL with positive missing-surface assertions**, after the
+disposable PostgreSQL engine and full existing migration chain start
+successfully. Missing PostgreSQL, a missing migration file, or setup failure is
+not an acceptable RED.
 
-Commit the executable RED harness before implementation.
+Commit the executable RED harness before implementation, then independently
+review its threat coverage and non-vacuous failure evidence.
 
-### Task 2 — Implement provenance, RPC admission, bootstrap, and sweep SQL
+### Task 2 — Implement additive wrappers, private evidence, bootstrap, and sweep
 
 **App-repo files:**
 
 - Create: `supabase/migrations/<timestamp>_web_capture_v1.sql`.
-- Modify only the exact generator/source files required by the current August
-  RPC lineage; do not hand-maintain two divergent giant bodies.
 - Update: `supabase/verification/web-capture-v1-post-apply-verification.sql`.
+- Update only current seed backup/archive manifest artifacts strictly required
+  by the new FK-backed ledgers.
+- Do **not** edit an existing migration, mobile serializer, RPC mapping,
+  acknowledgment inventory, SQLite/repository file, or mobile function
+  generator/source.
 
 **Steps:**
 
-- [ ] Add constrained, non-null provenance columns with mobile default.
-- [ ] Add and verify table-level creator-provenance immutability triggers.
-- [ ] Extend time-entry/session payload admission compatibly; keep standalone
-      Letter Tracker payload and server semantics unchanged.
-- [ ] Add web-only live-day, clock-skew, and clock-coverage rules.
-- [ ] Preserve receipt-first replay ordering, then reject an unaccepted
-      historical web command before DML.
-- [ ] Add `web_capture_bootstrap_v1()`.
-- [ ] Add `close_stale_web_time_entries_v1()` with service-role-only execute.
-- [ ] Preserve old response envelopes and grants.
-- [ ] Add drift/apply-time digests and rollback-safe pre/postflight assertions.
-- [ ] Run the focused PostgreSQL harness to GREEN.
-- [ ] Run the combined disposable-PostgreSQL release harness.
-- [ ] Run migration lint/static verification and `git diff --check`.
-- [ ] Adversarially review auth, exact-key admission, replay, RLS bypass, search
-      path, lock ordering, and old-client compatibility.
-- [ ] Commit.
+- [ ] Preflight exact hosted-matching signatures, owners, security config,
+      grants, and `prosrc` digests for the three inner mobile RPCs and session
+      core.
+- [ ] Add immutable command-receipt, entity-origin, and sweep-audit ledgers with
+      zero direct client/service-role grants.
+- [ ] Integrate every new FK-backed table into the latest atomic seed wipe,
+      zero-count, backup/restore, auditor, and manifest-digest contracts.
+- [ ] Add three separately named web write wrappers with server-computed digest,
+      collision refusal, guarded parsing, stable lock order, unchanged nested
+      mobile calls, exact outcome classification, and atomic evidence.
+- [ ] Add the read-only receipt resolver; prove it never delegates to a writer.
+- [ ] Add bounded definer bootstrap with actor-derived filtering and truthful
+      source labels.
+- [ ] Add bounded stale sweep with coverage-preserving close time, audit, fixed
+      three-key response, and service-role-only execute.
+- [ ] Preserve original mobile result envelopes and return them unchanged from
+      nested paths; keep wrapper-only codes in a separate web inventory.
+- [ ] Postflight identical mobile function hashes and exact new grants.
+- [ ] Run the focused harness to GREEN, seed wipe/restore regression, and the
+      complete combined PostgreSQL 17 release harness.
+- [ ] Run migration static checks and `git diff --check`.
+- [ ] Adversarially review actor/auth semantics, exact-key/cast ordering,
+      receipt/replay, origin mislabelling, lock ordering, raw hosted grants,
+      service-role exposure, seed/backup effects, and statement-budget latency.
+- [ ] Commit only after all Critical/Important findings are fixed.
 
 No hosted apply occurs in this task.
 
-### Task 3 — Add client serializer and mobile compatibility RED/GREEN
+### Task 3 — Freeze and prove mobile non-regression
 
 **App-repo files:**
 
-- Modify: `src/services/syncProtocolV2TimeEntryRpc.js` only if the canonical
-  shared projection needs optional provenance support.
-- Modify: `src/services/syncProtocolV2SessionBundleRpc.js` only if required by
-  the reconciled current RPC.
-- Read/reference unchanged: `src/services/syncProtocolV2LetterMasteryRpc.js`;
-  web must use its existing exact standalone mastery shape.
-- Create: `src/services/webCaptureV1Contract.js` for pure, browser-copyable
-  time-entry, session-bundle, and mastery command projection; it must not import
-  React Native, Expo, or SQLite.
-- Create: `__tests__/webCaptureV1Contract.test.js`.
+- Create: `__tests__/webCaptureV1MobileFreeze.test.js`.
 - Create: `__tests__/webCaptureServerRows.integration.test.js`.
+- Extend the web PostgreSQL harness with pre/post-migration receipt fixtures.
+- Modify no production file under `src/services`, no SQLite schema/repository,
+  and no mobile RPC mapping or acknowledgment inventory.
 
 **RED/GREEN:**
 
-- [ ] Start with fixtures proving exact old/new payload shapes and lowercase
-      canonical identities.
-- [ ] Implement the smallest pure contract module needed by web.
-- [ ] Insert web-shaped rows through disposable PostgreSQL.
-- [ ] Pull through real SQLite, force close/reopen, and assert domain reads.
-- [ ] Assert web provenance is ignored safely by installed mobile local schemas.
-- [ ] Assert no pulled row becomes pending local work.
-- [ ] Run focused Jest, `npm test`, `npm run test:integration`, and the web
-      PostgreSQL harness.
-- [ ] Commit.
+- [ ] Snapshot exact serializer/mapping/acknowledgment digests and fail on any
+      field-v1 diff.
+- [ ] Replay already accepted pre-migration TIME_ENTRIES, SESSIONS, and
+      LETTER_MASTERY receipts byte-for-byte through original RPC names.
+- [ ] Create rows through web wrappers, then pull through the ordinary mobile
+      repository into real SQLite.
+- [ ] Force close/reopen and assert history/detail, attendance, teaching fields,
+      reading levels, and Letter Tracker behavior.
+- [ ] Assert sidecars do not alter server row shapes and no pulled row becomes
+      pending local work.
+- [ ] Sweep a disposable web-origin clock, pull/reconcile it, then exercise the
+      next ordinary mobile clock mutation; prove no silent reopen/overwrite.
+- [ ] Run focused Jest, full unit/integration suites, the focused web PostgreSQL
+      harness, and the full combined PostgreSQL 17 release harness.
+- [ ] Record zero production mobile-code diff and commit tests/evidence only.
 
 ### Task 4 — Scaffold the separate web repository
+
+**Status:** Inert foundation staged in `/private/tmp/zazi-izandi-web`; no auth,
+Supabase call, capture feature, PWA, hosted project, credential, commit, or push.
 
 **New-repo files:**
 
@@ -954,30 +1300,59 @@ No hosted apply occurs in this task.
   type packages;
 - no PWA/service-worker dependency.
 
+Security-maintenance pins at the initial scaffold checkpoint are Next.js
+`16.3.1`, `eslint-config-next` `16.3.1`, UUID `11.1.1`, and `tsx` `4.23.12`;
+`npm audit` reports zero known vulnerabilities. Supabase JS remains `2.100.1`
+for the Node 20 compatibility boundary; upgrading to a release that requires
+Node 22 is a deliberate runtime decision, not an opportunistic scaffold bump.
+
 **Scripts:**
 
 ```json
 {
   "dev": "next dev",
-  "build": "next build",
+  "build": "next build --webpack",
   "start": "next start",
   "lint": "eslint",
   "typecheck": "tsc --noEmit --incremental false",
-  "test": "tsx --test lib/*/*.test.ts shared/*/*.test.ts",
+  "test": "node --import tsx --test lib/*/*.test.ts",
   "test:e2e": "playwright test",
   "verify": "npm run test && npm run typecheck && npm run lint && npm run build"
 }
 ```
 
-**RED/GREEN:**
+Task 5 expands the test glob only after the reviewed `shared/*` files exist;
+unmatched globs must not make the foundation suite fail for the wrong reason.
 
-- [ ] First CI run fails for a missing branded shell test/fixture.
-- [ ] Implement scaffold and security headers.
-- [ ] Add a strict content security policy compatible with Supabase only; no
-      arbitrary third-party scripts.
-- [ ] Add responsive 320px shell smoke E2E.
-- [ ] Run `npm run verify` and `npm run test:e2e`.
-- [ ] Commit.
+**Foundation checks:**
+
+- [x] Initialize `main` plus `feat/field-capture-v1` in isolated staging.
+- [x] Implement an inert server-rendered shell, support route, field visual
+      tokens, safe-area/320px constraints, security headers, and a request-nonce
+      CSP with `strict-dynamic`, no production `unsafe-inline`/`unsafe-eval`, and
+      a Supabase-origin-only `connect-src` policy. The nonce makes pages dynamic
+      by design before authenticated data exists; production responses also set
+      one-year HSTS without claiming preload/subdomain policy.
+- [x] Create a pure runtime-contract sentinel that freezes online-first,
+      no-PWA, and historical-entry-required boundaries without product DML.
+- [x] Generate and inspect `package-lock.json`; CI now uses
+      `npm ci --ignore-scripts` on Node 20.19.4.
+- [x] Run the pure test, typecheck, lint, production build, and dependency
+      audit. The build uses Next's webpack path because Turbopack's CSS worker
+      attempts a local port bind denied by this sandbox. Local Node 20.11 is
+      below the declared/CI floor and remains an explicit environment caveat,
+      not a reason to lower the engine contract.
+- [x] Add and pass a responsive 320px Playwright shell smoke covering CSP,
+      absence of capture inputs, no horizontal overflow, 48px support target,
+      preservation guidance, and the historical-entry-required state. CI
+      installs Chromium explicitly and runs this lane against `next start` after
+      the production build. GitHub Actions are pinned to immutable v4 commit
+      SHAs and push CI is not branch-filtered.
+- [x] Independently review the full staged diff, fix all Critical/Important
+      findings, and commit locally as `9be35c8` without agent trailers.
+- [ ] Move the temporary repository to the planned sibling path, create/read
+      back its GitHub remote, and run real CI when repository authentication is
+      available. A local commit is not a published repository.
 
 ### Task 5 — Pin and guard the shared mobile core
 
@@ -989,10 +1364,10 @@ No hosted apply occurs in this task.
 - Create: required `shared/zz-core/src/constants/egraConstants.js` and literacy
   constants actually imported by the selected flow. Preserve the upstream
   `src/utils` ↔ `src/constants` relative layout so imports work unchanged.
-- Create: `shared/zz-protocol/src/services/webCaptureV1Contract.js`, copied from
-  the app contract task and included in the same pinned allowlist/checksum
-  guard. Any platform-neutral dependency it imports is also explicit in the
-  allowlist and keeps its upstream relative path.
+- Create: `shared/zz-protocol/src/services/webCaptureV1Contract.ts`, authored in
+  the web repository against the frozen wrapper signatures and exact unchanged
+  mobile payload fixtures. It is not copied back into or imported by the mobile
+  app.
 - Create Node-test parity ports:
   `shared/zz-core/core-parity.test.ts` and
   `shared/zz-protocol/webCaptureV1Contract.test.ts`.
@@ -1008,6 +1383,8 @@ No hosted apply occurs in this task.
   while the web repo runs equivalent `node:test`/`assert` parity cases rather
   than trying to execute Jest files under the Node test runner;
 - check script fails when the pinned upstream files differ;
+- the protocol guard separately fails if any frozen mobile serializer, RPC
+  mapping, or acknowledgment fixture digest differs from the reviewed snapshot;
 - browser adapters are outside `shared/zz-core`;
 - injected UUID/time dependencies use Web APIs where supported; and
 - Johannesburg date tests run under at least UTC and America/New_York process
@@ -1058,7 +1435,7 @@ typecheck, and build; commit.
   mismatch;
 - loading never renders capture controls;
 - no roster/group renders support guidance rather than an empty usable shell;
-- recent history preserves web/mobile source; and
+- recent history preserves truthful `web`/`mobile_or_legacy` labels; and
 - participant identifiers or surnames in a fixture are rejected/stripped.
 
 Use one RPC request, validate with Zod, and render no capture surface until
@@ -1085,17 +1462,19 @@ ready. Run suites and commit.
 - success receipt resolves ambiguous state;
 - mismatch response becomes integrity fault;
 - session success plus mastery failure is partial, not complete;
-- day rollover permits one exact receipt-resolution replay;
-- a matching pre-existing receipt resolves after rollover;
-- a missing receipt reaches historical-write rejection without DML;
+- day rollover permits one exact read-only resolver call, never a mutation
+  replay;
+- a matching attested receipt resolves after rollover;
+- a missing sidecar returns not-found and reaches
+  `historical_entry_required` without DML;
 - confirmed-session mastery completion can continue;
 - malformed/tampered local commands fail closed;
 - PII display fields never persist; and
 - second tab cannot dispatch.
 
-Use actual RPC response vocabulary fixtures from the app repo. Do not infer
-success from HTTP 200; protocol JSON `{kind, code}` is authoritative. Run suites
-and commit.
+Use actual mobile RPC response vocabulary fixtures plus the separate fixed web
+wrapper outcome inventory. Do not infer success from HTTP 200; protocol JSON
+`{kind, code}` is authoritative. Run suites and commit.
 
 ### Task 9 — Implement live clock-in/out
 
@@ -1116,7 +1495,9 @@ and commit.
 - clock-out is idempotent;
 - unresolved session prevents clock-out;
 - lost response exact replay; and
-- historical/tampered sign-in rejected by real PostgreSQL.
+- historical/tampered sign-in rejected by the real supported web wrapper; and
+- a separate explicit test records that direct mobile-RPC invocation is outside
+  that supported-lane guarantee.
 
 Run unit, real-contract E2E, Playwright, and full web verification; commit.
 
@@ -1159,7 +1540,8 @@ Run unit, real-contract E2E, Playwright, and full web verification; commit.
 - full Letter Tracker add/restore/archive semantics;
 - bundle accepted/mastery pending;
 - exact retry after reload;
-- day rollover receipt-resolution success and manager-review branches;
+- day rollover receipt-resolution success and historical-entry-required
+  branches;
 - duplicate warning without blocking; and
 - mobile pull/render integration for resulting rows.
 
@@ -1171,20 +1553,20 @@ mobile real-SQLite compatibility; commit.
 **New-repo files:**
 
 - Create: `lib/diagnostics/event-ring.ts` and tests.
-- Create: `components/field/manager-review-required.tsx`.
+- Create: `components/field/historical-entry-required.tsx`.
 - Create: `documentation/field-support-runbook.md`.
 - Create: `documentation/rollout-checklist.md`.
 - Create: `documentation/privacy-and-local-storage.md`.
 - Add WhatsApp-ready login/support copy.
 
-Server-derived v1 observability comes from constrained `capture_source`, mobile
-protocol receipts, web stale-clock counts, and ordinary Vercel request/deploy
-health. The browser also keeps a bounded, actor-scoped, PII-free local diagnostic
-ring containing event classes such as bootstrap failure code, draft recovered,
-command materialized, retry count, receipt success, integrity fault,
-manager-review-required, and full completion duration. It stores no child
-names/IDs, notes, teaching selections, auth tokens, or raw RPC payloads. The
-support UI can render a redacted copy for the EA/manager to share deliberately.
+Server-derived v1 observability comes from private immutable web-command/origin
+evidence, mobile protocol receipts, web sweep audit/counts, and ordinary Vercel
+request/deploy health. The browser also keeps a bounded, actor-scoped, PII-free
+local diagnostic ring containing event classes such as bootstrap failure code,
+draft recovered, command materialized, retry count, receipt success, integrity
+fault, historical-entry-required, and full completion duration. It stores no
+child names/IDs, notes, teaching selections, auth tokens, or raw RPC payloads.
+The support UI can render a redacted copy for the EA to share deliberately.
 
 Field v1 does not silently add Sentry, a Supabase client-events table, or a
 Next.js telemetry proxy. A centralized client-event sink is a later explicit
@@ -1209,17 +1591,34 @@ Run tests and commit.
 **RED cases:**
 
 - missing env fails before a request;
-- exact RPC and no arbitrary table/update method;
-- service-role secret never appears in output;
-- zero rows is success;
-- web rows close; mobile rows cannot;
-- malformed response fails closed;
-- timeout/non-2xx exits nonzero; and
-- rerun is idempotent.
+- exact no-argument POST to the fixed RPC with `{}`, finite timeout, and
+  redirects disabled;
+- no arbitrary RPC, table, insert, patch, or update method exists;
+- service-role secret, headers, settings, raw response text, and request/exception
+  representations never appear in output or errors;
+- exact three-key zero/nonzero envelopes decode successfully;
+- 204/empty/null/list/scalar, malformed JSON, missing/extra keys, unsupported
+  version, bool-as-int, negative/over-100 count, malformed/duplicate/non-lowercase
+  UUIDs, oversized ID arrays, and count/length mismatch fail closed;
+- timeout, network, and non-2xx failures raise sanitized `CommandError` and exit
+  nonzero; and
+- command output is bounded aggregate count only and `handle()` returns `None`.
 
-Run focused Django tests, relevant mobile API/service tests, `manage.py check`,
-and commit. Configure the hosted Render cron only after Supabase migration
-deployment and explicit release authorization.
+The Django mock suite proves dispatch, strict decoding, redaction, and process
+behavior only. Web/mobile selection, concurrency, coverage, and idempotency are
+SQL-harness responsibilities; do not claim them from mocked HTTP.
+
+Run focused Django tests, relevant socket-free service regressions,
+`manage.py check`, and `git diff --check`; do not invoke the real write-capable
+management command as a local smoke test. Commit only after the frozen SQL
+contract is GREEN. The proposed Render schedule is hourly at `15 * * * *` UTC
+(`:15` each Johannesburg hour), giving at most roughly one hour beyond the
+ten-hour eligibility threshold. Render's current
+[Cron Jobs documentation](https://render.com/docs/cronjobs) states that all
+schedule times use UTC and that one cron service has a single-run guarantee;
+record that readback again at configuration time. Alert on nonzero exit and
+record count, duration, and build only. Configure the cron only after hosted
+Supabase postflight and explicit release authorization.
 
 ### Task 13 — Adversarial review and full local release gate
 
@@ -1230,6 +1629,16 @@ Across all implementation branches:
 - [ ] Review timestamp ordering, Johannesburg day rules, clock coverage, and
       midnight behavior.
 - [ ] Review receipt/head ordering and same/different-payload replay.
+- [ ] Review the explicit mobile no-touch diff/digests and pre-migration accepted
+      receipt replay, not only fresh payload compatibility.
+- [ ] Review web-command versus entity-origin semantics and ensure no
+      mobile/mobile-or-legacy record can be relabelled.
+- [ ] Review the read-only resolver for zero writer delegation/DML.
+- [ ] Review lock ordering, concurrent clock/session/sweep behavior, sweep
+      coverage floor, and the out-of-band mobile reconciliation consequence.
+- [ ] Review seed wipe/restore, backup manifest, and every new ledger FK/grant.
+- [ ] Run and preserve the deliberate direct-mobile-RPC bypass proof so the
+      shared-authority limitation stays visible.
 - [ ] Review session/mastery partial completion and support evidence.
 - [ ] Review RLS/SECURITY DEFINER search path and anti-oracle behavior.
 - [ ] Review local-storage PII, actor purge, and multi-tab behavior.
@@ -1268,7 +1677,7 @@ Rollback:
 
 - Disable/link-withhold Zazi iZandi Web first.
 - Stop the Render cron independently.
-- Do not drop provenance columns or accepted rows as an incident reflex.
+- Do not drop private evidence ledgers or accepted rows as an incident reflex.
 - Preserve receipts and local evidence.
 - Roll forward RPC defects when accepted production data exists; destructive
   schema reversal requires its own reviewed plan.
@@ -1281,12 +1690,21 @@ Field v1 is ready for the controlled cohort only when all are true:
 - [ ] EA-token bootstrap readback returns expected roster/group counts.
 - [ ] No service-role secret exists in web source, bundle, environment, logs, or
       Vercel client configuration.
-- [ ] Old mobile payload compatibility is proven in disposable PostgreSQL.
-- [ ] Web-source historical payloads are server-rejected.
-- [ ] Exact response-loss replay creates one time entry/session only.
+- [ ] Mobile production files have zero field-v1 functional diff, original
+      function hashes are unchanged, and pre-migration accepted receipts replay
+      byte-for-byte in disposable PostgreSQL.
+- [ ] Supported web wrappers reject historical creation; documentation and an
+      executable test preserve the direct-mobile-RPC bypass limitation.
+- [ ] Exact same-day retry and read-only post-rollover resolution create at most
+      one time entry/session.
+- [ ] Web-command and creator-origin evidence is atomic, cannot be attached to a
+      pre-existing mobile receipt/root, and is labelled honestly.
 - [ ] Session-attendee family is atomic.
 - [ ] Letter Tracker partial/retry states are honest and recoverable.
-- [ ] Real SQLite pull/close/reopen renders web rows.
+- [ ] Real SQLite pull/close/reopen renders web rows and the sweep/reconcile
+      scenario cannot silently reopen or overwrite closure.
+- [ ] Seed wipe/restore, backup manifest, grants, wrapper locks, and bounded
+      sweep concurrency are proven in PostgreSQL 17.
 - [ ] Huawei and low-storage Samsung complete the full flow.
 - [ ] At least three real EAs complete a controlled school day.
 - [ ] No Critical/Important adversarial finding remains.
@@ -1296,7 +1714,7 @@ Field v1 is ready for the controlled cohort only when all are true:
 
 ## 16. Deferred work and decision gates
 
-### 16.1 Approved manager correction/backfill
+### 16.1 EA historical session entry with review flag
 
 Write a separate plan after field v1 is stable, or sooner if real expired
 commands make it operationally urgent.
@@ -1304,27 +1722,36 @@ commands make it operationally urgent.
 Expected architecture:
 
 ```text
-Clerk staff site /mobile-app/corrections
-  → Next djangoFetch (Clerk bearer + internal secret)
-  → Django capability mobile.capture.approved_backfill
-  → durable correction request + approver actor + reason + payload hash
-  → dedicated service-role Supabase RPC
-  → EA-owned operational rows + immutable audit linkage
+Authenticated EA in Zazi iZandi Web
+  → explicit historical-session mode and reason
+  → dedicated authenticated historical-session RPC
+  → all-writer table boundary independently derives historical/review state
+  → EA-owned session family plus immutable capture evidence
+  → business backend surfaces flagged rows for legitimacy review
 ```
 
 Required future decisions:
 
-- which roles count as line manager;
-- whether requester and approver may be the same person;
-- permitted historical window;
-- create-only versus edits/deletes;
-- required evidence/reason;
-- payroll/RCT review flags;
-- capture-source vocabulary (`staff_portal`) and approval linkage; and
-- how expired local command evidence is safely transferred to the manager.
+- permitted historical window and whether future dates always reject;
+- required reason vocabulary and minimum free-text evidence;
+- whether a historical session must correspond to a time entry;
+- the immutable server-derived flag/audit representation at a trigger or other
+  boundary every session writer crosses;
+- how direct/mobile historical writes receive the same classification, with a
+  `reason_missing` state when they did not use the dedicated workflow;
+- how the business backend presents, filters, and dispositions suspicious rows;
+- whether legitimacy disposition may annotate only or can exclude the session
+  from named reports;
+- how an expired local command is converted into deliberate historical entry
+  without silently reusing a rejected live envelope; and
+- whether duplicate warnings become stricter for historical submissions.
 
-Do not implement this as Supabase impersonation or by giving managers EA
-credentials.
+The first version is create-only. It does not grant historical time-entry,
+session-edit, delete, staff impersonation, or EA-credential-sharing capability.
+The dedicated workflow collects the reason, but the historical classification
+must not depend on taking that path: the database derives it for every relevant
+writer. A modified browser cannot submit `reviewed=true`; a direct mobile-RPC
+historical write is still flagged, although its reason may be missing.
 
 ### 16.2 Offline/PWA v2
 
@@ -1337,7 +1764,7 @@ Measure:
 - cold-start failures;
 - drafts recovered;
 - retry rates and time-to-confirm;
-- commands expiring into manager review;
+- commands expiring into historical-entry-required support state;
 - paper fallback specifically caused by absent coverage;
 - storage pressure/eviction; and
 - support burden by device/browser.
@@ -1361,18 +1788,26 @@ receipts, and correction procedures.
 
 ## 17. Important estimates and honesty
 
-An internal online-first pilot within roughly two weeks is plausible if:
+The independent review makes a field-safe two-week pilot unrealistic. A static
+scaffold or happy-path demo in roughly two weeks is plausible; the reviewed v1
+also needs new atomic wrappers, provenance ledgers, seed/backup integration,
+concurrency and rollover proof, real SQLite non-regression, full session UI,
+device testing, and a controlled school day. A focused **four-to-eight-week**
+window is a more honest planning range if roster/groups are provisioned outside
+the client and testers are continuously available. It is an estimate, not a
+ship promise.
 
-- roster/groups are provisioned outside the web client;
-- the current mobile protocol RPCs can be compatibly extended;
-- full session UI reuses pinned domain logic;
-- PWA/offline, assessments, and manager correction remain out; and
-- testers/devices are available continuously.
+The first month or two of providing data directly to EAs is therefore useful
+product strategy, not a workaround to be embarrassed about. It buys time to
+protect the battle-tested mobile engine and learn whether online-first browser
+capture solves enough of the field problem before funding PWA complexity.
 
-That is a target, not a guarantee. A code-complete happy path is not a field-safe
-release. Any failure in idempotency, actor isolation, row compatibility,
-historical-write enforcement, or low-end-device usability blocks rollout even
-if the calendar target is missed.
+A code-complete happy path is not a field-safe release. Any failure in
+idempotency, actor isolation, row compatibility, wrapper-evidence integrity,
+sweep reconciliation, or low-end-device usability blocks rollout even if the
+calendar target is missed. Deliberate direct invocation of the mobile RPC is an
+accepted v1 threat-boundary limitation, not a claim that the supported UI is
+historical-entry capable.
 
 ## 18. Final closure statement
 
