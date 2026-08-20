@@ -1,5 +1,34 @@
 # Zazi iZandi Website Build Log
 
+## 2026-08-20 — ECD/Primary Sessions filtering and scoped review alerts live
+
+- Integrated the reviewed Sessions school-type UI with the concurrent
+  session-review alert feature and closed its merge-time scope gap. Final source
+  `f4b6156` is on GitHub `main`; Vercel production deployment
+  `FXQVaVSFxRyqCMivVJAiKKrZ4ueD` is `Ready` for the exact SHA with
+  `www.zazi-izandi.co.za` assigned.
+- The Sessions page now sends `school_type=ecd|primary` through its server-only
+  Django request path for activity, operational summaries, and review alerts.
+  The decoder accepts the additive applied-filter envelope, requires exact
+  agreement whenever a type is requested, and fails closed if a filtered
+  response omits or changes that scope. Unfiltered legacy responses remain
+  compatible during the rolling deployment window.
+- Verification passed 223 mobile tests, standalone TypeScript, changed-file
+  ESLint, Git whitespace checks, and a production Next.js build. The first local
+  build attempt was network-blocked while fetching the configured Google Fonts;
+  the allowed network rerun succeeded. Repository-wide lint remains red only on
+  the unrelated pre-existing unescaped apostrophe in
+  `app/pm/data-quality/page.tsx`; none of this release's files has a lint error.
+- The authenticated production Sessions page rendered one report-success state
+  and no error state against populated field data. Applying ECD produced
+  `?days=30&school_id=&school_type=ecd`; applying Primary produced the analogous
+  `primary` URL. Both pages retained the selected control and rendered neither
+  report failure nor review-alert-unavailable state.
+- This proves the deployed Next.js -> Clerk -> Django -> Supabase read path for
+  both school types. It does not prove a denied production role, responsive
+  physical-device rendering, or any mobile OTA/device uptake; those remain
+  separate gates.
+
 ## 2026-08-14 — Per-EA profile pages live end to end
 
 - Shipped `/mobile-app/users` (eligible-EA index) and `/mobile-app/users/<id>`
