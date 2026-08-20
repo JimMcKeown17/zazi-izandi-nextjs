@@ -1,21 +1,23 @@
 # Zazi iZandi Web Field v1 — Implementation Plan
 
-> **Status:** Foundation-only implementation is in progress. Capture/data work
-> is paused at the transport decision in Section 0. The Supabase wrapper
-> contract is **FIX-FIRST / not authorized for SQL** after independent
-> protocol-v2 adversarial review on 2026-08-20. This plan was derived from
-> `documentation/web-capture-fallback-design-questions.md` and revalidated against
-> the live mobile-app, Supabase migration, Django, and Next.js seams on
-> 2026-08-20.
+> **SUPERSEDED FOR IMPLEMENTATION — 2026-08-20.** Jim selected pure lean field
+> v1, a fuller server-governed lane for v2, and offline/PWA capability for v3.
+> The governing executable plan is now
+> [2026-08-20-web-capture-lean-v1.md](2026-08-20-web-capture-lean-v1.md).
+> Everything below is retained as the adversarially reviewed full-lane design
+> record and future-v2 research. Its wrapper, sidecar, provenance, sweeper,
+> Django-cron, deployment, and acceptance tasks are **not authorized v1 work**.
+> References below to “field v1” describe the superseded proposal and must not
+> be used to override the lean plan.
 >
 > **Primary outcome:** Give an EA who cannot install or reliably run the Expo app
 > a small, mobile-first browser surface that records live work into the same
 > Supabase operational tables, under the EA's own Supabase identity, without
 > creating a second data universe.
 >
-> **Deliberate boundary:** Field v1 is online-first and install-free. It survives a
-> network failure after the page and roster have loaded, but it is not a
-> cold-start-offline PWA. True offline capture is a separately gated v2.
+> **Deliberate boundary:** The superseded proposal was online-first and
+> install-free. It was not a cold-start-offline PWA. The governing lean plan now
+> names true offline/PWA capture v3.
 >
 > **Decision amendment — 2026-08-20:** The proposed line-manager correction
 > product was rescinded before implementation. Field v1 still has no historical
@@ -28,13 +30,14 @@
 > cold protocol inventory, and an independent adversarial review rejected the
 > original provenance-column/RPC-extension design. Adding provenance to the
 > existing exact mobile payload/hash documents could invalidate replay of
-> already accepted mutations. The hardened fallback uses separately named web
-> wrappers and private wrapper-attestation sidecars; the recommended v1a makes
-> no write-side SQL change. Existing mobile RPC
+> already accepted mutations. Separately named wrappers and private attestation
+> sidecars remain future-v2 research. The selected lean v1 makes no write-side
+> SQL change and exposes only the unchanged time-entry and session writers.
+> Existing mobile RPC
 > bodies, public names, payload shapes, hash documents, receipt/head semantics,
 > serializers, acknowledgment inventory, and client mapping are frozen. No SQL
-> may be authored until the replacement contract in Sections 7–8 receives a
-> final review against an executable RED harness.
+> may be authored from the superseded task list below; the governing lean plan's
+> RED gates control its single read-only helper.
 >
 > **Threat-boundary decision — 2026-08-20:** Web and mobile use the same
 > Supabase `authenticated` identity. A deliberately modified browser can call
@@ -42,43 +45,49 @@
 > Field v1 therefore promises a safe **supported web lane**, not unbypassable
 > proof of client origin. Under the wrapper option, a web sidecar would attest
 > that an exact command passed through the wrapper; absence would mean
-> `mobile_or_legacy`, not proven mobile. Recommended v1a makes no source claim.
+> `mobile_or_legacy`, not proven mobile. Selected lean v1 makes no source claim.
 
-## 0. Transport decision required before data work
+## 0. Superseded transport decision record
+
+**Decision closed:** use the lean transport defined in the governing plan.
+Do not implement this document's wrapper/sidecar path unless a future v2 plan
+selects individual capabilities after field evidence and closes the outstanding
+review findings.
 
 The second independent review found the hardened wrapper design substantially
 safer than changing an existing RPC, but still too much write-side surface for
-the stated v1 priority. It recommends **field v1a**:
+the stated v1 priority. Jim selected this lean boundary:
 
 - make no write-side Supabase migration;
 - keep all five measured function bodies/hashes, three mobile serializers,
   session mapping, acknowledgment inventory, grants, receipts/heads, SQLite,
   and pull/reconcile behavior unchanged;
-- have one fixed typed browser adapter call the exact existing time-entry,
-  session-bundle, and Letter Mastery RPC names/envelopes;
-- add at most a bounded actor-scoped **read-only** bootstrap RPC;
-- resolve an ambiguous session after rollover only from actor-scoped bootstrap
-  readback of the already materialized root UUID; if absent, retain local
-  evidence and require support/historical entry rather than call a writer;
+- have one fixed typed browser adapter call only the exact existing time-entry
+  and session-bundle RPC names/envelopes;
+- expose no Letter Mastery writer in v1 because its current natural-key upsert
+  can change a row won concurrently by mobile even after a browser absence
+  check;
+- add one bounded actor-scoped **read-only** bootstrap/resolution RPC;
+- resolve an ambiguous command after rollover only from that helper's exact
+  actor-owned receipt readback; if absent, retain local evidence and require
+  support/historical entry rather than call a writer;
 - defer web provenance, sidecars, wrapper locks, stale-clock automation, and the
   Django cron; and
 - provision one active capture browser/device per pilot EA, because the existing
   protocol gives idempotency per command/record identity, not global prevention
   of two distinct clock UUIDs from two devices.
 
-This is the recommended scope because the wrapper cannot make its policies
+This is the selected scope because the wrapper cannot make its policies
 globally authoritative while original mobile RPCs—and potentially raw RLS DML—
-remain available to the same EA token. V1a gives up server-enforced current-day
+remain available to the same EA token. Lean v1 gives up server-enforced current-day
 and clock-coverage rules for browser calls; those become supported-UI
 preconditions with honest limitations. In exchange, the battle-tested write
 engine has zero migration diff.
 
-The wrapper/sidecar design below remains the documented higher-assurance option
-for supported web calls, not an authorized task list. It also still requires
-the final findings in the review record to be closed. **Do not begin Task 1,
-Task 2, Task 3, Task 5, auth, or any data-bearing UI until Jim chooses v1a or
-the wrapper option and this plan is rewritten to one internally consistent
-path.** The inert Task 4 scaffold is deliberately transport-neutral.
+The wrapper/sidecar design below remains a documented higher-assurance option
+for supported web calls, not an authorized task list. None of its numbered
+tasks may be started from this document. The governing lean plan alone defines
+current implementation order and gates.
 
 ## 1. Executive decision
 
@@ -330,11 +339,11 @@ Repository: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2025`
 
 ### New repository
 
-The authorized foundation scaffold currently exists only in the staging
-repository `/private/tmp/zazi-izandi-web` on `feat/field-capture-v1`. It has no
-auth, capture, Supabase call, PWA, hosted project, or production credential.
-Moving it to the planned sibling checkout and creating its GitHub repository
-remain explicit repository/hosting actions.
+The authorized foundation scaffold is preserved in the permanent local sibling
+repository `/Users/jimmckeown/Development/zazi-izandi-web` on
+`feat/field-capture-v1` at `9be35c8`. It has no auth, capture, Supabase call,
+PWA, hosted project, or production credential. Creating its GitHub repository
+and configuring hosting remain explicit future actions.
 
 ## 7. Architecture
 
@@ -1098,8 +1107,8 @@ field proof. Subsequent no-recurrence evidence remains separate.
 
 ### New web repository
 
-- Staging repository until the sibling/GitHub repository is created:
-  `/private/tmp/zazi-izandi-web`.
+- Permanent local sibling repository; no remote or hosted project yet:
+  `/Users/jimmckeown/Development/zazi-izandi-web`.
 - Main feature branch: `feat/field-capture-v1`.
 - Owns browser UI, auth, command journal, protocol adapters, E2E, and rollout
   docs.
@@ -1279,8 +1288,11 @@ No hosted apply occurs in this task.
 
 ### Task 4 — Scaffold the separate web repository
 
-**Status:** Inert foundation staged in `/private/tmp/zazi-izandi-web`; no auth,
-Supabase call, capture feature, PWA, hosted project, credential, commit, or push.
+**Status:** Inert foundation committed locally at `9be35c8` in
+`/Users/jimmckeown/Development/zazi-izandi-web`; no auth, Supabase call, capture
+feature, PWA, hosted project, credential, remote, or push. `npm run verify` and
+the production-server 320×740 Playwright scaffold check pass from the permanent
+path.
 
 **New-repo files:**
 
