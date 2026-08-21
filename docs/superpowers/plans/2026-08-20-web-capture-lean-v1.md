@@ -265,17 +265,35 @@ bounded readiness snapshot containing only the teaching data v1 needs:
 
 - server timestamp and Johannesburg date;
 - authenticated actor ID;
-- active class/group identifiers and display names;
-- roster member IDs, first names, group membership, and required teaching
-  fields;
-- every current open time entry for that actor, with deterministic order and no
-  `LIMIT 1` masking of duplicates;
+- one active academic-year identity and date range when the actor has provisioned
+  work;
+- active class/group identifiers, display names, class grade/home language, and
+  group programme level;
+- roster member IDs, first names, authoritative current-year class/group
+  membership, and the class grade needed for the session attendee snapshot;
+- the exact current open-time-entry count plus at most two deterministic full
+  rows for that actor; any count above one blocks capture, so a bounded response
+  never lets `LIMIT 1` mask duplicate clocks;
 - the exact actor-owned wire fields/record identity needed to close a visible
   entry that this browser journal previously clocked in and the row's current
   `server_updated_at` observation for diagnostics only, never as a server-side
   write precondition or cross-stream compare-and-set;
 - bounded recent time-entry/session roots needed for duplicate warnings; and
 - an explicit schema version and truncation/count metadata.
+
+Freeze these v1 collection bounds: at most 8 classes, 32 groups, 256 returned
+roster members in total, 64 returned members per group, 2 full open-clock rows,
+20 recent time entries, 20 recent session roots, and 20 resolution requests.
+The provisioned collection reports exact total and returned counts plus one
+truncation flag; every group roster and history/open-clock collection reports
+the same three values. Critical provisioning is all-or-nothing: if any class,
+group, total-roster, or per-group-roster cap is exceeded, or if the
+authoritative membership graph is invalid, the server returns no partial
+classes/groups/rosters and marks provisioning `over_limit` or `invalid_graph`.
+The browser can never turn that prefix into capture authority. Recent-history
+truncation is valid because that history is advisory only. The history window
+is the current Johannesburg date plus the preceding six Johannesburg dates;
+unrestricted history is never returned.
 
 The snapshot must not include surnames, dates of birth, TeamPact
 `participant_id` values, contact details, or unrestricted historical data. The
@@ -301,8 +319,16 @@ operation               descriptor-supported operation
 audit_sequence          positive safe integer
 ```
 
-Duplicate requests, extra/missing keys, malformed values, oversized strings,
-or more than 20 items fail closed. The actor is never an argument.
+The exact canonical key grammar is the descriptor writer's natural-key text,
+`[["id","text","<lowercase UUID>"]]`; its embedded ID must match the stored
+receipt's local record ID. `TIME_ENTRIES/insert` is generation 1,
+`TIME_ENTRIES/update` is generation 2, and `SESSIONS/insert` is generation 1;
+no other descriptor/operation/generation pair is accepted. Generations and
+audit sequences are positive safe integers no greater than
+`9007199254740991`. Duplicate mutation IDs, duplicate complete request
+identities, extra/missing keys, malformed values, a request array whose JSONB
+text exceeds 32,768 bytes, or more than 20 items fail closed with fixed errors
+that do not echo submitted data. The actor is never an argument.
 
 The versioned response returns readiness plus exactly one resolution item in
 input order for every request:
@@ -312,22 +338,51 @@ input order for every request:
 {request_index, state: "not_found"}
 ```
 
-`resolved` requires an exact completed actor-owned receipt match across the
-submitted identity tuple. The bootstrap/read response is decoded by its own
+`resolved` is deliberately narrower than generic receipt lookup. It requires a
+completed accepted actor-owned receipt whose mutation, actor, stream,
+descriptor, derived local record ID, canonical key, generation, and operation
+match the submitted resolution identity, plus an accepted canonical result
+whose embedded `audit_seq` equals the requested `audit_sequence` and whose
+serialized object is no larger than 131,072 bytes.
+For TIME, the stored result must bind actor, mutation, stream, descriptor,
+canonical key, generation, operation, audit sequence, and record ID/user. For
+SESSIONS, it must bind actor, mutation, stream, audit sequence, root
+descriptor/key/generation/operation, and root record ID/user. This is identity
+validation, not a duplicate implementation of the complete writer-result
+schema; the browser still applies its frozen descriptor-specific classifier.
+The read function neither receives the immutable payload nor recomputes or
+compares the receipt's canonical envelope hash/hash version; Task 6's immutable
+command plus the frozen result classifier remains the complete browser-side
+binding boundary.
+The v2 receipt table does not persist `audit_sequence`, and some stored refusal
+results omit it, so a
+completed result whose full requested identity cannot be proven returns the
+same `not_found` shape and preserves local evidence; Task 5 does not alter the
+receipt table or any writer. The bootstrap/read response is decoded by its own
 strict read schema and is never treated as a writer acknowledgment. Only a
-matched `resolved.canonical_result`—a stored historical writer result—is then
-passed through the descriptor-specific write-result classifier. Receipt
-existence is not itself success, and resolution never authorizes a new write.
-Wrong actor, absence, or any identity mismatch returns the same `not_found`
-shape. The ordinary recent-history bounds never truncate or substitute for the
-per-request resolution list.
+matched `resolved.canonical_result`—the stored accepted writer result—is then
+passed through the descriptor-specific write-result classifier together with
+the later Task 6 immutable command. Receipt existence is not itself success,
+and resolution never authorizes a new write. Wrong actor, absence, refusal,
+non-provable audit identity, or any submitted identity mismatch returns the
+same `not_found` shape. The ordinary recent-history bounds never truncate or
+substitute for the per-request resolution list.
 
 Every invocation is a fresh authenticated POST and is treated as `no-store` by
 the web data adapter. The function is `SECURITY DEFINER` only because exact
 resolution reads private protocol receipts. It must derive `auth.uid()`,
-schema-qualify all objects, set a safe search path, accept no caller-selected
-actor, use no dynamic SQL, perform no DML, call no writer, cap every collection,
-and fail closed on malformed shape/counts. Only its exact signature receives
+reject a null actor with fixed SQLSTATE `42501`, schema-qualify all objects, set
+a safe search path, accept no caller-selected actor, use no dynamic SQL,
+perform no DML, call no writer, cap every collection, and fail closed on
+malformed shape/counts. Declare it `STABLE` so every SQL statement observes the
+calling query's coherent snapshot, and catalog-verify
+that volatility. Provisioning is proven through explicit active class, group,
+and child assignment-ledger joins plus one active academic year covering the
+captured Johannesburg date and an active complete grouping version for every
+returned class. Legacy `staff_id`, `staff_children`, `children.created_by`, and
+`private.current_user_can_access_*` fallbacks are insufficient for web
+readiness. Membership tables—not `children.class_id`, `children.group_name`, or
+`children_groups`—are authoritative. Only its exact signature receives
 `authenticated` execute; no existing writer/table/RLS grant changes.
 
 Capture is blocked when any of these are true:
@@ -335,8 +390,16 @@ Capture is blocked when any of these are true:
 - authentication is absent/expired;
 - actor ID mismatches the local namespace;
 - no provisioned class/roster/group is visible;
-- membership references are orphaned or ambiguous;
+- the actor has assignments but there is not exactly one active academic year
+  covering the captured Johannesburg date;
+- an actor-assigned active child has zero or multiple active current-year class
+  memberships, a class outside the actor's active class assignments, zero or
+  multiple memberships in that class's active grouping version, a group
+  outside the actor's active group assignments, any class/group/version
+  mismatch, an archived object on the active path, or a null/unsupported group
+  programme level;
 - more than one open clock exists;
+- any critical provisioning/open-clock bound is exceeded;
 - snapshot version/count/truncation semantics are invalid; or
 - durable local persistence is unavailable.
 
@@ -457,10 +520,13 @@ command under a new stream. Preserve/read back authoritative actor-owned state
 or route to support. A fresh stream may create new work only after readiness is
 refreshed and no unresolved prior intent is being inferred from memory.
 
-A completed receipt does not automatically mean success: it resolves ambiguity
-to its stored canonical result. Only the descriptor-specific accepted
-`{kind, code}` is success. Stale, rejected, integrity, or pre-receipt outcomes
-retain their exact classification.
+A same-day exact writer retry may return any stored canonical result; only the
+descriptor-specific accepted `{kind, code}` is success, while stale, rejected,
+integrity, or pre-receipt outcomes retain their exact classification. The
+read-only rollover resolver is intentionally narrower: it resolves only an
+accepted result whose embedded audit sequence and complete persisted identity
+can be proven. Refusal receipts without provable audit identity become uniform
+`not_found` and preserve the local command for support.
 
 ### 8.4 Same-browser concurrency
 
@@ -650,10 +716,18 @@ PostgreSQL 17 and prove:
 When Task 5 authors the one read-only bootstrap/resolution migration, its
 separate harness proves actor scope, exact request/result schemas,
 request/history/roster bounds, stable ordering, fresh non-cached resolution,
-effective grants, anti-oracle behavior, zero DML on
-resolved/not-found/error, and no delegation to any writer. That harness reruns
-with the Task 10 release regression; it is not a Task 3A prerequisite for an
-artifact that does not yet exist.
+effective grants, anti-oracle behavior, accepted-only audit-bound resolution,
+active-ledger/grouping-year integrity, catalog-pinned `STABLE` snapshot
+semantics, and zero DML/row locks/writer delegation on resolved, not-found,
+malformed, overflow, and blocked-integrity paths in read-only transactions. It
+also proves a second invocation sees a newly committed receipt, a seed-wiped
+database returns a safe blocked snapshot, all frozen/protected mobile
+production and protocol source bytes remain unchanged, and all five frozen
+function bodies/config/owners/grants plus existing policies, triggers, and
+tables remain unchanged. The sole allowed pre-existing repository-artifact
+edit is the two-field digest regeneration described in Task 5. That harness
+reruns with the Task 10 release regression; it is not a Task 3A
+prerequisite for an artifact that does not yet exist.
 
 ### 11.4 Real mobile convergence proof
 
@@ -963,14 +1037,171 @@ Planned web files:
 - `lib/data/bootstrap-schema.ts`
 - `lib/data/bootstrap.ts`
 - `lib/data/bootstrap.test.ts`
+- `lib/supabase/web-capture-bootstrap-gateway.ts`
+- `lib/supabase/web-capture-bootstrap-gateway.test.ts`
 - `components/field/readiness-state.tsx`
 - `components/field/today-dashboard.tsx`
 
+The exact response is versioned and strict:
+
+```text
+{
+  schema_version: 1,
+  server: {
+    observed_at: timestamp,
+    johannesburg_date: date,
+    history_since_date: date,
+    active_academic_year: { id: UUID, starts_on: date, ends_on: date } | null
+  },
+  actor_user_id: UUID,
+  provisioned: {
+    state: "ready" | "unprovisioned" | "invalid_graph" | "over_limit",
+    total_class_count: integer, returned_class_count: integer,
+    total_group_count: integer, returned_group_count: integer,
+    total_member_count: integer, returned_member_count: integer,
+    truncated: boolean,
+    classes: [{
+      id: UUID, name: string, grade: string, home_language: string,
+      academic_year_id: UUID
+    }],
+    groups: [{
+      id: UUID, class_id: UUID, name: string, display_number: integer,
+      programme_level: "letters" | "blending",
+      roster: { total_count: integer, returned_count: integer, truncated: boolean,
+                members: [{
+                  child_id: UUID, first_name: string, class_id: UUID,
+                  group_id: UUID, grade_snapshot: string
+                }] }
+    }]
+  },
+  open_time_entries: {
+    total_count: integer, returned_count: integer, truncated: boolean,
+    entries: [{
+      id: UUID, user_id: UUID, sign_in_time: timestamp,
+      sign_in_lat: number | null, sign_in_lon: number | null,
+      sign_out_time: null, sign_out_lat: null, sign_out_lon: null,
+      auto_clocked_out: boolean, created_at: timestamp,
+      updated_at: timestamp, server_updated_at: timestamp
+    }]
+  },
+  recent_time_entries: {
+    total_count: integer, returned_count: integer, truncated: boolean,
+    entries: [{
+      id: UUID, sign_in_time: timestamp, sign_out_time: timestamp | null,
+      auto_clocked_out: boolean
+    }]
+  },
+  recent_sessions: {
+    total_count: integer, returned_count: integer, truncated: boolean,
+    entries: [{
+      id: UUID, session_date: date, started_at: timestamp | null,
+      ended_at: timestamp | null, group_ids: UUID[]
+    }]
+  },
+  resolutions: [
+    { request_index: integer, state: "resolved", canonical_result: object } |
+    { request_index: integer, state: "not_found" }
+  ]
+}
+```
+
+Scalar domains are frozen as follows:
+
+- every UUID is a lowercase canonical UUID string;
+- every date is a real `YYYY-MM-DD` calendar date;
+- every timestamp is an RFC3339 UTC string rendered with milliseconds and a
+  literal `Z` (`YYYY-MM-DDTHH:mm:ss.sssZ`), or `null` only where the response
+  block explicitly permits it;
+- counts, `display_number`, and `request_index` are safe JSON integers;
+  counts are nonnegative, a ready group's display number is positive, and
+  `request_index` is zero-based in the closed interval 0–19;
+- names, grade, and home-language strings are trimmed, nonempty, and no more
+  than 256 UTF-8 bytes; programme level is exactly `letters` or `blending`;
+- coordinates are finite JSON numbers in latitude/longitude range or `null`;
+  sign-in coordinates are both present or both null; every open row has null
+  sign-out time, both sign-out coordinates null, and
+  `auto_clocked_out = false`. A legacy open row that violates those invariants
+  yields `invalid_snapshot`, never a writable clock capability; and
+- recent session `group_ids` is normalized to a sorted, unique UUID array;
+  a database null is returned as `[]`. Recent `started_at` and `ended_at`, and
+  recent/open time-entry sign-out timestamps, preserve null explicitly.
+
+Response object-key order is not significant because PostgreSQL returns JSONB;
+exact key sets are. Class grade/home language and first name are the only human
+display strings returned. No nullable `display_number` is exposed as ready: a
+null, non-integer, or nonpositive value on an otherwise active group makes the
+authoritative graph invalid.
+
+Provisioning state uses this deterministic precedence:
+
+1. Null authentication and malformed resolution input raise fixed exceptions;
+   they are not response states.
+2. `invalid_graph` wins if any actor-rooted active group or child assignment
+   cannot participate in exactly one current-year, active, complete
+   class/grouping/membership path, or if the path has any mismatch/archived/
+   unsupported value described above. An actor with only an active class
+   assignment and no group or child assignment is not contradictory.
+3. `over_limit` applies only when the complete authoritative graph is otherwise
+   valid and nonempty but exceeds any class/group/total-member/per-group cap.
+4. `unprovisioned` applies when no contradictory actor-rooted graph exists but
+   there is no nonempty complete class + group + member set.
+5. `ready` applies only to a nonempty, complete, valid graph within every cap.
+
+Every non-ready state returns `returned_* = 0` and empty critical class/group/
+roster arrays. Its `total_*` fields still report exact actor-rooted active-ledger
+counts. `truncated` is true only for `over_limit`; suppression for
+`invalid_graph` or `unprovisioned` is not truncation. Per-group roster metadata
+therefore exists only in a ready response. Valid `invalid_graph` and
+`over_limit` responses map to browser `group_roster_unavailable`; valid
+`unprovisioned` maps to `unprovisioned`. `invalid_snapshot` is reserved for a
+malformed, unparseable, stale-actor, or internally inconsistent server response,
+not for a valid server-declared provisioning state.
+
+All arrays use deterministic ordering and exact key sets. The server timestamp,
+Johannesburg date, and seven-day history start must agree; a `ready` response
+must contain one academic year whose range covers that date, while a blocked
+response may use `null`; the response actor must equal the live actor
+namespace; every group references one returned class; every ready roster is
+complete and unique, and each member's class/group/grade binding must equal its
+containing authoritative group/class; open rows preserve complete-or-null GPS
+pair semantics; history contains no notes, activities, attendance, GPS, names,
+or unrestricted dates;
+and the resolution array is one-for-one in request order. Classes order by
+case-folded name then ID; groups by case-folded class name, class ID, display
+number, case-folded group name, then group ID; rosters by case-folded first name
+then child ID; open entries by sign-in time ascending then ID ascending; recent
+time entries by sign-in time descending then ID ascending; recent sessions by
+session date descending then ID ascending; and resolutions by zero-based input
+index ascending. `unprovisioned`, `invalid_graph`, and `over_limit` provisioning
+return empty critical arrays rather than a consumable partial prefix. The web
+derives only `ready`, `unprovisioned`, `invalid_snapshot`,
+`duplicate_open_clock`, or `group_roster_unavailable` at this stage. It adds no
+capture/journal behavior.
+
 The only allowed Supabase files are one additive read-only migration, one
-dedicated PostgreSQL harness, one verifier, and registry documentation. The
-migration may grant `authenticated` execute on only the new exact function; any
-writer/table/RLS/existing-grant change fails scope review. No hosted apply occurs
-in this task.
+dedicated PostgreSQL harness, one verifier, the required migration-manifest
+artifact regeneration in
+`scripts/seed-verification/backup-archive-sequences.json`, and registry
+documentation. Regeneration recomputes and verifies both
+`migration_manifest_digest` and `target_ddl_sha256` (the latter may remain the
+same when its source DDL is unchanged); only those two digest fields may differ,
+and the existing seed backup/restore verifier must pass. This is the sole
+allowlisted modification to a pre-existing non-production mobile-repository
+artifact; the migration, verifier, harness, and registry files are additions.
+The migration uses bare `CREATE FUNCTION`, not
+`CREATE OR REPLACE`, and may grant `authenticated` execute on only the new exact
+signature. It explicitly revokes `PUBLIC`, `anon`, `authenticator`, and
+`service_role`; accepts no actor; uses no dynamic SQL, DML, row locks, or writer
+delegation; and changes no table, RLS, policy, trigger, private-schema grant, or
+existing function body/owner/config/grant. The function is `LANGUAGE plpgsql
+STABLE SECURITY DEFINER`, with empty search path and UTC timezone. The catalog
+verifier pins the exact signature, trusted owner, volatility, security mode,
+configuration, and ACL. The disposable-PostgreSQL harness exercises success,
+`not_found`, malformed-input, overflow, and integrity-blocked paths inside
+read-only transactions; proves foreign/absent/mismatched/non-provable receipt
+lookups are indistinguishable; proves legacy-fallback-only and malformed
+provisioning cannot become ready; and compares all frozen mobile sources and
+function hashes before and after. No hosted apply occurs in this task.
 
 ### Task 6 — Implement the actor-scoped durable journal
 
@@ -1146,8 +1377,10 @@ Every item must be true:
       `server_updated_at` compare-and-set.
 - [ ] No Letter Mastery mutation is materialized or dispatched by v1.
 - [ ] The single bootstrap/resolution RPC resolves only an exact completed
-      actor-owned receipt identity; an unresolved rollover never invokes a
-      writer.
+      accepted actor-owned receipt whose embedded audit sequence and complete
+      persisted identity match; refusals without provable audit identity are
+      indistinguishable from absence, preserve local evidence, and an
+      unresolved rollover never invokes a writer.
 - [ ] Real SQLite pull/close/reopen and subsequent ordinary mobile writes pass.
 - [ ] No mobile production code, SQLite, mapping, or release change is present.
 - [ ] No write-side Supabase migration, provenance sidecar, sweep, or Django cron
