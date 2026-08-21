@@ -809,7 +809,7 @@ Planned web files:
 - `lib/capture/materialize-time-entry.ts`
 - `lib/capture/materialize-session.ts`
 - `lib/capture/result-classifier.ts`
-- `lib/supabase/capture-writes.ts`
+- `lib/supabase/mobile-v2-capture-gateway.ts`
 - focused tests beside each module.
 
 The adapter exposes only `submitTimeEntry` and `submitSessionBundle`. Tests
