@@ -143,7 +143,11 @@ RPCs remain available.
 - The JWT proves the EA, not that the caller is the supported browser build.
 - UI-only current-day, clock-coverage, and one-device rules are not global
   database security invariants.
-- Absence of a web marker cannot classify a row as mobile; v1 creates no marker.
+- Absence of positive server-side web provenance cannot classify a row as
+  mobile. Lean v1 creates no server-side provenance marker or source field. Its
+  minimal accepted-web-clock marker is actor/browser-local authority only:
+  presence can authorize the supported local clock-out path, while absence
+  means unknown origin and keeps the row read-only.
 - Two distinct devices can create distinct UUIDs. Existing idempotency prevents
   replay of one command, not every semantically duplicate command.
 - A stale browser clock is not automatically corrected.
@@ -267,8 +271,9 @@ bounded readiness snapshot containing only the teaching data v1 needs:
 - every current open time entry for that actor, with deterministic order and no
   `LIMIT 1` masking of duplicates;
 - the exact actor-owned wire fields/record identity needed to close a visible
-  entry that this browser journal previously clocked in and the row's
-  `server_updated_at` freshness signal;
+  entry that this browser journal previously clocked in and the row's current
+  `server_updated_at` observation for diagnostics only, never as a server-side
+  write precondition or cross-stream compare-and-set;
 - bounded recent time-entry/session roots needed for duplicate warnings; and
 - an explicit schema version and truncation/count metadata.
 
@@ -308,11 +313,14 @@ input order for every request:
 ```
 
 `resolved` requires an exact completed actor-owned receipt match across the
-submitted identity tuple. Its stored canonical result is then passed through
-the same strict browser result classifier as a write response. Receipt
-existence is not itself success. Wrong actor, absence, or any identity mismatch
-returns the same `not_found` shape. The ordinary recent-history bounds never
-truncate or substitute for the per-request resolution list.
+submitted identity tuple. The bootstrap/read response is decoded by its own
+strict read schema and is never treated as a writer acknowledgment. Only a
+matched `resolved.canonical_result`—a stored historical writer result—is then
+passed through the descriptor-specific write-result classifier. Receipt
+existence is not itself success, and resolution never authorizes a new write.
+Wrong actor, absence, or any identity mismatch returns the same `not_found`
+shape. The ordinary recent-history bounds never truncate or substitute for the
+per-request resolution list.
 
 Every invocation is a fresh authenticated POST and is treated as `no-store` by
 the web data adapter. The function is `SECURITY DEFINER` only because exact
@@ -396,8 +404,10 @@ The time-entry retention tests additionally prove that accepted clock-in and
 clock-out GPS/timestamp envelopes disappear immediately, ambiguous entries keep
 their exact envelopes until resolution/disposition, and an IndexedDB inspection
 after acceptance contains no completed location payload. A later clock-out is
-materialized from a fresh bootstrap row plus the minimal accepted-web-clock
-marker and generation counter, never from a retained clock-in request.
+materialized only from an immediate fresh bootstrap row whose ID and actor
+match a minimal marker created after a strictly accepted supported-web clock-in
+by this actor/browser stream. It is only that marker-owned entry's
+generation-one-to-generation-two update, never a retained clock-in request.
 
 On actor change, the new actor cannot enumerate, render, or dispatch another
 actor's records. Sign-out with unresolved work requires an explicit warning;
@@ -461,7 +471,11 @@ changing any command identity.
 
 This does not coordinate different phones or browsers. The pilot operating rule
 is one active capture device/browser per EA, with a fresh bootstrap before clock
-or session materialization.
+or session materialization. Cross-client clock handling is prohibited: an open
+clock without the current browser's accepted-web marker is read-only and must
+be completed in its owning client or through support. Any observed mobile or
+second-browser clock handoff/closure is a pilot escalation and requires
+re-evaluating a server-governed wrapper/locking lane before the cohort widens.
 
 ## 9. Live-day, clock, and session behavior
 
@@ -489,10 +503,15 @@ say that explicitly.
 - Obtain geolocation with a finite timeout. A complete valid pair is sent; denial
   or failure sends null/null and is visible but non-blocking.
 - Materialize and persist the exact v2 time-entry command before dispatch.
-- Immediately before clock-out materialization, re-read the row, require the
-  same `server_updated_at` freshness value and `sign_out_time IS NULL`, then send
-  all 11 exact writer fields. This narrows but does not eliminate the race; the
-  one-active-device rule remains part of the field boundary.
+- Immediately before clock-out materialization, require the local marker to
+  originate from a strictly accepted supported-web clock-in, then immediately
+  re-read the entry and require matching entry/actor identity and
+  `sign_out_time IS NULL`. Materialize only the generation-one-to-generation-two
+  update and send all 11 exact writer fields. The unchanged old RPC does not
+  compare `server_updated_at` as a cross-stream compare-and-set: a mobile or
+  second-browser close after this re-read but before the RPC can still be
+  overwritten. This is an eligibility check, not a race guarantee; the
+  one-active-device rule and cross-client escalation remain field boundaries.
 - A lost response remains ambiguous and retries the same command.
 - Do not allow clock-out while a session command is unresolved.
 - No stale-clock auto-close exists in v1. Returning EAs see the open clock before
@@ -600,11 +619,12 @@ materialization, state-machine, storage, actor isolation, tab lease,
 geolocation, validation, completion, and redaction logic.
 
 Materializer tests—not the transport conformance gate—own the supported-browser
-rules: fresh session/root/member generations, same-browser clock generation,
-one selected provisioned group, attendance/programme/activity consistency,
-deduplicated teaching selections, GPS pair/null semantics, session/clock
-chronology, and byte-equivalent repeated materialization from one persisted
-intent.
+rules: a marker-originated same-browser clock transition only from accepted
+generation one to generation two after the immediate reread; fresh
+session/root/member generations; one selected provisioned group; attendance/
+programme/activity consistency; deduplicated teaching selections, GPS pair/null
+semantics, session/clock chronology, and byte-equivalent repeated
+materialization from one persisted intent.
 
 Johannesburg day tests run under at least UTC and America/New_York process
 timezones to catch device-local assumptions.
@@ -819,12 +839,16 @@ any Letter Mastery dispatch. No React component or generic data layer can
 choose a writer.
 
 Materializers own supported-browser semantics instead of duplicating them in
-the gateway: clock-in generation one; same-browser accepted clock-out using the
-next generation; fresh session/root/member generation one; one selected
-provisioned group; complete attendance with at least one present child; exact
-letters/blending activity unions; stable attendee IDs; GPS pair/null rules; and
-clock/session chronology. The gateway consumes a validated materialized command
-and owns only fixed dispatch plus network-result classification.
+the gateway: clock-in generation one; same-browser accepted clock-out only from
+the marker and immediate reread as generation two; fresh session/root/member
+generation one; one selected provisioned group with root `record.group_ids`
+exactly that group and matching member `record.group_id` values; complete
+attendance with at least one present child; exact letters/blending activity
+unions; stable attendee IDs; GPS pair/null rules; and clock/session chronology.
+The gateway consumes a validated materialized command and owns only fixed
+dispatch plus writer-result classification. Bootstrap/open-clock rereads use
+the separate read decoder; the legacy writer is not a cross-stream
+`server_updated_at` compare-and-set.
 
 Run pure tests, typecheck, lint, build, and dependency audit. Commit after an
 independent contract review.
@@ -918,10 +942,13 @@ Planned web files:
 - focused unit/E2E tests.
 
 GREEN requires accepted-web-clock marker matching, unknown/mobile-origin
-view-only handling, duplicate-open block, just-in-time freshness read, GPS
-pair/null rules, authoritative acceptance, immediate accepted-envelope purge,
-exact lost-response retry, unresolved-session clock-out block, strong
-returning-EA reminder, and no date editor or sweeper.
+view-only handling, duplicate-open block, immediate freshness reread, explicit
+surface/block of cross-client clock handling, GPS pair/null rules,
+authoritative acceptance, immediate accepted-envelope purge, exact
+lost-response retry, unresolved-session clock-out block, strong returning-EA
+reminder, and no date editor or sweeper. It states that the reread is not a
+cross-stream compare-and-set and routes a detected mobile/second-browser clock
+interaction to support/pilot escalation.
 
 ### Task 8 — Implement complete session capture without Letter Mastery writes
 
@@ -1001,8 +1028,8 @@ Order:
 5. Configure DNS/HTTPS and read back deployment/security headers.
 6. Provision disposable test EA data and run production browser smoke.
 7. Pass the real-device matrix.
-8. Provision/read back three pilot EAs and distribute the link with one-device
-   and paper-fallback instructions.
+8. Provision/read back three pilot EAs and distribute the link with one-device,
+   no cross-client clock handoff/closure, and paper-fallback instructions.
 9. Run one controlled school day; inspect open clocks daily.
 10. Compare Supabase, mobile pull, and business reporting.
 11. Record separate migration/deploy/device/field receipts.
@@ -1020,7 +1047,10 @@ After at least two school weeks, measure:
 - ambiguous responses and unresolved rollover cases;
 - support cases where client-path evidence would change the outcome;
 - need for source-specific reporting;
-- multi-device switching;
+- multi-device switching, including any mobile/second-browser attempt to
+  inspect, close, or hand off an open web clock; if observed, contain it during
+  the pilot and re-evaluate a full server wrapper/concurrency lane before
+  widening rollout;
 - cold-start/no-signal failures and paper fallback;
 - browser storage/quota failures; and
 - capture completion time and support burden by device.
@@ -1051,8 +1081,11 @@ Every item must be true:
 - [ ] Same-command retry creates at most one time entry/session.
 - [ ] Session/attendance remains atomic and the UI states truthfully that Letter
       Tracker was not updated.
-- [ ] Web closes only a locally attested accepted web clock; unknown/mobile
-      entries are view-only, and accepted time-entry GPS envelopes purge.
+- [ ] Web closes only a locally attested accepted web clock after its immediate
+      reread; unknown/mobile entries are view-only, the UI surfaces and blocks
+      cross-client clock handling, accepted time-entry GPS envelopes purge, and
+      pilot materials state that legacy v2 has no cross-stream
+      `server_updated_at` compare-and-set.
 - [ ] No Letter Mastery mutation is materialized or dispatched by v1.
 - [ ] The single bootstrap/resolution RPC resolves only an exact completed
       actor-owned receipt identity; an unresolved rollover never invokes a
