@@ -1,5 +1,13 @@
 # Web Capture Fallback — Grilling Doc
 
+> **SUPERSEDED DESIGN INPUT — DO NOT IMPLEMENT.** This document preserves the
+> original questions and reasoning history. Its present-tense proposals include
+> rejected `capture_source` changes, direct/RLS write assumptions, v1 Letter
+> Mastery/backfill, and Django or stale-clock machinery. The governing executable
+> plan is
+> [2026-08-20-web-capture-lean-v1.md](../docs/superpowers/plans/2026-08-20-web-capture-lean-v1.md).
+> Where the documents differ, the governing lean plan wins.
+
 # Quick Overview
 
 Zazi iZandi's field data — clock-ins, sessions, what was taught, and eventually assessments — is captured by our Expo mobile app writing to Supabase, but roughly a third of onboarded EAs can't reliably use it yet: the app isn't in the public stores, Huawei phones have no Play Store, low-storage devices choke on it, and a few installs are still bug-prone. Every one of those EAs is doing real work that goes unrecorded, which matters because this data drives payroll, daily coaching feedback, an independent RCT, and funder reporting — and with 40 new EAs arriving in two weeks, a few hundred in a month or two and ~1,000 in January 2027, the gap will recur with every cohort. So we're building Zazi iZandi Web: a small, mobile-first Next.js app at its own subdomain where an EA logs in with the same Supabase credentials as the mobile app, sees their own roster and groups, clocks in and out, and records sessions (attendance, letters or blends taught, Letter Tracker, notes) — writing rows directly into the same Supabase tables as the app, under the same row-level security, stamped capture_source='web', so they're indistinguishable to every dashboard and flow back into the EA's app history the moment they do get it installed. It is deliberately not a second app: no offline sync engine, no roster management, no assessments in v1 — just the capture surface that can't be allowed to fail, built so that anything that dodges the app's distribution problems (any browser, any phone, no install) keeps the field record complete while the app matures.

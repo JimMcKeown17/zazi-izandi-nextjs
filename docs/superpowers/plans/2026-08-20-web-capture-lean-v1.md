@@ -1,8 +1,10 @@
 # Zazi iZandi Web — Lean Field v1 Implementation Plan
 
 > **Status:** Governing implementation plan. Jim selected the lean transport on
-> 2026-08-20 after protocol-v2 adversarial review. The earlier wrapper/sidecar
-> plan is retained only as v2 research and is not an executable task list.
+> 2026-08-20 after protocol-v2 adversarial review and approved the
+> conformance-boundary correction on 2026-08-21. The correction was independently
+> reviewed and merged after a clean review. The earlier wrapper/sidecar plan is
+> retained only as v2 research and is not an executable task list.
 >
 > **Primary outcome:** An EA who cannot install or reliably run the Expo app can
 > open a link, sign in with the same Supabase account, clock in/out, and record a
@@ -23,7 +25,7 @@ The product sequence is now explicit:
 | Version | Product promise | Server/data boundary |
 |---|---|---|
 | **v1 — lean field capture** | Install-free, online-first live clock and complete session/attendance/activity capture with durable exact retry | Unchanged time-entry/session protocol-v2 writers plus one bounded actor-scoped read-only bootstrap/resolution RPC |
-| **v2 — fuller web lane** | Add only the server-side browser safeguards, evidence, and operational automation that v1 field data proves valuable | Separately reviewed wrappers/attestation/locking or an all-writer policy; still no silent edits to v2 envelopes |
+| **v2 — fuller web lane** | Add only the server-side browser safeguards and teaching capabilities that field evidence warrants; evaluate a conditional create-only Letter Mastery capability first | Separately named additive capabilities such as conditional Letter Mastery create, wrappers/attestation/locking, or an all-writer policy; still no silent edits to existing v2 envelopes |
 | **v3 — offline PWA** | Cold-start offline roster, durable offline work, visible outbox, reconnect and convergence | Versioned IndexedDB/outbox and service-worker lifecycle built on the stabilized web transport |
 
 Historical entry is a separate product decision. It may become a v1.x or v2
@@ -48,6 +50,36 @@ The deciding mental model is **protocol reuse, not protocol modification**. The
 browser is another client of the existing public contract. It is not a new sync
 engine and does not own SQLite, mobile pull/reconcile, background sync, or Expo
 infrastructure.
+
+### 2.1 Conformance boundary, not a second protocol engine
+
+Lean v1 has one deliberately narrow command path:
+
+```text
+Controlled browser domain input
+        -> one exact materializer
+        -> frozen time/session wire contract
+        -> unchanged protocol-v2 RPC
+        -> identity-bound acknowledgement classification
+```
+
+The browser does **not** reproduce every PostgreSQL rule in TypeScript. Each
+concern is proved once at its authoritative boundary:
+
+| Concern | Authoritative proof boundary |
+|---|---|
+| Form and supported-v1 domain rules | Pure materializer tests |
+| Exact RPC, envelope, payload, and retry bytes | Frozen conformance fixtures plus materializer tests |
+| Corrupt or cross-actor persisted commands | IndexedDB journal decoder and actor namespace |
+| Fixed writer selection | Two-method gateway |
+| Network result shape and command/family identity | Gateway result classifier |
+| Authentication, RLS, receipts, locks, concurrency, SQL byte limits, collision handling, and transactional family integrity | Disposable PostgreSQL 17 |
+| Existing-client consumption and no accidental outbound echo | Actual mobile pull mapping and real SQLite repository tests |
+
+Task 2 therefore stops at a non-vacuous conformance gate. It must not grow into
+a second independent implementation of the SQL validator. Valid server-specific
+findings move to the early disposable-PostgreSQL gate instead of being copied
+into browser validation code.
 
 The lean choice gives up three things in v1:
 
@@ -473,7 +505,7 @@ existing mobile writer:
 
 - group selection from the provisioned snapshot;
 - attendance with at least one present child;
-- letters or blend category according to the current validator;
+- letters or blend category according to the frozen Task 3 materializer rules;
 - blend examples where required;
 - attendee reading levels;
 - notes; and
@@ -530,25 +562,36 @@ Field UI requirements:
 Before auth or capture UI, commit a failing contract suite in the web repository
 that proves:
 
-- only the exact time-entry and session public RPC names can be dispatched, and
-  any Letter Mastery dispatch attempt is rejected before transport;
-- no caller-selected function/table/path reaches the transport;
-- exact RPC argument names and exact payload key sets are required;
-- the v1 operation allowlist rejects session update/upsert and every Letter
-  Mastery operation before transport;
-- missing/extra keys, wrong UUID/timestamp types, malformed pairs, unsupported
-  versions, and boolean-as-number fail closed before dispatch;
-- retries produce byte-for-byte equivalent serialized arguments;
-- the exact current result vocabulary is classified explicitly;
-- HTTP success plus malformed/unknown protocol JSON is failure;
-- timeout/network loss is ambiguous and does not regenerate identity;
-- a fake credential never appears in logs, errors, diagnostics, snapshots, or
-  rendered output; and
-- the pinned mobile contract commit and file digests are recorded and a
-  developer-side cross-repository checker fails on drift.
+- only the exact old time-entry and session public RPC names can be dispatched;
+- the gateway exposes exactly `submitTimeEntry` and `submitSessionBundle`, with
+  no caller-selected function/table/path and no Letter Mastery method;
+- exact RPC argument names, exact payload key sets, the supported-v1 operation
+  subset, basic UUID/timestamp/generation/audit types, and canonical
+  actor/record bindings are frozen in four synthetic golden commands: clock-in,
+  clock-out, letters session, and blending session;
+- the unchanged old session RPC is distinguished from the unmapped
+  capture-flag successor and its successor-only result vocabulary;
+- accepted results use the actual PostgreSQL JSONB schemas, tolerate
+  non-semantic object-key presentation order, and bind mutation, stream, actor,
+  audit, root, and every member identity to the submitted command;
+- every known old-RPC `(kind, code)` pair is distinguished from malformed,
+  unknown, raw-HTTP, or wrong-command output without leaking a raw response;
+- a deliberately shallow fixed-name pass-through adapter fails; and
+- the pinned mobile contract commit, complete source-file digest inventory, and
+  five function-body digests are recorded, and a developer-side Git-object
+  checker fails on relevant drift.
 
 The test is non-vacuous only if changing one pinned RPC name/key/result code or
-serializer digest makes it fail.
+serializer digest makes it fail. Task 2 is complete when the one missing
+production gateway is the only RED and an independent review has no Critical or
+Important finding within this boundary.
+
+Task 2 deliberately does **not** mirror PostgreSQL raw-JSON parsing, every
+field-byte limit, every SQL rejection branch, RLS, locks, receipt/head races, or
+natural-key collision behavior. It also does not defend against contrived hidden
+prototype/symbol APIs inside application memory. Those are proved at the
+materializer, journal, source-review, or disposable-engine boundary where they
+actually matter.
 
 ### 11.2 Pure/domain tests
 
@@ -556,13 +599,21 @@ Use `node:test` through `tsx` for exact serialization, date handling,
 materialization, state-machine, storage, actor isolation, tab lease,
 geolocation, validation, completion, and redaction logic.
 
+Materializer tests—not the transport conformance gate—own the supported-browser
+rules: fresh session/root/member generations, same-browser clock generation,
+one selected provisioned group, attendance/programme/activity consistency,
+deduplicated teaching selections, GPS pair/null semantics, session/clock
+chronology, and byte-equivalent repeated materialization from one persisted
+intent.
+
 Johannesburg day tests run under at least UTC and America/New_York process
 timezones to catch device-local assumptions.
 
 ### 11.3 Real Supabase/PostgreSQL contract proof
 
-Before any hosted web use, run the exact browser-generated fixtures against the
-unchanged migration chain in disposable PostgreSQL 17 and prove:
+Immediately after Task 3 and before auth or substantial UI, run the exact
+browser-generated fixtures against the unchanged migration chain in disposable
+PostgreSQL 17 and prove:
 
 - actor A cannot write actor B's data;
 - exact retry returns the canonical stored result without duplication;
@@ -576,14 +627,18 @@ unchanged migration chain in disposable PostgreSQL 17 and prove:
   unchanged; and
 - no v1 migration performs write-side schema/RPC/grant/trigger changes.
 
-The one read-only bootstrap/resolution migration has a separate harness proving
-actor scope, exact request/result schemas, request/history/roster bounds, stable
-ordering, fresh non-cached resolution, effective grants, anti-oracle behavior,
-zero DML on resolved/not-found/error, and no delegation to any writer.
+When Task 5 authors the one read-only bootstrap/resolution migration, its
+separate harness proves actor scope, exact request/result schemas,
+request/history/roster bounds, stable ordering, fresh non-cached resolution,
+effective grants, anti-oracle behavior, zero DML on
+resolved/not-found/error, and no delegation to any writer. That harness reruns
+with the Task 10 release regression; it is not a Task 3A prerequisite for an
+artifact that does not yet exist.
 
 ### 11.4 Real mobile convergence proof
 
-Using disposable server fixtures created through the exact browser adapter:
+Immediately after the PostgreSQL leg, using disposable server fixtures created
+through the exact browser adapter:
 
 1. pull into real mobile SQLite;
 2. close/reopen the database;
@@ -642,7 +697,7 @@ business reporting. Review their open clocks daily during the pilot.
 ### Planning repository
 
 - Repository: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2026/zazi-izandi-nextjs`
-- Branch: `feat/web-capture-field-v1-foundation`
+- Current revision branch: `plan/lean-v1-conformance-boundary`
 - Owns this governing plan and design history only.
 
 ### Web repository
@@ -660,7 +715,7 @@ business reporting. Review their open clocks daily during the pilot.
   untouched on its existing field-bug branch.
 - Isolated worktree: `/private/tmp/zazi-web-capture-supabase`
 - Branch: `feat/web-capture-contract-v1`
-- Documentation checkpoint: `a5fce72`
+- Documentation checkpoints: `a5fce72`, `8d599c4`
 - Owns cross-repository contract fixtures/tests and the single read-only
   bootstrap/resolution migration/harness.
 - No mobile production edit, writer SQL, hosted apply, merge, push, or release is
@@ -697,28 +752,54 @@ green cannot excuse an earlier missing gate.
 - [x] Independently review this plan for internal consistency and v2 safety.
 - [x] Merge/push planning documentation only after that review is clean.
 
+Those checkboxes record the initial 2026-08-20 ratification and merge. The
+2026-08-21 conformance correction is separately gated:
+
+### Task 1A — Correct the conformance boundary and proof order
+
+- [x] Jim rejects a second browser implementation of the SQL validator.
+- [x] Move supported-browser semantics to Task 3 materializers.
+- [x] Move disposable PostgreSQL and actual mobile SQLite proof to Task 3A,
+      before auth and substantial UI.
+- [x] Define conditional create-only Letter Mastery as an evidence-dependent v2
+      candidate without promising safe existing-key mutation.
+- [x] Independently review the correction with no Critical/Important finding.
+- [x] Merge and push the correction only after that review is clean.
+
 ### Task 2 — Commit the non-vacuous web protocol RED gate
 
-Planned web files:
+Current web files:
 
-- `lib/protocol-v2/contract.ts`
-- `lib/protocol-v2/schemas.ts`
-- `lib/protocol-v2/outcomes.ts`
-- `lib/protocol-v2/fixtures/*.json`
-- `lib/protocol-v2/*.test.ts`
-- `scripts/check-mobile-contract.mjs`
-- `documentation/protocol-v2-pin.md`
+- `contracts/mobile-v2/<reviewed-commit>/manifest.json`
+- `contracts/mobile-v2/<reviewed-commit>/fixtures.json`
+- `lib/contracts/mobile-v2-snapshot.ts`
+- `lib/contracts/mobile-v2-snapshot.test.ts`
+- `scripts/check-mobile-v2-baseline.mjs`
+- `documentation/lean-v1-task-2-contract-checkpoint.md`
 
 Requirements:
 
-- pin the reviewed upstream commit and exact source-file digests;
-- encode exact argument/payload/result contracts without importing Expo/SQLite;
-- export no generic dispatcher;
-- start with tests that demonstrably fail because adapters do not exist;
-- make a one-key/one-code mutation fail the suite as a falsifiability check;
-- review fixture provenance against current mobile serializers and migrations;
+- pin the reviewed upstream commit, complete source-file digest inventory, and
+  five exact function bodies using Git objects rather than the active mobile
+  worktree;
+- encode the four golden wire commands and identity-bound result contracts
+  without importing Expo, SQLite, Supabase, React, or browser storage;
+- require a future module exposing only two fixed methods and no generic or
+  Letter Mastery dispatcher;
+- make shallow pass-through, one-key, one-code, wrong-identity, and relevant
+  upstream-digest mutations fail the suite;
+- use the exact old-RPC acknowledgement inventory and treat successor-only or
+  unknown results as malformed;
+- review fixture provenance against current mobile serializers and migrations,
+  while keeping SQL-only semantics out of the browser validator;
 - do not call Supabase or add credentials in this task; and
 - commit RED separately before GREEN adapter implementation.
+
+Hard stopping rule: once all snapshot/conformance assertions pass, the missing
+production gateway is the suite's sole intentional RED, the cross-repository
+checker passes, and independent review is clean, Task 2 is frozen. Further
+PostgreSQL semantics become Task 3A tests rather than new TypeScript validator
+branches.
 
 ### Task 3 — Implement pure materialization and fixed write adapters to GREEN
 
@@ -737,8 +818,42 @@ strict decoding, error sanitization, immutable retry identity, and refusal of
 any Letter Mastery dispatch. No React component or generic data layer can
 choose a writer.
 
+Materializers own supported-browser semantics instead of duplicating them in
+the gateway: clock-in generation one; same-browser accepted clock-out using the
+next generation; fresh session/root/member generation one; one selected
+provisioned group; complete attendance with at least one present child; exact
+letters/blending activity unions; stable attendee IDs; GPS pair/null rules; and
+clock/session chronology. The gateway consumes a validated materialized command
+and owns only fixed dispatch plus network-result classification.
+
 Run pure tests, typecheck, lint, build, and dependency audit. Commit after an
 independent contract review.
+
+### Task 3A — Prove browser/server/mobile conformance before auth or UI
+
+This task is intentionally moved forward from the former late Task 10 gate.
+It makes engine evidence—not a larger browser validator—the next milestone.
+
+- generate one exact clock-in, clock-out, letters session, and blending session
+  through the production Task 3 materializers;
+- apply the unchanged mobile migration chain to a guarded disposable PostgreSQL
+  17 database and invoke the unchanged old RPCs under synthetic authenticated
+  actor claims;
+- prove exact replay, changed-payload mutation-ID rejection, actor isolation,
+  time-entry lifecycle, atomic session/attendance families, canonical receipts,
+  and record heads;
+- replay a receipt accepted before web work and recheck all frozen writer-body
+  digests;
+- pull the resulting rows through the actual mobile pull mapping into real
+  SQLite, close/reopen, and read them through production repositories/selectors;
+- prove pulled web rows do not materialize as outbound mobile mutations and an
+  ordinary subsequent mobile write still works; and
+- leave the active mobile checkout, mobile production code, hosted Supabase,
+  packages, and releases untouched.
+
+Any writer/source/mapping/SQLite production diff, relevant digest drift,
+unexplained result mismatch, or skipped real-engine leg stops work before Task
+4. Static fixture/Jest evidence is not a substitute for this gate.
 
 ### Task 4 — Implement Supabase auth and actor namespace
 
@@ -815,10 +930,11 @@ attendance, letters, blends, reading level, notes, review, submission, and
 explicit no-Letter-Tracker guidance. Pure command/draft modules live under
 `lib/capture/`.
 
-GREEN requires validator parity, stable attendee IDs, exact language
-normalization, server-date pinning, atomic session bundle, duplicate warning,
-reload/exact retry, rollover resolution, full letters/blends E2E flows, and an
-executable proof that no Letter Mastery RPC is reachable. Historical entry,
+GREEN requires UI/E2E use of the already-proven Task 3 materializer, stable
+attendee IDs, exact language normalization, server-date pinning, atomic session
+bundle, duplicate warning, reload/exact retry, rollover resolution, full
+letters/blends E2E flows, and an executable proof that no Letter Mastery RPC is
+reachable. Task 8 does not create a second session validator. Historical entry,
 Letter Mastery changes, and assessment mode are absent.
 
 ### Task 9 — Add preservation-first support and diagnostics
@@ -831,9 +947,10 @@ Letter Mastery changes, and assessment mode are absent.
 - no centralized telemetry sink or provenance store without a separate privacy
   and architecture decision.
 
-### Task 10 — Prove PostgreSQL and real-SQLite compatibility
+### Task 10 — Re-run cross-engine compatibility as a release regression
 
-- run exact web-generated fixtures against disposable PostgreSQL 17;
+- rerun the Task 3A exact web-generated fixtures against disposable PostgreSQL
+  17 after auth, bootstrap, journal, clock, and session implementation;
 - rerun pre-web accepted receipt replay and all five digest pins;
 - prove actor isolation, replay, collision, and atomic family;
 - prove two streams can overwrite one time entry, opposing mastery operations
@@ -847,8 +964,10 @@ Letter Mastery changes, and assessment mode are absent.
 - exercise ordinary subsequent mobile writes; and
 - run focused plus combined v2 release suites.
 
-Any mobile production diff, writer-function diff, hash drift, or unexplained
-result-vocabulary mismatch stops the release.
+This is a final regression of the already-required Task 3A proof, not the first
+time browser/server/mobile compatibility is attempted. Any mobile production
+diff, writer-function diff, hash drift, unexplained result-vocabulary mismatch,
+or skipped real-engine leg stops the release.
 
 ### Task 11 — Adversarial review and local release gate
 
@@ -907,8 +1026,12 @@ After at least two school weeks, measure:
 - capture completion time and support burden by device.
 
 Use those data to choose specific v2 server-lane features. Do not automatically
-carry the entire old wrapper design forward. The stale-clock race with delayed
-mobile sessions must be solved or its automation omitted even in v2.
+carry the entire old wrapper design forward. Independently of provenance and
+clock automation, assess Letter Tracker workflow burden and make the separately
+named conditional Letter Mastery capability the first v2 candidate if paper or
+mobile follow-up is materially harming teaching operations. The stale-clock
+race with delayed mobile sessions must be solved or its automation omitted even
+in v2.
 
 ## 14. Controlled-cohort release acceptance
 
@@ -952,9 +1075,14 @@ decision about which safeguards solve observed field problems.
 
 Candidate v2 capabilities:
 
+- a separately named, server-enforced conditional Letter Mastery capability as
+  the first candidate: create-only must never update/restore/archive an existing
+  natural key and must consume a bounded authoritative mastery snapshot that
+  distinguishes `expected_absent` from a specific existing row/version;
 - server-side same-actor browser concurrency/admission checks;
 - compare-and-set closure of a mobile-created/unknown-origin open clock;
-- safe existing-key Letter Mastery update/restore/archive across client streams;
+- existing-key Letter Mastery update/restore/archive only after a boundary that
+  every relevant writer crosses can enforce compare-and-set state;
 - atomic supported-path command attestation and positive web-origin evidence;
 - more complete ambiguous-result resolution;
 - web-specific operational reporting and support diagnostics;
@@ -967,6 +1095,26 @@ Any provenance statement remains asymmetric: positive attestation can prove a
 command passed through the supported wrapper, while absence means
 `mobile_or_legacy`, not proven mobile. If a rule must be globally authoritative,
 it belongs at a boundary every writer crosses or requires a new authority model.
+
+The phase-2 Letter Tracker candidate does not modify
+`apply_mobile_letter_mastery_mutation`, its payload, canonical hash, receipt,
+serializer, acknowledgement vocabulary, or mobile mapping. It uses a new named
+create-only contract plus a bounded actor-authorized read contract. The write
+requires `expected_absent`, performs one atomic insert-or-typed-conflict, and
+never restores, archives, or updates an existing natural key. Disposable
+PostgreSQL must race it against the unchanged mobile writer in both orderings:
+if mobile creates first, web conflicts without mutation; if web creates first,
+the later unchanged mobile writer may still supersede it, which the UI and
+operations must not misrepresent as impossible. Idempotency, actor/child
+authority, mobile pull, and real-SQLite compatibility are also required before
+any hosted apply.
+
+Safe existing-key restore/archive/update is a later protocol decision. A web
+compare-and-set RPC alone cannot prevent the unchanged mobile writer from
+performing a later last-writer-wins update; that guarantee requires an
+all-writer boundary or an explicitly versioned successor adopted by the mixed
+fleet. This focused create-only capability is not a reason to resurrect every
+wrapper/provenance/cron component from the superseded plan.
 
 A post-save receipt-verified sidecar is a possible intermediate feature, but it
 is not free: it adds write SQL, grants, retention/backup/seed scope, browser
