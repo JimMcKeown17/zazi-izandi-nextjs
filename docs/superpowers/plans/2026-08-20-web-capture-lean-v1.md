@@ -885,15 +885,73 @@ Planned web files:
 
 - `lib/supabase/client.ts`
 - `lib/auth/session.ts`
+- `lib/auth/lifecycle.ts`
+- `lib/auth/recovery-marker.ts`
 - `components/auth/auth-provider.tsx`
+- `components/auth/login-form.tsx`
+- `components/auth/reset-password-form.tsx`
+- `components/auth/authenticated-field-shell.tsx`
 - `app/login/page.tsx`
 - `app/reset-password/page.tsx`
 - auth/browser tests.
 
-RED cases include session absence/expiry, actor bind/unbind, cross-actor local
-state denial, sign-out with unresolved evidence, reset open-redirect refusal,
-and service-secret absence. Configure hosted reset redirects only during an
-authorized deployment gate.
+Freeze the following client-auth contract before UI implementation:
+
+- A usable authenticated namespace is created only after definitive
+  `auth.getUser()` verification. Bind that verified actor ID to a monotonically
+  advancing local actor epoch; a cached session, JWT, or auth-state event alone
+  cannot bind or advance an actor namespace.
+- Enable password sign-in only after definitive unauthenticated state. Loading,
+  recovery, or unverified state is neither sign-in nor capture-ready.
+- Use `signOut({ scope: "local" })` only. Web sign-out must not globally revoke
+  refresh tokens held by the installed mobile app or another supported client.
+- Before ordinary local sign-out, quarantine the current actor namespace: stop
+  reads, retries, and dispatch, then require confirmation against an opaque
+  actor-bound evidence reference, its exact revision, and its exact evidence
+  set. A stale, missing, or mismatched reference before local sign-out requires
+  a new warning. If the exact set changes only after preflight and local-only
+  sign-out succeeds, compare-and-dispose must preserve the changed evidence,
+  finish unauthenticated locally, and route the preserved evidence to later
+  recovery/support; it must never delete the changed set. Task 4 withholds the
+  ordinary sign-out UI while its default evidence port is fail-closed; Task 6
+  exposes that action only after the real journal-backed port and preserved-
+  evidence recovery handoff are proven.
+- Password recovery uses separate bounded, PII-free durable `exchanging`,
+  `active`, and `cleanup` marker phases. Only a purpose-checked PKCE exchange
+  whose returned actor exactly matches a server `getUser()` verification may
+  promote `exchanging` to `active`, and only the same mounted lifecycle retains
+  that password-update authority. Durable `active` state is cleanup evidence,
+  not reload authority: reloads and other tabs clean it up and require a fresh
+  link. Reload during `exchanging` likewise fails closed through local Auth
+  cleanup. A recovery marker written in another tab
+  immediately quarantines an ordinary authenticated namespace, every Auth
+  event synchronously revokes stale destructive authority before deferred
+  `getUser()` verification, and the protected shell independently requires both
+  authenticated status and marker absence. Live marker validity is rechecked
+  before password update. Recovery never disposes application evidence, and
+  required local Auth cleanup is resumable across reload until complete.
+- Task 4 tests this transition through an injectable fake evidence port only.
+  Task 6 must prove the real IndexedDB composition, including durable
+  quarantine/cleanup and reload behavior; Task 4 makes no storage proof claim.
+- Password update is fenced to the currently `getUser()`-verified actor and
+  epoch. It is refused after an actor/epoch transition and never persists or
+  logs the password.
+- Use manual exact-route PKCE recovery with `detectSessionInUrl: false`; only
+  the reviewed reset route may consume its PKCE state. Pin the reviewed
+  auth-js `redirectType` implementation dependency, and treat any auth-js
+  upgrade affecting that behavior or PKCE URL handling as a review-blocking
+  compatibility gate.
+- Login and reset copy is account-enumeration-safe. App context, journal, and
+  logs contain no raw session, user object, email address, access token, refresh
+  token, or raw auth response.
+
+RED cases include session absence/expiry, definitive actor bind/unbind and epoch
+change, cross-actor local-state denial, sign-in while authentication is
+unverified, local-only sign-out with unresolved-evidence quarantine, stale
+evidence confirmation, reload-resumable cleanup, actor-fenced password update,
+manual PKCE exact-route/open-redirect refusal, account-enumeration-safe
+messages, and service-secret absence. Configure hosted reset redirect allowlist
+only during an authorized deployment gate.
 
 ### Task 5 — Freeze and implement the readiness snapshot
 
