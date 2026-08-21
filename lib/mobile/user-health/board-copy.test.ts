@@ -170,12 +170,11 @@ test("durable stages and windowed indicators are labelled as separate claims", (
   const quietHtml = renderBoard({ users: [quietUser] });
   assert.match(quietHtml, /Activated<\/span>/);
   assert.match(quietHtml, /Quiet · 30d/);
-  assert.doesNotMatch(quietHtml, /Active · 30d/);
 
   const html = renderBoard();
-  assert.match(html, />Active · in window</);
-  assert.match(html, />Activated \(ever\)</);
-  assert.match(html, />Quiet \(activated, silent in window\)</);
+  assert.match(html, />Active in window</);
+  assert.match(html, />Activated ever</);
+  assert.match(html, />Activated but quiet</);
 });
 
 test("the windowed Active predicate reconciles to the summary tile count", () => {

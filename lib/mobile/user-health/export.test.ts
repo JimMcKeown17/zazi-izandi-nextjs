@@ -180,6 +180,7 @@ test("copy headers identify an active wave filter in both export modes", () => {
 test("a blocked-but-active EA shows both axes in copied text", () => {
   const blockedButActive = {
     ...VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0],
+    attention_reasons: ["auth_blocked" as const],
     auth: {
       ...VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0].auth,
       state: "unconfirmed" as const,
@@ -202,6 +203,15 @@ test("copied text keeps the durable stage separate from its windowed active or q
   assert.match(text, /Asemahle Mancayi — activated · active 30d/);
   assert.match(text, /Lihle Jacobs — activated · quiet 30d/);
   assert.doesNotMatch(text, /activated · 30d/);
+});
+
+test("the one-day chase list uses Today wording and the SAST boundary", () => {
+  const active = VALID_MOBILE_USER_HEALTH_PAYLOAD.users[0];
+  const text = buildChaseListText([active], { ...context, days: 1 });
+
+  assert.match(text, /User health chase list · today \(SAST\)/);
+  assert.match(text, /activated · active today/);
+  assert.doesNotMatch(text, /last 1 days|active 1d/);
 });
 
 test("degraded copied text preserves the pre-Part-B windowed wording", () => {

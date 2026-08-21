@@ -186,6 +186,7 @@ test("blockers are reported independently of the stage", () => {
   const blockedButActive = {
     ...base,
     auth: { ...base.auth, state: "unconfirmed" as const },
+    attention_reasons: ["auth_blocked" as const],
   };
   assert.equal(getActivityStage(blockedButActive), "active");
   assert.deepEqual(getUserAttentionReasons(blockedButActive), ["auth_blocked"]);

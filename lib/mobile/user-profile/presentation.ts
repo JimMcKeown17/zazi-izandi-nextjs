@@ -26,7 +26,8 @@ export function formatDurationSeconds(seconds: number | null): string {
 export function toHealthRowShape(
   profile: MobileUserProfileResponse
 ): MobileUserHealthRow {
-  return {
+  const expectation = profile.identity?.data_expectation ?? "unknown";
+  const row: MobileUserHealthRow = {
     user_id: profile.user_id,
     display_name:
       profile.identity?.display_name ?? profile.email ?? profile.user_id,
@@ -40,10 +41,15 @@ export function toHealthRowShape(
     ever_registered_device: profile.ever_registered_device,
     first_app_open_at: profile.lifetime.first_app_open_at,
     last_app_open_at: profile.lifetime.last_app_open_at,
+    attention_reasons: [],
     auth: profile.auth,
     app_device: profile.app_device,
     data: {
-      expectation: profile.identity?.data_expectation ?? "unknown",
+      // The profile RPC still exposes its legacy inferred expectation. Do not
+      // relabel that heuristic as the explicit setup-mode contract owned by
+      // mobile_user_health_domain_v3.
+      setup_mode: null,
+      expectation,
       classes: profile.data.classes,
       children: profile.data.children,
       groups: profile.data.groups,
@@ -52,4 +58,5 @@ export function toHealthRowShape(
     },
     activity: profile.windowed_activity,
   };
+  return row;
 }

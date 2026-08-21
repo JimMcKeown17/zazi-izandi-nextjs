@@ -48,6 +48,7 @@ test("the health-row adapter preserves every board field and uses windowed activ
   assert.equal(row.employment_status, profile.identity.employment_status);
   assert.equal(row.current_school_id, profile.identity.current_school_id);
   assert.equal(row.current_school, profile.identity.current_school);
+  assert.equal(row.data.setup_mode, null);
   assert.equal(row.data.expectation, profile.identity.data_expectation);
   assert.equal(row.data.children, profile.data.children);
   assert.equal(row.first_ever_activity_at, profile.lifetime.first_ever_activity_at);

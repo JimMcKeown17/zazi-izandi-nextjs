@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  deriveUserAttentionReasons,
   getUserAttentionReasons,
   hasRecentAppActivity,
   hasSeededDataReady,
@@ -14,6 +15,13 @@ const waveSchema = z.object({
   name: z.string().min(1),
   launch_date: z.iso.date(),
 });
+const attentionReasonSchema = z.enum([
+  "auth_blocked",
+  "seeded_classes_missing",
+  "seeded_children_missing",
+  "seeded_groups_missing",
+  "seeded_memberships_incomplete",
+]);
 
 const userHealthRowSchema = z.object({
   user_id: uuid,
@@ -28,6 +36,7 @@ const userHealthRowSchema = z.object({
   ever_registered_device: z.boolean().nullable().optional(),
   first_app_open_at: absoluteTimestamp.nullable().optional(),
   last_app_open_at: absoluteTimestamp.nullable().optional(),
+  attention_reasons: z.array(attentionReasonSchema),
   auth: z.object({
     state: z.enum(["ready", "unconfirmed", "banned", "missing_email"]),
     created_at: absoluteTimestamp,
@@ -42,6 +51,7 @@ const userHealthRowSchema = z.object({
     last_seen_at: absoluteTimestamp.nullable(),
   }),
   data: z.object({
+    setup_mode: z.enum(["seeded", "self_setup"]).nullable(),
     expectation: z.enum(["seeded", "self_setup", "unknown"]),
     classes: count,
     children: count,
@@ -257,6 +267,27 @@ export const mobileUserHealthSchema = z
           code: "custom",
           path: ["users", index, "data", "grouped_children"],
           message: "grouped children cannot exceed owned children",
+        });
+      }
+      const expectedExpectation = user.data.setup_mode ?? "unknown";
+      if (user.data.expectation !== expectedExpectation) {
+        context.addIssue({
+          code: "custom",
+          path: ["users", index, "data", "expectation"],
+          message: "setup expectation must match explicit setup mode",
+        });
+      }
+      const derivedReasons = deriveUserAttentionReasons(user);
+      if (
+        derivedReasons.length !== user.attention_reasons.length ||
+        derivedReasons.some(
+          (reason, reasonIndex) => user.attention_reasons[reasonIndex] !== reason
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["users", index, "attention_reasons"],
+          message: "attention reasons must reconcile with access and setup evidence",
         });
       }
     });

@@ -29,5 +29,5 @@ export function buildSyncIncidentFilterHref(
   }
 
   const serialized = query.toString();
-  return `/mobile-app/user-health${serialized ? `?${serialized}` : ""}`;
+  return `/mobile-app/user-health/sync-diagnostics${serialized ? `?${serialized}` : ""}`;
 }

@@ -91,9 +91,13 @@ function getPartBTextEvidence(
 ): string {
   const stage = getDurableStage(user);
   const windowedMarker = hasRecentAppActivity(user)
-    ? `active ${days}d`
+    ? days === 1
+      ? "active today"
+      : `active ${days}d`
     : isQuiet(user)
-      ? `quiet ${days}d`
+      ? days === 1
+        ? "quiet today"
+        : `quiet ${days}d`
       : null;
   return windowedMarker ? `${stage} · ${windowedMarker}` : stage;
 }
@@ -166,7 +170,9 @@ export function buildChaseListText(
       : context.wave
         ? ` · wave ${context.wave.name}`
         : "";
-  const header = `User health chase list · last ${context.days} days · ${scope}${waveScope} · generated ${context.generatedAt}`;
+  const windowLabel =
+    context.days === 1 ? "today (SAST)" : `last ${context.days} days`;
+  const header = `User health chase list · ${windowLabel} · ${scope}${waveScope} · generated ${context.generatedAt}`;
   const lines = rows.map((user) => {
     const evidence =
       options.partB === false

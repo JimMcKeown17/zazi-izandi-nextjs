@@ -29,40 +29,34 @@ function stubClipboard(writeText: (text: string) => Promise<void>): () => void {
   };
 }
 
-test("the summary presents the rollout-cutoff authentication proxy precisely", () => {
+test("the overview presents exactly four operational cards", () => {
   const html = renderToStaticMarkup(
     createElement(UserHealthSummary, {
-      data: VALID_MOBILE_USER_HEALTH_PAYLOAD,
+      users: VALID_MOBILE_USER_HEALTH_PAYLOAD.users,
+      days: VALID_MOBILE_USER_HEALTH_PAYLOAD.days,
+      schoolId: null,
+      cohort: "all",
+      wave: "all",
     })
   );
 
-  assert.match(html, /Authenticated after provisioning/i);
-  assert.match(html, /2\s*\/\s*3/i);
-  assert.match(html, /credential-release cutoff/i);
-  assert.match(html, /not app\/device proof/i);
-  assert.doesNotMatch(html, /Mobile logins/i);
-  assert.doesNotMatch(html, /Not tracked/i);
-  assert.doesNotMatch(html, /have signed in at least once/i);
-});
-
-test("the device summary tile describes current registered push devices", () => {
-  const html = renderToStaticMarkup(
-    createElement(UserHealthSummary, {
-      data: VALID_MOBILE_USER_HEALTH_PAYLOAD,
-    })
-  );
-
-  assert.match(
-    html,
-    /Currently registered push devices; not an install denominator/
-  );
-  assert.doesNotMatch(html, /Positive app-device evidence/);
+  assert.match(html, /EA accounts/i);
+  assert.match(html, /Activated ever/i);
+  assert.match(html, /Active · 30d/i);
+  assert.match(html, /Needs attention/i);
+  assert.doesNotMatch(html, /Authenticated after provisioning/i);
+  assert.doesNotMatch(html, /Device signals/i);
+  assert.doesNotMatch(html, /Seeded data ready/i);
 });
 
 test("summary tiles deep-link into board filters using the payload's own scope", () => {
   const html = renderToStaticMarkup(
     createElement(UserHealthSummary, {
-      data: VALID_MOBILE_USER_HEALTH_PAYLOAD,
+      users: VALID_MOBILE_USER_HEALTH_PAYLOAD.users,
+      days: VALID_MOBILE_USER_HEALTH_PAYLOAD.days,
+      schoolId: null,
+      cohort: "all",
+      wave: "all",
     })
   );
 
@@ -73,6 +67,10 @@ test("summary tiles deep-link into board filters using the payload's own scope",
   assert.match(
     html,
     /href="\/mobile-app\/user-health\?days=30&amp;state=active"/
+  );
+  assert.match(
+    html,
+    /href="\/mobile-app\/user-health\?days=30&amp;state=activated"/
   );
 });
 

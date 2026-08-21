@@ -50,9 +50,10 @@ Each page has a dedicated component directory. Components are named `*-section.t
 | `attendance/attendance-summary.tsx` | Server | Shift, EA, open-shift, automatic-clock-out, and completed-duration totals |
 | `attendance/clock-entries-table.tsx` | Client | Paginated desktop shift table and responsive evidence cards |
 | `attendance/time-entry-export-button.tsx` | Client | Same-origin CSV download with visible pending/failure states |
-| `user-health/user-health-filters.tsx` | Server | Activity-window and current-school query filters |
-| `user-health/user-health-summary.tsx` | Server | Onboarding-funnel and attention counts |
-| `user-health/user-health-board.tsx` | Client | Searchable, filterable, paginated identity/login/device/data/activity evidence board |
+| `user-health/user-health-summary.tsx` | Client subtree | Four population-scoped adoption, activity, and attention cards |
+| `user-health/user-health-technical-evidence.tsx` | Client subtree | Collapsed authentication, app-open, push-reachability, and version coverage |
+| `user-health/user-health-tabs.tsx` | Server | Route-backed Overview and Sync diagnostics navigation |
+| `user-health/user-health-board.tsx` | Client | Unified population scope and triage controls plus the paginated EA evidence board |
 
 The Clock In/Out and User health pages are server components. Client components
 receive already-validated response data and handle only local interaction;

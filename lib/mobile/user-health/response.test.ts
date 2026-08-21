@@ -89,6 +89,38 @@ test("health-board summaries and device evidence must reconcile", async () => {
   );
 });
 
+test("setup mode, expectation, and attention reasons must reconcile", () => {
+  const mismatchedExpectation = structuredClone(
+    VALID_MOBILE_USER_HEALTH_PAYLOAD
+  ) as MobileUserHealthResponse;
+  mismatchedExpectation.users[0].data.expectation = "self_setup";
+
+  const inventedSeedBlocker = structuredClone(
+    VALID_MOBILE_USER_HEALTH_PAYLOAD
+  ) as MobileUserHealthResponse;
+  inventedSeedBlocker.users[2].attention_reasons = [
+    "seeded_children_missing",
+  ];
+
+  const missingAuthBlocker = structuredClone(
+    VALID_MOBILE_USER_HEALTH_PAYLOAD
+  ) as MobileUserHealthResponse;
+  missingAuthBlocker.users[3].attention_reasons = [];
+
+  assert.equal(
+    mobileUserHealthSchema.safeParse(mismatchedExpectation).success,
+    false
+  );
+  assert.equal(
+    mobileUserHealthSchema.safeParse(inventedSeedBlocker).success,
+    false
+  );
+  assert.equal(
+    mobileUserHealthSchema.safeParse(missingAuthBlocker).success,
+    false
+  );
+});
+
 test("decoding RETAINS wave, lifetime, and app_open values exactly", () => {
   const payload = structuredClone(
     VALID_MOBILE_USER_HEALTH_PAYLOAD

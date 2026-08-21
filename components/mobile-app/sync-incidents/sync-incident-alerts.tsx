@@ -170,7 +170,7 @@ function SuccessPanel({
   pagerSlot?: ReactNode;
 }) {
   return (
-    <section
+    <div
       data-testid="mobile-sync-incident-alerts-success"
       className="space-y-4 rounded-xl border border-amber-200 bg-amber-50/40 p-4 shadow-sm"
     >
@@ -224,7 +224,7 @@ function SuccessPanel({
           </div>
         </details>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -249,7 +249,8 @@ export function SyncIncidentAlerts({
 
   const denied = result.kind === "not_authorized";
   return (
-    <section
+    <div
+      role="alert"
       data-testid={
         denied
           ? "mobile-sync-incident-alerts-denied"
@@ -272,6 +273,6 @@ export function SyncIncidentAlerts({
           ) : null}
         </div>
       </div>
-    </section>
+    </div>
   );
 }

@@ -11,6 +11,15 @@ export type MobileUserDataExpectation =
   | "self_setup"
   | "unknown";
 
+export type MobileUserSetupMode = "seeded" | "self_setup" | null;
+
+export type UserAttentionReason =
+  | "auth_blocked"
+  | "seeded_classes_missing"
+  | "seeded_children_missing"
+  | "seeded_groups_missing"
+  | "seeded_memberships_incomplete";
+
 export interface MobileRolloutWave {
   id: string;
   name: string;
@@ -30,6 +39,7 @@ export interface MobileUserHealthRow {
   ever_registered_device?: boolean | null;
   first_app_open_at?: string | null;
   last_app_open_at?: string | null;
+  attention_reasons: UserAttentionReason[];
   auth: {
     state: MobileUserAuthState;
     created_at: string;
@@ -44,6 +54,7 @@ export interface MobileUserHealthRow {
     last_seen_at: string | null;
   };
   data: {
+    setup_mode: MobileUserSetupMode;
     expectation: MobileUserDataExpectation;
     classes: number;
     children: number;

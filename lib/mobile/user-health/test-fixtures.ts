@@ -55,6 +55,7 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
       ever_registered_device: true,
       first_app_open_at: "2026-08-09T06:45:00.000Z",
       last_app_open_at: "2026-08-11T06:45:00.000Z",
+      attention_reasons: [],
       auth: {
         state: "ready",
         created_at: "2026-08-07T10:00:00.000Z",
@@ -69,6 +70,7 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
         last_seen_at: "2026-08-11T05:56:00.000Z",
       },
       data: {
+        setup_mode: "seeded",
         expectation: "seeded",
         classes: 1,
         children: 37,
@@ -99,6 +101,10 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
       ever_registered_device: true,
       first_app_open_at: null,
       last_app_open_at: null,
+      attention_reasons: [
+        "seeded_groups_missing",
+        "seeded_memberships_incomplete",
+      ],
       auth: {
         state: "ready",
         created_at: "2026-08-07T10:05:00.000Z",
@@ -113,6 +119,7 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
         last_seen_at: null,
       },
       data: {
+        setup_mode: "seeded",
         expectation: "seeded",
         classes: 1,
         children: 43,
@@ -143,6 +150,7 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
       ever_registered_device: true,
       first_app_open_at: null,
       last_app_open_at: null,
+      attention_reasons: [],
       auth: {
         state: "ready",
         created_at: "2026-08-11T19:19:00.000Z",
@@ -157,6 +165,7 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
         last_seen_at: "2026-08-11T06:01:00.000Z",
       },
       data: {
+        setup_mode: "self_setup",
         expectation: "self_setup",
         classes: 0,
         children: 0,
@@ -187,6 +196,7 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
       ever_registered_device: false,
       first_app_open_at: null,
       last_app_open_at: null,
+      attention_reasons: ["auth_blocked"],
       auth: {
         state: "banned",
         created_at: "2026-08-07T10:10:00.000Z",
@@ -201,6 +211,7 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
         last_seen_at: null,
       },
       data: {
+        setup_mode: null,
         expectation: "unknown",
         classes: 0,
         children: 0,
@@ -231,6 +242,7 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
       ever_registered_device: false,
       first_app_open_at: "2026-08-11T06:55:00.000Z",
       last_app_open_at: "2026-08-11T07:05:00.000Z",
+      attention_reasons: [],
       auth: {
         state: "ready",
         created_at: "2026-08-07T10:15:00.000Z",
@@ -245,6 +257,7 @@ export const VALID_MOBILE_USER_HEALTH_PAYLOAD = {
         last_seen_at: null,
       },
       data: {
+        setup_mode: "self_setup",
         expectation: "self_setup",
         classes: 0,
         children: 0,

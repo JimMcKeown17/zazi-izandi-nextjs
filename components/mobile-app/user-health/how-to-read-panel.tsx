@@ -61,10 +61,12 @@ export function HowToReadPanel({
             applies, post-provisioning authentication is unmeasured.
           </p>
           <p>
-            <strong className="text-slate-800">Server data.</strong> “Server
-            data ready” verifies stored ownership/count evidence, not a physical
-            device screen. A real signed-in app browse remains the strongest
-            proof that a specific EA sees the expected children and groups.
+            <strong className="text-slate-800">Setup mode.</strong> Seeded EAs
+            need the expected class, children, groups, and memberships. Self-setup
+            EAs are not flagged merely because that imported seed bundle is absent.
+            The mode is an explicit rollout decision, not an inference from school
+            type or later activity; correct the mode when the operational plan was
+            recorded incorrectly.
           </p>
           {lifetimeEvidence ? (
             <p>

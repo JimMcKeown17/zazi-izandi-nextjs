@@ -11,7 +11,7 @@ test("alert filter navigation preserves health filters but always resets cursor 
 
   assert.equal(
     href,
-    "/mobile-app/user-health?days=30&school_id=00000000-0000-4000-8000-000000000010&q=fixture&incident_kind=queue_overflow&descriptor_key=TIME_ENTRIES"
+    "/mobile-app/user-health/sync-diagnostics?days=30&school_id=00000000-0000-4000-8000-000000000010&q=fixture&incident_kind=queue_overflow&descriptor_key=TIME_ENTRIES"
   );
   assert.doesNotMatch(href, /cursor|actor_user_id|signed-secret/);
 });
@@ -22,7 +22,7 @@ test("clearing alert filters removes only alert-specific URL state", () => {
       "?days=7&state=quiet&incident_kind=support_root&descriptor_key=TIME_ENTRIES",
       { incidentKind: null, descriptorKey: null }
     ),
-    "/mobile-app/user-health?days=7&state=quiet"
+    "/mobile-app/user-health/sync-diagnostics?days=7&state=quiet"
   );
   assert.throws(
     () =>
