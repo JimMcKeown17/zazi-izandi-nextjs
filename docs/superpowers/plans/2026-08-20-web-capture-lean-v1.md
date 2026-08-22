@@ -108,7 +108,7 @@ RPCs remain available.
 | 6 | Authentication | Supabase email/password using the same account as mobile; Clerk remains unchanged elsewhere |
 | 7 | Authorization | Supabase JWT plus existing RPC/RLS checks; UI never supplies a selectable actor |
 | 8 | Write destination | Existing `time_entries`, `sessions`, and `session_attendees` operational tables; no v1 Letter Mastery write |
-| 9 | Write transport | Exact unchanged time-entry and session RPCs behind two fixed typed browser adapter methods |
+| 9 | Write transport | Exact unchanged time-entry RPC and current capture-flag session successor behind two fixed typed browser adapter methods |
 | 10 | Read transport | One new bounded read-only `web_capture_bootstrap_v1` RPC supplies readiness and exact ambiguity resolution; there is no second resolver |
 | 11 | Django | No interactive capture path and no stale-clock command/cron in v1 |
 | 12 | Session scope | Complete session, attendance, activity, reading-level, and notes record; all Letter Mastery writes, paper assessments, and grouping remain outside v1 |
@@ -169,11 +169,14 @@ The following five functions are release-blocking frozen interfaces:
 4. `public.apply_mobile_session_bundle_mutation_capture_flag_v1`
 5. `public.apply_mobile_letter_mastery_mutation`
 
-The browser calls only public functions 1 and 3. Functions 4 and 5 remain
-frozen upstream compatibility evidence but are not browser-v1 capabilities.
-Function 4 remains frozen even though the installed mobile mapping intentionally
-still targets function 3. The private core remains frozen because both public
-session functions depend on it.
+The browser calls only public functions 1 and 4. Current mobile SESSIONS
+transport also targets function 4. Function 3 remains frozen because installed
+older clients and already-materialized commands may still call the legacy
+wrapper; function 5 remains frozen upstream compatibility evidence but is not a
+browser-v1 capability. The private core remains frozen because both public
+session functions depend on it. This reviewed mapping reflects independent
+mobile activation commit `46b62f0`; web capture does not edit mobile production
+source to create it.
 
 Also frozen:
 
@@ -183,7 +186,9 @@ Also frozen:
 - hash/contract versions and receipt/head ordering;
 - exact canonical result envelopes and `{kind, code}` classifications;
 - serializer normalization and timestamp rules;
-- installed mobile RPC mapping and acknowledgement inventory;
+- the reviewed current mobile RPC mapping and acknowledgement inventory,
+  including the session successor's bounded no-receipt
+  `needs_parent/session_child_reference_unavailable` result;
 - SQLite schemas, pull mappings, repositories, and reconciliation behavior;
 - function signatures, owners, configuration, effective grants, and bodies.
 
@@ -206,7 +211,8 @@ EA browser
            ├─ submitTimeEntry()
            │    └─ apply_mobile_time_entry_mutation()       UNCHANGED
            └─ submitSessionBundle()
-                └─ apply_mobile_session_bundle_mutation()   UNCHANGED
+                └─ apply_mobile_session_bundle_mutation_capture_flag_v1()
+                       UNCHANGED CURRENT SUCCESSOR
                        │
                        ▼
 Supabase operational store and existing protocol-v2 receipts/heads
@@ -233,8 +239,12 @@ The only accepted result pairs are pinned explicitly:
 | `LETTER_MASTERY` | `{kind: "success", code: "mastery_recorded"}` — frozen upstream evidence only; not a v1 browser capability |
 
 Receipt existence, `stale_generation`, `protocol_violation`, `needs_parent`,
-an unknown pair, or a malformed body is not success. The adapter returns a
-typed classification; React never interprets raw response JSON.
+an unknown pair, or a malformed body is not success. For SESSIONS, exactly
+`{kind: "needs_parent", code: "session_child_reference_unavailable"}` is a
+known bounded no-receipt result from the current successor; it preserves the
+immutable command for bounded retry/support and never masquerades as accepted.
+Every other unknown pair remains malformed. The adapter returns a typed
+classification; React never interprets raw response JSON.
 
 The existing RPCs support more operations than lean v1 exposes. The fixed web
 adapter rejects outside the narrower product allowlist before network I/O:
@@ -286,14 +296,16 @@ roster members in total, 64 returned members per group, 2 full open-clock rows,
 20 recent time entries, 20 recent session roots, and 20 resolution requests.
 The provisioned collection reports exact total and returned counts plus one
 truncation flag; every group roster and history/open-clock collection reports
-the same three values. Critical provisioning is all-or-nothing: if any class,
-group, total-roster, or per-group-roster cap is exceeded, or if the
-authoritative membership graph is invalid, the server returns no partial
-classes/groups/rosters and marks provisioning `over_limit` or `invalid_graph`.
-The browser can never turn that prefix into capture authority. Recent-history
-truncation is valid because that history is advisory only. The history window
-is the current Johannesburg date plus the preceding six Johannesburg dates;
-unrestricted history is never returned.
+the same three values. Critical provisioning is all-or-nothing. An otherwise
+valid, nonempty, complete authoritative graph that exceeds a class, group,
+total-roster, or per-group-roster cap returns `over_limit`; an invalid
+authoritative membership graph returns `invalid_graph`; and a
+non-contradictory but incomplete or staged assigned-class collection returns
+`unprovisioned`. In every non-ready state the server returns no partial classes,
+groups, or rosters. The browser can never turn that prefix into capture
+authority. Recent-history truncation is valid because that history is advisory
+only. The history window is the current Johannesburg date plus the preceding
+six Johannesburg dates; unrestricted history is never returned.
 
 The snapshot must not include surnames, dates of birth, TeamPact
 `participant_id` values, contact details, or unrestricted historical data. The
@@ -453,6 +465,9 @@ Retention is state-based:
   accepted classification;
 - classified refusal with no accepted family: retain only while the EA corrects
   or deliberately dispositions the intent, then purge the refused envelope;
+- `needs_parent/session_child_reference_unavailable`: retain the exact immutable
+  command while the bounded same-day readiness-recheck policy below is active;
+  it has no receipt to resolve and is never purged as though accepted;
 - ambiguous/integrity/historical-entry-required: retain exact evidence until a
   preservation-first support disposition; never expire or clear it silently;
   and
@@ -483,6 +498,10 @@ draft
   → materialized
   → submitting_session
       ├─ ambiguous_same_day → retryable_same_day → submitting_session
+      ├─ child_reference_unavailable → readiness_recheck
+      │    ├─ same actor/day + same ready group/complete roster
+      │    │    + fewer than 3 total dispatches → retryable_same_day
+      │    └─ changed/non-ready/rollover/3 dispatches → support_or_historical
       ├─ classified_refusal → correct_or_support
       ├─ integrity_fault    → support_only
       └─ accepted           → complete
@@ -497,7 +516,16 @@ At Johannesburg rollover before session confirmation:
 The only rollover mechanism is the optional resolution list inside a fresh
 `web_capture_bootstrap_v1` call. There is no separate resolver, automatic replay,
 or fallback writer. A `not_found` result preserves local evidence and moves to
-`historical_entry_required`.
+`historical_entry_required`. The successor's receipt-free
+`needs_parent/session_child_reference_unavailable` outcome never enters receipt
+resolution. It permits at most three total dispatches of the exact same command,
+including the initial call. Before either retry, a fresh actor-matching
+bootstrap must still be `ready` and must re-confirm the same group and complete
+child roster on the same Johannesburg date. The browser never changes the
+mutation, stream, audit, generation, root, or member identities. A changed
+roster, non-ready bootstrap, exhausted budget, or rollover preserves evidence
+and routes to support or `historical_entry_required`; it cannot invoke another
+writer path.
 
 ### 8.3 Materialization rule
 
@@ -573,7 +601,7 @@ say that explicitly.
   originate from a strictly accepted supported-web clock-in, then immediately
   re-read the entry and require matching entry/actor identity and
   `sign_out_time IS NULL`. Materialize only the generation-one-to-generation-two
-  update and send all 11 exact writer fields. The unchanged old RPC does not
+  update and send all 11 exact writer fields. The unchanged time-entry RPC does not
   compare `server_updated_at` as a cross-stream compare-and-set: a mobile or
   second-browser close after this re-read but before the RPC can still be
   overwritten. This is an eligibility check, not a race guarantee; the
@@ -598,7 +626,14 @@ existing mobile writer:
 
 At session start, pin the group/roster snapshot and the server Johannesburg
 date. Stable attendee/member IDs are materialized before network I/O. Submit the
-session/attendance bundle atomically through the unchanged session RPC.
+session/attendance bundle atomically through the unchanged current capture-flag
+successor. The materializer may include only the exact pinned, provisioned
+actor roster. If assignment state changes after that snapshot, the successor
+may either accept the family with its existing server-side review flag or
+return the bounded no-receipt
+`needs_parent/session_child_reference_unavailable` result. The browser never
+interprets that result as acceptance, never rematerializes new identities for
+it, and preserves the original command for the Task 6 retry/support policy.
 
 Letter Tracker changes are not collected or written in lean v1. The unchanged
 mastery writer performs `ON CONFLICT ... DO UPDATE` even for a claimed `insert`,
@@ -647,19 +682,22 @@ Field UI requirements:
 Before auth or capture UI, commit a failing contract suite in the web repository
 that proves:
 
-- only the exact old time-entry and session public RPC names can be dispatched;
+- only the exact browser-v1 time-entry and current session-successor public RPC
+  names can be dispatched;
 - the gateway exposes exactly `submitTimeEntry` and `submitSessionBundle`, with
   no caller-selected function/table/path and no Letter Mastery method;
 - exact RPC argument names, exact payload key sets, the supported-v1 operation
   subset, basic UUID/timestamp/generation/audit types, and canonical
   actor/record bindings are frozen in four synthetic golden commands: clock-in,
   clock-out, letters session, and blending session;
-- the unchanged old session RPC is distinguished from the unmapped
-  capture-flag successor and its successor-only result vocabulary;
+- the current capture-flag session successor is distinguished from the frozen
+  legacy wrapper, and only its reviewed successor-specific
+  `needs_parent/session_child_reference_unavailable` pair is admitted as an
+  additional known browser result;
 - accepted results use the actual PostgreSQL JSONB schemas, tolerate
   non-semantic object-key presentation order, and bind mutation, stream, actor,
   audit, root, and every member identity to the submitted command;
-- every known old-RPC `(kind, code)` pair is distinguished from malformed,
+- every known current-target `(kind, code)` pair is distinguished from malformed,
   unknown, raw-HTTP, or wrong-command output without leaking a raw response;
 - a deliberately shallow fixed-name pass-through adapter fails; and
 - the pinned mobile contract commit, complete source-file digest inventory, and
@@ -873,17 +911,27 @@ Current web files:
 
 Requirements:
 
-- pin the reviewed upstream commit, complete source-file digest inventory, and
-  five exact function bodies using Git objects rather than the active mobile
-  worktree;
+- preserve the historical `c53298c…` snapshot unchanged and add a new snapshot
+  directory keyed by reviewed current mobile origin `663af94…`;
+- pin all 31 protected paths at `663af94…`, explicitly review the exact six-path
+  delta from `c53298c…` (session transport, SESSIONS acknowledgement inventory,
+  both focused tests, active-session state, and its focused test), and do not
+  remove unrelated changed paths from the inventory;
+- retain all five unchanged function-body pins and record that the three
+  relevant migration blobs and writer bodies did not change when the client
+  mapping moved;
+- make the Git-object checker fail on any later unreviewed `origin/main` drift,
+  rather than treating the current-origin pin as a wildcard;
 - encode the four golden wire commands and identity-bound result contracts
   without importing Expo, SQLite, Supabase, React, or browser storage;
 - require a future module exposing only two fixed methods and no generic or
   Letter Mastery dispatcher;
 - make shallow pass-through, one-key, one-code, wrong-identity, and relevant
   upstream-digest mutations fail the suite;
-- use the exact old-RPC acknowledgement inventory and treat successor-only or
-  unknown results as malformed;
+- use the exact reviewed current-target acknowledgement inventory, admit only
+  the successor's bounded no-receipt
+  `needs_parent/session_child_reference_unavailable` pair in addition to the
+  shared session outcomes, and treat every other unknown result as malformed;
 - review fixture provenance against current mobile serializers and migrations,
   while keeping SQL-only semantics out of the browser validator;
 - do not call Supabase or add credentials in this task; and
@@ -921,7 +969,7 @@ attendance with at least one present child; exact letters/blending activity
 unions; stable attendee IDs; GPS pair/null rules; and clock/session chronology.
 The gateway consumes a validated materialized command and owns only fixed
 dispatch plus writer-result classification. Bootstrap/open-clock rereads use
-the separate read decoder; the legacy writer is not a cross-stream
+the separate read decoder; the time-entry writer is not a cross-stream
 `server_updated_at` compare-and-set.
 
 Run pure tests, typecheck, lint, build, and dependency audit. Commit after an
@@ -935,17 +983,28 @@ It makes engine evidence—not a larger browser validator—the next milestone.
 - generate one exact clock-in, clock-out, letters session, and blending session
   through the production Task 3 materializers;
 - apply the unchanged mobile migration chain to a guarded disposable PostgreSQL
-  17 database and invoke the unchanged old RPCs under synthetic authenticated
-  actor claims;
+  17 database and invoke the unchanged time-entry RPC plus current capture-flag
+  session successor under synthetic authenticated actor claims;
 - prove exact replay, changed-payload mutation-ID rejection, actor isolation,
   time-entry lifecycle, atomic session/attendance families, canonical receipts,
   and record heads;
-- replay a receipt accepted before web work and recheck all frozen writer-body
-  digests;
+- prove the successor returns exactly
+  `needs_parent/session_child_reference_unavailable` for an unavailable child,
+  the production classifier preserves the original command as known
+  non-success, and no session, attendee, review flag, receipt, or record head is
+  created;
+- accept one exact session command through the frozen legacy wrapper, replay
+  that identical envelope through the successor, receive the exact stored
+  canonical result, and prove no duplicate domain DML, receipt/head, or newly
+  invented review flag; recheck all frozen writer-body digests;
 - pull the resulting rows through the actual mobile pull mapping into real
   SQLite, close/reopen, and read them through production repositories/selectors;
-- prove pulled web rows do not materialize as outbound mobile mutations and an
-  ordinary subsequent mobile write still works; and
+- prove pulled web rows do not materialize as outbound mobile mutations; submit
+  an ordinary later mobile SESSIONS command through the actual production
+  mobile transport, assert that it selected
+  `apply_mobile_session_bundle_mutation_capture_flag_v1`, and prove legacy,
+  web-successor, and current-mobile-successor rows all converge through the real
+  mobile pull/SQLite/repository path; and
 - leave the active mobile checkout, mobile production code, hosted Supabase,
   packages, and releases untouched.
 
@@ -1140,12 +1199,21 @@ Provisioning state uses this deterministic precedence:
    cannot participate in exactly one current-year, active, complete
    class/grouping/membership path, or if the path has any mismatch/archived/
    unsupported value described above. An actor with only an active class
-   assignment and no group or child assignment is not contradictory.
+   assignment and no group or child assignment is not contradictory. A staged
+   class assignment without an active complete grouping is therefore not, by
+   itself, `invalid_graph`.
 3. `over_limit` applies only when the complete authoritative graph is otherwise
    valid and nonempty but exceeds any class/group/total-member/per-group cap.
 4. `unprovisioned` applies when no contradictory actor-rooted graph exists but
-   there is no nonempty complete class + group + member set.
-5. `ready` applies only to a nonempty, complete, valid graph within every cap.
+   there is no nonempty complete class + group + member set, or when a staged
+   class assignment means the actor's complete assigned-class collection is
+   not yet capture-ready. In particular, one complete class/group/member path
+   plus another within-cap assigned class that lacks its active complete
+   grouping is `unprovisioned`, with no partial critical collection returned.
+5. `ready` applies only to a nonempty, complete, valid graph within every cap,
+   and only when every active actor-assigned class has an active complete
+   grouping state/version. A ready response never exposes a usable prefix of a
+   partly staged assigned-class collection.
 
 Every non-ready state returns `returned_* = 0` and empty critical class/group/
 roster arrays. Its `total_*` fields still report exact actor-rooted active-ledger
@@ -1218,8 +1286,12 @@ Planned web files:
 Prove storage capability before capture, immutable materialized commands,
 byte-equivalent retry, reload recovery, rollover resolution,
 actor isolation, tab fencing, bounded PII-free diagnostics, exact journal field
-allowlists/retention rules, and evidence-preserving sign-out. Do not add
-service-worker/background-sync code.
+allowlists/retention rules, and evidence-preserving sign-out. Prove the exact
+successor `needs_parent` transition: no receipt lookup, fresh same-actor/day
+ready bootstrap, unchanged group/complete roster, exact-byte retry, three total
+dispatches including the initial call, and support/historical preservation on
+any failed precondition or exhausted budget. Do not add service-worker/
+background-sync code.
 
 ### Task 7 — Implement live clock flow
 
@@ -1360,16 +1432,23 @@ Every item must be true:
 - [ ] The EA-token readiness snapshot returns the expected actor, roster, group,
       clock, and bounded-history shape.
 - [ ] Browser source/bundle/env/logs contain no service-role or Django secret.
-- [ ] The adapter can dispatch only the exact unchanged time-entry and session
-      RPCs; Letter Mastery dispatch is impossible.
+- [ ] The adapter can dispatch only `apply_mobile_time_entry_mutation` and
+      `apply_mobile_session_bundle_mutation_capture_flag_v1`; the frozen legacy
+      session wrapper and Letter Mastery writer are unreachable from web.
 - [ ] Exact payload/result fixtures and upstream digests are pinned and
       independently reviewed.
 - [ ] All five function identities and bodies are unchanged from the recorded
       baseline.
-- [ ] Pre-web accepted v2 receipts replay to their canonical results.
+- [ ] A legacy-wrapper-accepted session command replays through the successor
+      to its exact canonical result with no duplicate DML/receipt/head/review
+      flag.
 - [ ] Same-command retry creates at most one time entry/session.
 - [ ] Session/attendance remains atomic and the UI states truthfully that Letter
       Tracker was not updated.
+- [ ] Exact successor `needs_parent/session_child_reference_unavailable` is a
+      known non-success, leaves no session/attendee/review-flag/receipt/head
+      residue, and retains the exact command under the three-total-dispatch
+      Task 6 policy.
 - [ ] Web closes only a locally attested accepted web clock after its immediate
       reread; unknown/mobile entries are view-only, the UI surfaces and blocks
       cross-client clock handling, accepted time-entry GPS envelopes purge, and
@@ -1381,10 +1460,13 @@ Every item must be true:
       persisted identity match; refusals without provable audit identity are
       indistinguishable from absence, preserve local evidence, and an
       unresolved rollover never invokes a writer.
-- [ ] Real SQLite pull/close/reopen and subsequent ordinary mobile writes pass.
-- [ ] No mobile production code, SQLite, mapping, or release change is present.
-- [ ] No write-side Supabase migration, provenance sidecar, sweep, or Django cron
-      is present.
+- [ ] Real SQLite pull/close/reopen proves legacy, web-successor, and a later
+      production-mobile-successor SESSIONS write coexist with no outbound echo.
+- [ ] No mobile production code, SQLite, mapping, or release change exists
+      relative to the reviewed `663af94…` baseline.
+- [ ] No web-v1-added write-side Supabase migration/RPC/grant/trigger,
+      provenance sidecar, sweep, or Django cron is present; the pre-existing
+      frozen capture-flag migration remains compatibility evidence.
 - [ ] Production 320px browser E2E and device matrix pass.
 - [ ] At least three real EAs complete a controlled school day.
 - [ ] Open clocks are reviewed operationally during the pilot.
