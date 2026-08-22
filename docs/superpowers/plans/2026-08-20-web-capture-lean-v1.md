@@ -427,7 +427,20 @@ Use IndexedDB through a narrow, versioned adapter. The app is still online-first
 IndexedDB protects a loaded workflow and ambiguous request, not offline roster
 operation.
 
-All records are keyed by authenticated actor UUID and schema version. Persist:
+Before exposing capture authority, open the exact schema version, perform and
+complete a real sentinel write/read/delete transaction, close, reopen, and
+confirm the expected durable schema/state. Missing/blocked IndexedDB or Web
+Locks, blocked upgrades, version mismatch, corruption, `QuotaExceededError`,
+transaction abort, or `versionchange` makes capture unavailable/read-only; close
+connections on version change and never recover by deleting the database or by
+falling back to volatile memory. Browser storage estimates/persistence grants
+are advisory only. This is preservation evidence, not a guarantee against the
+user clearing all site data or complete browser eviction.
+
+All learner/journal records are keyed by authenticated actor UUID and schema
+version. Bounded PII-free origin-global metadata may contain only the database
+schema/capability sentinel and the origin-wide lock owner/fence—never learner,
+command, actor-profile, Auth, or bootstrap data. Persist:
 
 - the minimum learner-linked draft state required to resume the loaded flow;
 - exact materialized command envelopes and operation order;
@@ -450,14 +463,17 @@ retry is impossible without them. TeamPact `participant_id`, learner/staff
 names, dates of birth, email/contact details, full roster/bootstrap responses,
 auth/access/refresh tokens, and raw server responses are forbidden.
 
-The diagnostic ring is a different data class and remains PII-free: it contains
+The diagnostic ring is a different data class and remains PII-free: its event
+payload contains
 no actor/child/group/record UUID, notes, attendance, teaching selections, token,
-raw payload, or raw response.
+raw payload, or raw response. It is capped at 32 events per actor namespace,
+evicts oldest first, and accepts only reviewed event codes, bounded counts/
+durations, and timestamps—never arbitrary strings or `Error` objects.
 
 Retention is state-based:
 
 - accepted `TIME_ENTRIES`: immediately purge the exact command payload,
-  timestamp/GPS envelope, mutation ID, and raw result after strict accepted
+  timestamp/GPS envelope, and mutation ID after strict in-memory accepted
   classification. Retain only the actor-scoped stream/audit counter, per-key
   generation counter, and a minimal local marker containing the accepted open
   entry ID; after accepted clock-out, clear that marker and per-key counter;
@@ -491,13 +507,23 @@ On actor change, the new actor cannot enumerate, render, or dispatch another
 actor's records. Sign-out with unresolved work requires an explicit warning;
 support guidance preserves evidence before any deletion.
 
+Persisted actor UUIDs are partition keys, not reusable authorization. The live
+`ActorNamespace` object issued by Task 4 is required for every actor-visible
+operation; its in-memory epoch/object identity is never persisted or rebuilt as
+a capability. Recheck that live authority before foreground transport and after
+every awaited bootstrap, geolocation, lock acquisition, or transport result.
+Only the provider-internal sign-out evidence port is deliberately permitted to
+continue after Task 4 synchronously revokes the live namespace. It remains
+bound to the already-held origin lock, its exact actor/fence/quarantine, and the
+opaque revision/evidence set issued during that one sign-out transition.
+
 ### 8.2 Command state machine
 
 ```text
 draft
   → materialized
-  → submitting_session
-      ├─ ambiguous_same_day → retryable_same_day → submitting_session
+  → submitting
+      ├─ ambiguous_same_day → retryable_same_day → submitting
       ├─ child_reference_unavailable → readiness_recheck
       │    ├─ same actor/day + same ready group/complete roster
       │    │    + fewer than 3 total dispatches → retryable_same_day
@@ -506,11 +532,13 @@ draft
       ├─ integrity_fault    → support_only
       └─ accepted           → complete
 
-At Johannesburg rollover before session confirmation:
-  materialized | submitting_session | retryable_same_day
+At Johannesburg rollover before command confirmation:
+  materialized | submitting | retryable_same_day
     → readback_pending
        ├─ exact resolved accepted receipt → complete
-       └─ not provable → historical_entry_required
+       ├─ not_found → historical_entry_required
+       ├─ timeout | unavailable → readback_pending
+       └─ malformed | wrong identity → integrity_fault → support_only
 ```
 
 The only rollover mechanism is the optional resolution list inside a fresh
@@ -519,9 +547,12 @@ or fallback writer. A `not_found` result preserves local evidence and moves to
 `historical_entry_required`. The successor's receipt-free
 `needs_parent/session_child_reference_unavailable` outcome never enters receipt
 resolution. It permits at most three total dispatches of the exact same command,
-including the initial call. Before either retry, a fresh actor-matching
+including the initial call. Every committed reservation consumes one attempt,
+whether it returns a known outcome or its transport completion is unknown.
+Before either retry, a fresh actor-matching
 bootstrap must still be `ready` and must re-confirm the same group and complete
-child roster on the same Johannesburg date. The browser never changes the
+child roster, programme level, and other bootstrap authority fields consumed by
+the frozen materializer on the same Johannesburg date. The browser never changes the
 mutation, stream, audit, generation, root, or member identities. A changed
 roster, non-ready bootstrap, exhausted budget, or rollover preserves evidence
 and routes to support or `historical_entry_required`; it cannot invoke another
@@ -543,6 +574,33 @@ increments it. Retry never increments either counter. Stream, audit, generation,
 and command persistence are one IndexedDB transaction so a crash cannot reuse a
 counter for different work.
 
+The durable command preserves the exact frozen ten-argument tuple and the
+original `p_payload` string byte-for-byte, including key order, nulls, and
+escaping. A bounded fingerprint detects accidental corruption only; it is not
+an authenticity claim. Before the atomic write, prepare UUIDs, the proposed
+counter state, materializer output, validation, and fingerprint outside the
+read-write transaction. The transaction then re-reads and compare-and-sets the
+expected actor state/fence before persisting the counters and command together.
+A failed compare-and-set discards that candidate and recomputes from fresh
+state; it never mutates or retries the candidate under new identity counters.
+No network, timer, geolocation, or asynchronous digest is awaited inside an
+IndexedDB transaction. Durability is acknowledged only from the transaction's
+`complete` event, never from an individual request's `success` event.
+
+Task 6 may expose a transaction-backed **dispatch reservation**, but it does not
+invoke a transport or select an RPC. Reserving a foreground attempt advances
+the bounded attempt count, changes the stored phase to `submitting`,
+and returns only the immutable typed command plus an actor/lease/attempt-bound
+reservation token. That transaction commits before network I/O. The journal
+accepts only sanitized classified outcomes, never raw HTTP/Supabase results or
+errors. Applying an outcome must compare the current actor quarantine, lease
+fence, command revision, and reservation token in one transaction. A crash or
+abort after reservation cannot claim completion: the exact command remains
+durable and reload treats the abandoned `submitting` attempt as
+ambiguous evidence. An accepted outcome purges the exact command and performs
+any permitted minimal clock-marker/counter change atomically in the same
+compare-and-set transaction.
+
 Losing the browser store does not permit reconstruction of an unresolved
 command under a new stream. Preserve/read back authoritative actor-owned state
 or route to support. A fresh stream may create new work only after readiness is
@@ -556,12 +614,85 @@ accepted result whose embedded audit sequence and complete persisted identity
 can be proven. Refusal receipts without provable audit identity become uniform
 `not_found` and preserve the local command for support.
 
+Reload cannot infer the authoritative day from the device. It first performs a
+fresh empty-resolution bootstrap. A matching server Johannesburg date may
+permit an explicit same-day retry; rollover prohibits every writer call and
+uses a second bounded bootstrap containing deterministic resolution batches of
+at most 20 commands. Every response index and identity must match its request,
+and each resolved canonical result still passes through the frozen Task 3
+classifier. Timeout/unavailable readback stays `readback_pending`; `not_found`
+moves to `historical_entry_required`; malformed or wrong-identity readback moves
+to integrity/support. Every outcome preserves the exact bytes until its allowed
+disposition, and none authorizes a writer. Foreground bootstrap and readback use
+a finite orchestration deadline, and actor/fence checks discard a late result.
+
 ### 8.4 Same-browser concurrency
 
 Only one capture surface may own the actor's local lease. A second tab is
-read-only and explains where capture is active. The implementation uses a
-tested browser lock/heartbeat boundary with takeover after a stale lease without
-changing any command identity.
+read-only and explains where capture is active. One origin-wide exclusive Web
+Lock is the browser-lifetime ownership primitive because all tabs share one
+Supabase Auth storage namespace; actor-specific locks could otherwise permit
+two differently named owners around one changing session. After acquiring the
+lock, the owner advances a monotonic actor-scoped IndexedDB fence and binds the
+current tab and verified actor to that fence. Every command materialization,
+dispatch reservation, outcome, purge, and accepted-clock-marker transaction
+must compare the live actor namespace, quarantine state, tab owner, and fence.
+A heartbeat, `BroadcastChannel`, storage event, or UI flag is notification only
+and never authorizes capture or stale takeover; ownership changes only after the
+Web Lock is actually released/acquired and the durable fence advances. If Web
+Locks are unavailable, capture is read-only/disabled.
+Do not add a `localStorage` lock or time-expiry fallback in v1.
+
+Sign-out quarantine is durable and cross-tab. The provider-internal sign-out
+evidence sequence is the deliberate live-namespace exception: immediately
+before calling the Task 4 sign-out action, the provider synchronously verifies
+the live namespace and origin-lock actor/fence and arms an opaque one-shot
+transition without an awaited gap. Task 4 then synchronously revokes its live
+namespace before the evidence port's first await. `inspect(actorUserId)` accepts
+only that exact lock-bound transition, then atomically quarantines the actor,
+advances the fence, and reads one coherent revision-bound exact evidence set.
+It never reconstructs authority from the actor UUID. Other tabs and late
+results cannot materialize, reserve, dispatch, apply, or purge under the old
+fence. Releasing a Web Lock or losing a tab never deletes or changes a command;
+a later verified same-actor owner must explicitly resume/recover the journal
+under a newly advanced fence. Quarantine survives confirmation UI, refresh,
+sign-out failure, and reload and is never silently cleared by an Auth event. A
+different actor cannot clear it.
+
+The Task 6 runtime exposes its `EvidenceDispositionPort` view separately from
+an explicit `readQuarantine(namespace)` / `resumeQuarantinedActor(...)` control.
+The provider gates readiness/capture on this journal state even when Task 4 is
+otherwise authenticated. “Stay signed in” first calls the existing Task 4
+server-verification path for the exact warned actor, retains/reuses the already-
+held origin Web Lock, then resumes with the live `ActorNamespace`, exact
+quarantine ID/generation, lock owner, and current fence. Reload/crash/later-
+login recovery must newly acquire the released origin lock before resume. One
+IndexedDB transaction advances the fence and clears quarantine while preserving
+every evidence record. Any
+failed actor/lock check or event before transaction completion aborts and leaves
+quarantine intact. An actor/lock event after commit cannot retroactively restore
+quarantine; it synchronously revokes the live namespace/owner so capture remains
+blocked. A later same-actor login after a normal sign-out receives the same
+explicit resume action; quarantine is not auto-cleared. This composition does
+not change the frozen Task 4 lifecycle or evidence interface.
+
+The evidence revision increments for every evidence-affecting transition even
+when its ID set is unchanged. The exact sorted evidence universe includes
+learner-linked drafts and every nonterminal/reserved/ambiguous/refusal/
+integrity/historical/support command, each under a separate opaque evidence
+UUID rather than a child/session/mutation/business identifier. It excludes
+accepted/purged sessions, PII-free diagnostics, counters, and the minimal
+accepted open-clock marker. `compareExact` and `compareAndDisposeExact` remain
+usable after local sign-out, compare the exact actor/revision/set in one
+transaction, and fail closed as `unknown` on storage/schema/corruption/overflow
+errors. Generic sign-out disposal never deletes the accepted open-clock marker.
+The later `compareExact` and post-sign-out `compareAndDisposeExact` calls hold
+the same origin Web Lock and compare the opaque issued ticket, exact actor,
+quarantine ID/generation, tab owner/fence, evidence revision, and sorted
+evidence set in one transaction. The provider keeps that lock through the
+complete disposition even when the SDK sign-out event synchronously revokes
+actor authority, then releases it only after disposal/preservation has settled.
+These transition calls never require or reconstruct an `ActorNamespace`.
 
 This does not coordinate different phones or browsers. The pilot operating rule
 is one active capture device/browser per EA, with a fresh bootstrap before clock
@@ -601,7 +732,7 @@ say that explicitly.
   originate from a strictly accepted supported-web clock-in, then immediately
   re-read the entry and require matching entry/actor identity and
   `sign_out_time IS NULL`. Materialize only the generation-one-to-generation-two
-  update and send all 11 exact writer fields. The unchanged time-entry RPC does not
+  update and send all 10 exact writer arguments. The unchanged time-entry RPC does not
   compare `server_updated_at` as a cross-stream compare-and-set: a mobile or
   second-browser close after this re-read but before the RPC can still be
   overwritten. This is an eligibility check, not a race guarantee; the
@@ -829,14 +960,15 @@ business reporting. Review their open clocks daily during the pilot.
 ### Planning repository
 
 - Repository: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2026/zazi-izandi-nextjs`
-- Current revision branch: `plan/lean-v1-conformance-boundary`
+- Current revision branch: `plan/task6-journal-contract`
 - Owns this governing plan and design history only.
 
 ### Web repository
 
 - Repository: `/Users/jimmckeown/Development/zazi-izandi-web`
 - Branch: `feat/field-capture-v1`
-- Current foundation commit: `9be35c8`
+- Original scaffold commit: `9be35c8`
+- Current reviewed checkpoint: `e199a93`
 - Owns auth, bounded reads, IndexedDB journal, fixed write adapters, UI, E2E,
   security headers, and rollout documentation.
 - Has no remote/hosted project at this checkpoint.
@@ -1281,17 +1413,49 @@ Planned web files:
 - `lib/capture/state-machine.ts`
 - `lib/capture/retry-policy.ts`
 - `components/field/submission-status.tsx`
-- storage/state tests.
+- `components/auth/auth-provider.tsx`
+- `components/auth/authenticated-field-shell.tsx`
+- `AGENTS.md`, `CLAUDE.md`, and `README.md` only for bounded current-scope
+  corrections that remove already-implemented bootstrap/future-task claims
+- focused storage/state tests and `e2e/journal.spec.ts`.
+
+Task 6 is a client-only persistence, command-ownership, and recovery task. It
+does not define a new materializer or domain intent, invoke a writer transport,
+render capture controls, or cache a roster for offline use. A dispatch
+reservation is local durability/accounting before Task 7/8 foreground
+transport; it is not dispatch. The exact retry journal remains
+temporary learner-linked operational data under Section 8.1; only the bounded
+diagnostic ring is PII-free. Task 6 replaces Task 4's default fail-closed
+evidence port with the real actor-scoped IndexedDB port and exposes ordinary
+local sign-out only after that composition, quarantine, compare-and-dispose,
+and reload behavior are proven.
+
+The public journal union is closed to the frozen `TIME_ENTRIES` and `SESSIONS`
+commands. It cannot accept a caller-selected RPC/table/URL/descriptor, generic
+operation, transport callback, arbitrary exception, or raw result. It returns a
+reserved exact typed command to Task 7/8 and accepts only the small classified
+outcome union (`accepted`, exact successor `needs_parent`, known refusal,
+ambiguous, integrity fault). It has no autonomous queue worker or replay loop.
 
 Prove storage capability before capture, immutable materialized commands,
 byte-equivalent retry, reload recovery, rollover resolution,
-actor isolation, tab fencing, bounded PII-free diagnostics, exact journal field
-allowlists/retention rules, and evidence-preserving sign-out. Prove the exact
+actor isolation, tab fencing, a bounded PII-free diagnostic ring, exact journal
+field allowlists/retention rules, and evidence-preserving sign-out. Prove the exact
 successor `needs_parent` transition: no receipt lookup, fresh same-actor/day
 ready bootstrap, unchanged group/complete roster, exact-byte retry, three total
 dispatches including the initial call, and support/historical preservation on
 any failed precondition or exhausted budget. Do not add service-worker/
 background-sync code.
+
+Pure tests use injected storage/lock clocks for state discrimination, but they
+are not durability proof. Playwright must exercise native IndexedDB and Web
+Locks for transaction completion/abort, close/reopen recovery, unavailable
+capability, two-tab exclusive ownership, lock release plus fence advance, stale
+owner late-result rejection, durable sign-out quarantine/exact-set disposal,
+and 320px warning/resume/sign-out behavior. Correctness must remain unchanged
+when notification messages are dropped. No automatic queue worker, timer/
+`online`-event retry, CacheStorage, service worker, Background Sync, or Periodic
+Sync is permitted.
 
 ### Task 7 — Implement live clock flow
 
