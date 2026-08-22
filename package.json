@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test:unit": "node --import tsx --test lib/pm/*.test.ts",
     "test:mobile": "tsx --test lib/mobile/*.test.ts lib/mobile/*/*.test.ts",
+    "test:ea-set-password": "node --import tsx --test lib/ea-set-password/*.test.ts",
     "seed:eas": "tsx scripts/seed-clerk-eas.ts"
   },
   "dependencies": {
@@ -20,6 +21,7 @@
     "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
+    "@supabase/supabase-js": "2.100.1",
     "@vercel/analytics": "^2.0.1",
     "ai": "^6.0.167",
     "class-variance-authority": "^0.7.1",

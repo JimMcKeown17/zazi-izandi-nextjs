@@ -2,6 +2,7 @@ import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import type { Role } from "@/lib/mobile/capabilities";
+import { isPublicEaSetPasswordRoute } from "@/lib/routes/public-routes";
 
 const STAFF_ROLES: Role[] = ["junior_staff", "senior_staff", "admin"];
 
@@ -13,13 +14,6 @@ const PROTECTED_ROUTES: Record<string, Role[]> = {
   "/mobile-app": [...STAFF_ROLES, "zz_data_manager"],
 };
 
-function isPublicMobileInviteRoute(pathname: string): boolean {
-  return (
-    pathname === "/ea-set-password" ||
-    pathname.startsWith("/ea-set-password/")
-  );
-}
-
 function protectedRouteFor(pathname: string): [string, Role[]] | undefined {
   return Object.entries(PROTECTED_ROUTES).find(([route]) =>
     pathname.startsWith(route)
@@ -28,7 +22,7 @@ function protectedRouteFor(pathname: string): [string, Role[]] | undefined {
 
 export default clerkMiddleware(async (auth, req) => {
   const pathname = req.nextUrl.pathname;
-  if (isPublicMobileInviteRoute(pathname)) return;
+  if (isPublicEaSetPasswordRoute(pathname)) return;
 
   const protectedRoute = protectedRouteFor(pathname);
   if (!protectedRoute) return;
