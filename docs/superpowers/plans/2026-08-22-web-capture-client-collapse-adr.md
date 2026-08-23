@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-22
 
-**Status:** Accepted by Jim
+**Status:** Accepted (implementation authorized 2026-08-22)
 **Supersedes:** the client command state machine, durable fence/quarantine, and
 public journal/runtime contract frozen in `bcfb577` and lean-plan Sections
 8.2–8.4
@@ -29,7 +29,10 @@ evidence ID, reservation handle, quarantine, command revision, attempt counter,
 or durable phase union. Internals are deliberately unfrozen. An internal
 mechanism may exist only when a failing test at this public boundary proves it
 is needed. Storage plus service source exceeding 800 lines is a mandatory
-architecture review tripwire, not an automatic failure.
+architecture review trigger, not an automatic failure. That trigger fired
+during the reliability pass. The reviewed, executable ceiling is now 900 lines;
+changing it again requires another explicit architecture review rather than a
+test edit hidden inside feature work.
 
 ## Durable state
 
@@ -51,7 +54,7 @@ accepted result clears it atomically. Transport uncertainty or resolver
 `not_found` retains it and permits exact Retry only; the underlying writer may
 still complete after the client timeout. A reviewed definite no-family-DML
 refusal, including receipt-free `needs_parent`, may permit Retry or explicit
-Discard. There is no attempt budget, same-day retry window, or durable
+Discard. There is no general attempt budget, generic retry expiry, or durable
 ten-state phase machine.
 
 `web_capture_bootstrap_v1.p_resolution_requests` is accepted-only. `resolved`
@@ -60,6 +63,11 @@ accepted or a known refusal: the client keeps the command. Exact writer retry
 is safe and informative because completed success and refusal receipts are
 idempotent. The receipt-free session `needs_parent` result retries only after a
 fresh actor/day/group/complete-roster check and always reuses the exact command.
+The current bootstrap is current-day authority, not a historical roster oracle:
+after Johannesburg day rollover, a prior-day `needs_parent` command remains
+preserved and explicitly discardable as definite no-family-DML, but the UI must
+not offer a dead Retry. Date-sliced bootstrap authority would be required before
+that prior-day retry could be enabled safely.
 
 The actor record retains one stream and next audit sequence. Allocation and
 pending-command persistence are one transaction. Audit sequence is stable on
@@ -124,9 +132,26 @@ pretend this warning is a uniqueness guarantee.
 Persist only a reviewed `SanitizedCaptureFailure` classification: network
 unavailable, timeout, authenticated refusal with an allowlisted code,
 already-open-clock, `needs_parent`, reviewed protocol refusal, or unexpected
-server failure with a PII-free reference. Never persist or render raw
+server failure with a PII-free internal classification. A static fallback
+identifier is not presented to the EA as though it were a traceable support
+reference. Never persist or render raw
 PostgREST messages/details/hints, JWTs, Session/User/email, request URLs, or
 payloads outside the exact pending command.
+
+Fail-closed must never mean fail-silent. Every user-initiated capture, recovery,
+storage-retry, or sign-out action must either succeed or render a bounded,
+action-specific message. Mount-time network loss, browser-lock capability loss,
+same-origin contention, protected-storage failure, and server ambiguity are
+different states with different recovery instructions. Exact Retry remains
+available for ambiguous completion; Discard remains provenance-gated to a
+reviewed definite no-family-DML result. Unknown or malformed responses can
+follow committed domain DML and therefore never become deletion authority.
+
+Sign-out keeps the exact-set/revision comparison ticket even though it no longer
+deletes evidence. The lock is held while the first decision is formed; if the
+saved actor record changes before confirmation, the UI must issue a perceptibly
+new warning. Page exit invalidates that decision. A BFCache restore must regain
+ownership and perform a new inspection before confirmation is available again.
 
 Session drafts gain Cancel, text is persisted on a short debounce rather than
 blur, and bootstrap runs at dashboard load, draft begin, submit, explicit retry,
