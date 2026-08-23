@@ -36,11 +36,10 @@ export default function EaSetPasswordPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const clearUrl = () =>
-      window.history.replaceState(null, "", window.location.pathname);
     const bootstrap = bootstrapPasswordJourney({
-      search: window.location.search,
-      clearUrl,
+      href: window.location.href,
+      scrubOriginalCallbackUrl: () =>
+        window.history.replaceState(null, "", "/ea-set-password"),
       createJourney: () => {
         const client = createPasswordSupabaseClient({
           NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -48,20 +47,10 @@ export default function EaSetPasswordPage() {
         });
         return createPasswordJourney({
           auth: {
-            getSession: () => client.auth.getSession(),
+            setSession: (tokens) => client.auth.setSession(tokens),
             updateUser: (attributes) => client.auth.updateUser(attributes),
             signOut: (options) => client.auth.signOut(options),
-            onAuthStateChange(listener) {
-              const { data } = client.auth.onAuthStateChange((event, session) => {
-                listener(
-                  event,
-                  session ? { access_token: session.access_token } : null
-                );
-              });
-              return () => data.subscription.unsubscribe();
-            },
           },
-          clearUrl,
           completion: async ({ operationId, bearer }) => {
             try {
               const response = await fetch("/api/mobile/password-completion", {
@@ -84,7 +73,7 @@ export default function EaSetPasswordPage() {
     });
     if (bootstrap.journey) {
       journeyRef.current = bootstrap.journey;
-      void bootstrap.journey.capture(bootstrap.operationCandidate).then((nextResult) => {
+      void bootstrap.journey.capture(bootstrap.callback).then((nextResult) => {
         if (!cancelled) setResult(nextResult);
       });
     } else {

@@ -1,36 +1,44 @@
+import { capturePasswordCallback, type CapturedPasswordCallback } from "./callback";
 import { SAFE_MESSAGES, type PasswordJourneyResult } from "./contract";
 import type { PasswordJourney } from "./journey";
 
 export type PasswordJourneyBootstrap =
-  | { journey: PasswordJourney; operationCandidate: string | null; result: null }
-  | { journey: null; operationCandidate: null; result: PasswordJourneyResult };
+  | { journey: PasswordJourney; callback: CapturedPasswordCallback; result: null }
+  | { journey: null; callback: null; result: PasswordJourneyResult };
 
 /**
  * Keeps browser URL cleanup independent of client construction. A malformed
  * public configuration must not leave an invite/recovery URL in history.
  */
 export function bootstrapPasswordJourney(input: {
-  search: string;
-  clearUrl: () => void;
-  createJourney: () => PasswordJourney;
+  href: string;
+  scrubOriginalCallbackUrl: () => void;
+  createJourney: (callback: CapturedPasswordCallback) => PasswordJourney;
 }): PasswordJourneyBootstrap {
-  const operationCandidates = new URLSearchParams(input.search).getAll("operation_id");
-  const operationCandidate =
-    operationCandidates.length <= 1
-      ? (operationCandidates[0] ?? null)
-      : "duplicate-operation-id-is-invalid";
-  try {
-    return { journey: input.createJourney(), operationCandidate, result: null };
-  } catch {
-    try {
-      input.clearUrl();
-    } catch {
-      // Client construction already failed, so no journey or usable form is
-      // returned even when the browser refuses the history replacement.
-    }
+  const callback = capturePasswordCallback(input.href);
+  if (!callback) {
     return {
       journey: null,
-      operationCandidate: null,
+      callback: null,
+      result: { kind: "terminal_error", code: "invalid_link", message: SAFE_MESSAGES.invalidLink },
+    };
+  }
+  try {
+    // This must remain synchronous and precede any Supabase client/provider I/O.
+    input.scrubOriginalCallbackUrl();
+  } catch {
+    return {
+      journey: null,
+      callback: null,
+      result: { kind: "terminal_error", code: "unavailable", message: SAFE_MESSAGES.unavailable },
+    };
+  }
+  try {
+    return { journey: input.createJourney(callback), callback, result: null };
+  } catch {
+    return {
+      journey: null,
+      callback: null,
       result: { kind: "terminal_error", code: "unavailable", message: SAFE_MESSAGES.unavailable },
     };
   }

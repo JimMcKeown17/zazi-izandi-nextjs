@@ -103,7 +103,7 @@ export function createPasswordSupabaseClient(
     auth: {
       persistSession: false,
       autoRefreshToken: false,
-      detectSessionInUrl: true,
+      detectSessionInUrl: false,
     },
   });
 }

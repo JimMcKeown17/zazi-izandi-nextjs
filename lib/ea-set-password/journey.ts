@@ -3,16 +3,19 @@ import {
   SAFE_MESSAGES,
   type PasswordJourneyResult,
 } from "./contract";
+import type { CapturedPasswordCallback } from "./callback";
 
 type ProviderError = { code?: string; message?: string } | null;
 
 export type TemporaryPasswordSession = { access_token: string };
 
 export type PasswordAuthBoundary = {
-  getSession(): Promise<{ data: { session: TemporaryPasswordSession | null }; error: ProviderError }>;
+  setSession(tokens: { access_token: string; refresh_token: string }): Promise<{
+    data: { session: TemporaryPasswordSession | null; user: object | null };
+    error: ProviderError;
+  }>;
   updateUser(attributes: { password: string }): Promise<{ error: ProviderError }>;
   signOut(options: { scope: "local" }): Promise<unknown>;
-  onAuthStateChange(listener: (event: string, session: TemporaryPasswordSession | null) => void): () => void;
 };
 
 export type CompletionBoundary = (request: {
@@ -21,13 +24,9 @@ export type CompletionBoundary = (request: {
 }) => Promise<{ ok: boolean }>;
 
 export type PasswordJourney = {
-  capture(operationIdCandidate: string | null | undefined): Promise<PasswordJourneyResult>;
+  capture(callback: CapturedPasswordCallback): Promise<PasswordJourneyResult>;
   submit(password: string, confirmation: string): Promise<PasswordJourneyResult>;
 };
-
-function waitOneProviderTurn(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
 
 function isWeakPassword(error: ProviderError): boolean {
   const code = error?.code?.toLowerCase() ?? "";
@@ -42,7 +41,6 @@ function isWeakPassword(error: ProviderError): boolean {
 export function createPasswordJourney(dependencies: {
   auth: PasswordAuthBoundary;
   completion: CompletionBoundary;
-  clearUrl: () => void;
 }): PasswordJourney {
   let temporarySession: TemporaryPasswordSession | null = null;
   let operationId: string | null = null;
@@ -58,92 +56,32 @@ export function createPasswordJourney(dependencies: {
   }
 
   return {
-    async capture(operationIdCandidate) {
-      // Capture the non-secret candidate first. URL scrubbing is deliberately
-      // deferred until auth-js has consumed or rejected its URL session.
-      const candidate = parseOperationCandidate(operationIdCandidate);
+    async capture(callback) {
+      const candidate = parseOperationCandidate(callback.operationCandidate);
       operationId = candidate.kind === "valid" ? candidate.operationId : null;
-
-      // A recovery link is not distinguished by its URL alone. Supabase emits
-      // PASSWORD_RECOVERY only for a verified recovery redirect. Operation
-      // candidates still require Django's exact UUID/kind/state validation.
-      let unsubscribe: (() => void) | null = null;
-      let subscriptionRegistered = false;
-      let outcome: PasswordJourneyResult = {
-        kind: "terminal_error",
-        code: "invalid_link",
-        message: SAFE_MESSAGES.invalidLink,
-      };
-      try {
-        let recoverySession: TemporaryPasswordSession | null = null;
-        let resolveRecoveryEvent: (() => void) | null = null;
-        const recoveryEvent = new Promise<void>((resolve) => {
-          resolveRecoveryEvent = resolve;
-        });
-        try {
-          unsubscribe = dependencies.auth.onAuthStateChange((event, session) => {
-            if (event === "PASSWORD_RECOVERY" && session?.access_token) {
-              recoverySession = session;
-              resolveRecoveryEvent?.();
-            }
-          });
-          subscriptionRegistered = true;
-        } catch {
-          await discardSession();
-        }
-
-        if (subscriptionRegistered && !unsubscribe) {
-          await discardSession();
-        } else if (unsubscribe) {
-          let result: {
-            data: { session: TemporaryPasswordSession | null };
-            error: ProviderError;
-          } | null = null;
-          try {
-            result = await dependencies.auth.getSession();
-            // auth-js schedules PASSWORD_RECOVERY after it has saved the URL
-            // session. Give that scheduled provider turn a bounded opportunity
-            // to arrive before deciding an operation-less link is invalid.
-            if (!operationId) {
-              await Promise.race([recoveryEvent, waitOneProviderTurn()]);
-            }
-          } catch {
-            // The shared result validation below performs one local discard.
-          }
-
-          if (!result || result.error || !result.data.session?.access_token) {
-            await discardSession();
-          } else if (candidate.kind === "invalid") {
-            await discardSession();
-          } else if (!operationId && !recoverySession) {
-            await discardSession();
-          } else {
-            temporarySession = recoverySession ?? result.data.session;
-            outcome = { kind: "ready" };
-          }
-        }
-      } finally {
-        // Never leave credentials or an operation candidate in history after
-        // the provider capture attempt, including terminal rejection.
-        try {
-          unsubscribe?.();
-        } catch {
-          // Local reference disposal and URL cleanup remain mandatory.
-        }
-        try {
-          dependencies.clearUrl();
-        } catch {
-          // URL credential removal is a hard gate: do not expose a usable form
-          // when browser history could still retain provider credentials.
-          await discardSession();
-          outcome = {
-            kind: "terminal_error",
-            code: "invalid_link",
-            message: SAFE_MESSAGES.invalidLink,
-          };
-        }
+      if (candidate.kind === "invalid") {
+        await discardSession();
+        return { kind: "terminal_error", code: "invalid_link", message: SAFE_MESSAGES.invalidLink };
       }
-      return outcome;
+      try {
+        const result = await dependencies.auth.setSession({
+          access_token: callback.accessToken,
+          refresh_token: callback.refreshToken,
+        });
+        if (result.error || !result.data.session?.access_token || !result.data.user) {
+          await discardSession();
+          return { kind: "terminal_error", code: "invalid_link", message: SAFE_MESSAGES.invalidLink };
+        }
+        if (!operationId && callback.callbackType !== "recovery") {
+          await discardSession();
+          return { kind: "terminal_error", code: "invalid_link", message: SAFE_MESSAGES.invalidLink };
+        }
+        temporarySession = result.data.session;
+        return { kind: "ready" };
+      } catch {
+        await discardSession();
+        return { kind: "terminal_error", code: "invalid_link", message: SAFE_MESSAGES.invalidLink };
+      }
     },
 
     async submit(password, confirmation) {
@@ -192,7 +130,7 @@ export function createPasswordJourney(dependencies: {
           };
         }
       } else {
-        // Provider-proved self-service recovery must never hit Django.
+        // Provider-validated self-service recovery must never hit Django.
         await discardSession();
       }
 
