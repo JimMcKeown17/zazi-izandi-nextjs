@@ -16,7 +16,22 @@ export type MobileCapability =
   | "mobile.csv.export"
   | "mobile.user_health.read"
   | "mobile.sync_incidents.read"
-  | "mobile.assignments.reassign";
+  | "mobile.assignments.reassign"
+  | "mobile.accounts.read"
+  | "mobile.accounts.provision"
+  | "mobile.accounts.provision_seeded"
+  | "mobile.accounts.lifecycle"
+  | "mobile.accounts.recover"
+  | "mobile.notifications.send_synthetic";
+
+const MOBILE_ACCOUNT_ADMIN_CAPABILITIES = [
+  "mobile.accounts.read",
+  "mobile.accounts.provision",
+  "mobile.accounts.provision_seeded",
+  "mobile.accounts.lifecycle",
+  "mobile.accounts.recover",
+  "mobile.notifications.send_synthetic",
+] as const satisfies readonly MobileCapability[];
 
 export const ROLE_CAPABILITIES = {
   junior_staff: ["mobile.sessions.read", "mobile.time_entries.read"],
@@ -34,6 +49,7 @@ export const ROLE_CAPABILITIES = {
     "mobile.user_health.read",
     "mobile.sync_incidents.read",
     "mobile.assignments.reassign",
+    ...MOBILE_ACCOUNT_ADMIN_CAPABILITIES,
   ],
   zz_data_manager: [
     "mobile.sessions.read",
@@ -42,6 +58,7 @@ export const ROLE_CAPABILITIES = {
     "mobile.user_health.read",
     "mobile.sync_incidents.read",
     "mobile.assignments.reassign",
+    ...MOBILE_ACCOUNT_ADMIN_CAPABILITIES,
   ],
 } as const satisfies Readonly<
   Partial<Record<Role, readonly MobileCapability[]>>

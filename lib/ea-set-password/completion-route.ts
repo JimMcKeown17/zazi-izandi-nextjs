@@ -28,13 +28,24 @@ export async function forwardPasswordCompletion(
   post: DjangoPost = djangoPost
 ): Promise<PasswordCompletionRouteResult> {
   const authorization = request.headers.get("authorization");
-  if (!authorization || !/^Bearer [^\s]+$/.test(authorization)) {
+  const bearer = authorization?.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length)
+    : "";
+  if (
+    !authorization ||
+    !bearer ||
+    bearer.length > 8192 ||
+    /\s/.test(bearer) ||
+    authorization !== `Bearer ${bearer}`
+  ) {
     return { status: 401, body: { kind: "invalid_request" } };
   }
 
+  let rawBody: string;
   let body: unknown;
   try {
-    body = await request.json();
+    rawBody = await request.text();
+    body = JSON.parse(rawBody) as unknown;
   } catch {
     return { status: 400, body: { kind: "invalid_request" } };
   }
@@ -47,6 +58,9 @@ export async function forwardPasswordCompletion(
   }
   const operationId = canonicalOperationId(value.operation_id);
   if (!operationId) return { status: 400, body: { kind: "invalid_request" } };
+  if (rawBody !== JSON.stringify({ operation_id: operationId })) {
+    return { status: 400, body: { kind: "invalid_request" } };
+  }
 
   let response: Response;
   try {

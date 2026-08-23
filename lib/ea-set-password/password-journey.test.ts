@@ -16,7 +16,7 @@ const OPERATION_ID = "123e4567-e89b-42d3-a456-426614174000";
 const ACCESS_TOKEN = "access-token-only-a-test-fixture";
 const REFRESH_TOKEN = "refresh-token-only-a-test-fixture";
 const PROVIDER_SESSION_BEARER = "provider-validated-session-bearer";
-const CALLBACK_URL = `https://example.test/ea-set-password?operation_id=${OPERATION_ID}#access_token=${ACCESS_TOKEN}&refresh_token=${REFRESH_TOKEN}&type=invite&expires_in=3600&token_type=bearer`;
+const CALLBACK_URL = `https://www.zazi-izandi.co.za/ea-set-password?operation_id=${OPERATION_ID}#access_token=${ACCESS_TOKEN}&refresh_token=${REFRESH_TOKEN}&type=invite&expires_in=3600&expires_at=2200000000&token_type=bearer`;
 
 function callback(overrides: Partial<CapturedPasswordCallback> = {}): CapturedPasswordCallback {
   return {
@@ -98,6 +98,25 @@ test("scrub failure fails closed before client construction", () => {
   });
 });
 
+test("malformed callback evidence is still scrubbed before terminal UI", () => {
+  const trace: string[] = [];
+  const bootstrap = bootstrapPasswordJourney({
+    href: CALLBACK_URL.replace("type=invite", "type=unsupported"),
+    scrubOriginalCallbackUrl: () => trace.push("history-replace-state"),
+    createJourney: () => {
+      trace.push("client-constructed");
+      return {} as never;
+    },
+  });
+  assert.deepEqual(trace, ["history-replace-state"]);
+  assert.equal(bootstrap.journey, null);
+  assert.deepEqual(bootstrap.result, {
+    kind: "terminal_error",
+    code: "invalid_link",
+    message: SAFE_MESSAGES.invalidLink,
+  });
+});
+
 test("callback capture accepts exact root evidence and rejects duplicate, malformed, and cross-path inputs", () => {
   assert.deepEqual(capturePasswordCallback(CALLBACK_URL), {
     accessToken: ACCESS_TOKEN,
@@ -107,9 +126,14 @@ test("callback capture accepts exact root evidence and rejects duplicate, malfor
   });
   for (const href of [
     CALLBACK_URL.replace("/ea-set-password", "/ea-set-password/other"),
+    CALLBACK_URL.replace("www.zazi-izandi.co.za", "zazi-izandi.co.za"),
+    CALLBACK_URL.replace("www.zazi-izandi.co.za", "www.zazi-izandi.co.za:8443"),
+    CALLBACK_URL.replace("https://", "http://"),
     CALLBACK_URL.replace("access_token=", "access_token=x&access_token="),
     CALLBACK_URL.replace("type=invite", "type=unknown"),
     CALLBACK_URL.replace("refresh_token=", "refresh_token=bad%20token"),
+    CALLBACK_URL.replace("expires_in=3600", "expires_in=2147483648"),
+    CALLBACK_URL.replace("expires_at=2200000000", "expires_at=9007199254740992"),
     CALLBACK_URL.replace(`operation_id=${OPERATION_ID}`, `operation_id=${OPERATION_ID}&operation_id=${OPERATION_ID}`),
   ]) {
     assert.equal(capturePasswordCallback(href), null);
@@ -246,4 +270,38 @@ test("cross-use completion body fails closed without bearer text", async () => {
   );
   assert.deepEqual(result, { status: 400, body: { kind: "invalid_request" } });
   assert.ok(!JSON.stringify(result).includes(PROVIDER_SESSION_BEARER));
+});
+
+test("duplicate operation keys fail before the Django boundary", async () => {
+  let postCalls = 0;
+  const result = await forwardPasswordCompletion(
+    new Request("https://next.example/api/mobile/password-completion", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${PROVIDER_SESSION_BEARER}` },
+      body: `{"operation_id":"${OPERATION_ID}","operation_id":"${OPERATION_ID}"}`,
+    }),
+    (async () => {
+      postCalls += 1;
+      return new Response(null, { status: 200 });
+    }) as never
+  );
+  assert.deepEqual(result, { status: 400, body: { kind: "invalid_request" } });
+  assert.equal(postCalls, 0);
+});
+
+test("oversized temporary bearer fails before the Django boundary", async () => {
+  let postCalls = 0;
+  const result = await forwardPasswordCompletion(
+    new Request("https://next.example/api/mobile/password-completion", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${"x".repeat(8193)}` },
+      body: JSON.stringify({ operation_id: OPERATION_ID }),
+    }),
+    (async () => {
+      postCalls += 1;
+      return new Response(null, { status: 200 });
+    }) as never
+  );
+  assert.deepEqual(result, { status: 401, body: { kind: "invalid_request" } });
+  assert.equal(postCalls, 0);
 });

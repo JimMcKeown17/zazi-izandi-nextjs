@@ -16,21 +16,22 @@ export function bootstrapPasswordJourney(input: {
   createJourney: (callback: CapturedPasswordCallback) => PasswordJourney;
 }): PasswordJourneyBootstrap {
   const callback = capturePasswordCallback(input.href);
-  if (!callback) {
-    return {
-      journey: null,
-      callback: null,
-      result: { kind: "terminal_error", code: "invalid_link", message: SAFE_MESSAGES.invalidLink },
-    };
-  }
   try {
-    // This must remain synchronous and precede any Supabase client/provider I/O.
+    // This must run for valid and malformed callbacks alike, remain
+    // synchronous, and precede any Supabase client/provider I/O.
     input.scrubOriginalCallbackUrl();
   } catch {
     return {
       journey: null,
       callback: null,
       result: { kind: "terminal_error", code: "unavailable", message: SAFE_MESSAGES.unavailable },
+    };
+  }
+  if (!callback) {
+    return {
+      journey: null,
+      callback: null,
+      result: { kind: "terminal_error", code: "invalid_link", message: SAFE_MESSAGES.invalidLink },
     };
   }
   try {

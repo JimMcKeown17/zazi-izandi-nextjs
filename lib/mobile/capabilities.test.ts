@@ -72,6 +72,26 @@ test("roster reassignment is an explicit admin and data-manager allow-list", () 
   }
 });
 
+test("account administration capabilities are an exact admin and data-manager allow-list", () => {
+  const capabilities = [
+    "mobile.accounts.read",
+    "mobile.accounts.provision",
+    "mobile.accounts.provision_seeded",
+    "mobile.accounts.lifecycle",
+    "mobile.accounts.recover",
+    "mobile.notifications.send_synthetic",
+  ] as const;
+  for (const capability of capabilities) {
+    for (const role of ALL_MOBILE_ROLES) {
+      assert.equal(
+        hasCapability(role, capability),
+        role === "admin" || role === "zz_data_manager",
+        `${capability}:${role}`
+      );
+    }
+  }
+});
+
 test("capability drift produces a section-local denial without calling the loader", async () => {
   let calls = 0;
   const result = await resolveSyncIncidentPageRequest(
