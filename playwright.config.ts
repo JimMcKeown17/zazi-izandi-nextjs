@@ -9,6 +9,24 @@ const clerkConfigured = Boolean(
     (process.env.CLERK_SECRET_KEY || process.env.CLERK_TESTING_TOKEN)
 );
 const mockedReassignDjango = process.env.E2E_REASSIGN_DJANGO_MOCKED === "1";
+const mockedProgrammeFidelityDjango =
+  process.env.E2E_PROGRAMME_FIDELITY_DJANGO_MOCKED === "1";
+
+const mockedDjangoServer = mockedProgrammeFidelityDjango
+  ? {
+      command: "node e2e/programme-fidelity-django-mock.mjs",
+      url: "http://127.0.0.1:4011/health",
+      reuseExistingServer: !process.env.CI,
+    }
+  : {
+      command: "node e2e/reassign-django-mock.mjs",
+      url: "http://127.0.0.1:4010/health",
+      reuseExistingServer: !process.env.CI,
+    };
+
+const mockedDjangoUrl = mockedProgrammeFidelityDjango
+  ? "http://127.0.0.1:4011"
+  : "http://127.0.0.1:4010";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -16,21 +34,17 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:3000",
   },
-  webServer: mockedReassignDjango
+  webServer: mockedReassignDjango || mockedProgrammeFidelityDjango
     ? [
-        {
-          command: "node e2e/reassign-django-mock.mjs",
-          url: "http://127.0.0.1:4010/health",
-          reuseExistingServer: !process.env.CI,
-        },
+        mockedDjangoServer,
         {
           command: "npm run dev",
           url: "http://localhost:3000",
           reuseExistingServer: !process.env.CI,
           env: {
             ...process.env,
-            DJANGO_API_URL: "http://127.0.0.1:4010",
-            INTERNAL_API_SECRET: "offline-reassign-test-secret",
+            DJANGO_API_URL: mockedDjangoUrl,
+            INTERNAL_API_SECRET: "offline-mobile-contract-test-secret",
           },
         },
       ]

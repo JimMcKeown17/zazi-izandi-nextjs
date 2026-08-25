@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   School,
   Shuffle,
+  Target,
   Users,
 } from "lucide-react";
 
@@ -35,6 +36,12 @@ const NAV_ITEMS: NavItem[] = [
     name: "Sessions",
     href: "/mobile-app/sessions",
     icon: CalendarDays,
+    enabled: true,
+  },
+  {
+    name: "Programme fidelity",
+    href: "/mobile-app/programme-fidelity",
+    icon: Target,
     enabled: true,
   },
   {
@@ -94,6 +101,7 @@ export function MobileSidebarNavigation({
   const canOpenItem = (item: NavItem): boolean => {
     if (!item.enabled) return false;
     if (item.href === "/mobile-app/sessions") return canReadSessions;
+    if (item.href === "/mobile-app/programme-fidelity") return canReadSessions;
     if (item.href === "/mobile-app/attendance") return canReadTimeEntries;
     if (item.href === "/mobile-app/user-health") return canReadUserHealth;
     if (item.href === "/mobile-app/users") return canReadUserHealth;
