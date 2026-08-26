@@ -63,7 +63,7 @@ export function FidelityMobileCards({
                 <div className="rounded-lg bg-slate-50 p-3">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Tracker</p>
                   <p className="mt-1 text-lg font-bold text-slate-900">{row.is_current_owner ? formatCoverage(row.tracker_coverage) : "—"}</p>
-                  <p className="text-xs text-slate-500">{row.is_current_owner ? `${row.started_count}/${row.roster_size} started` : "Current owner only"}</p>
+                  <p className="text-xs text-slate-500">{row.is_current_owner ? `${row.started_count}/${row.roster_size} started` : "No current letter guidance"}</p>
                 </div>
               </div>
               <div className="rounded-lg border border-slate-100 p-3">

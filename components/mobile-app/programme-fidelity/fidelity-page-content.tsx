@@ -41,7 +41,7 @@ function FreshnessFacts({ data }: { data: ProgrammeFidelityResponse }) {
       <span>Alignment scored through: {data.alignment_scored_through_date ?? "not yet available"}</span>
       {data.freshness.last_failed_at ? (
         <span className="font-semibold text-amber-800">
-          Latest failed attempt: {DATE_TIME.format(new Date(data.freshness.last_failed_at))} SAST
+          Latest unsuccessful attempt: {DATE_TIME.format(new Date(data.freshness.last_failed_at))} SAST
         </span>
       ) : null}
     </>
@@ -87,6 +87,43 @@ function FreshnessBanner({ data }: { data: ProgrammeFidelityResponse }) {
   );
 }
 
+function HistoricalMasteryCaveat({ data }: { data: ProgrammeFidelityResponse }) {
+  if (data.calculation_version !== "mobile_fidelity_causal_alignment_v1") {
+    return null;
+  }
+  return (
+    <div role="status" className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+      <Info className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+      <div>
+        <p className="font-semibold">Some historical mastery meaning cannot be verified</p>
+        <p className="mt-1 leading-relaxed">
+          Historical tracker instructions were ambiguous. Where old manual marks could change the reconstructed coaching decision or letter classification, the session remains unscored and no corrective conclusion is published. Displayed scores use assessment-supported evidence; unscored sessions are excluded.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export function correlateProgrammeFidelitySessions(
+  result: ProgrammeFidelityResult<ProgrammeFidelityResponse>,
+  sessionsResult: ProgrammeFidelityResult<ProgrammeFidelitySessionResponse> | null
+): ProgrammeFidelityResult<ProgrammeFidelitySessionResponse> | null {
+  if (!result.ok || !sessionsResult?.ok) return sessionsResult;
+  if (
+    sessionsResult.data.calculation_version !== result.data.calculation_version ||
+    sessionsResult.data.freshness.compute_completed_at !==
+      result.data.freshness.compute_completed_at
+  ) {
+    return {
+      ok: false,
+      status: 503,
+      kind: "unavailable",
+      message: "Session detail crossed a nightly publication boundary. Reload to use one completed calculation.",
+    };
+  }
+  return sessionsResult;
+}
+
 export function FidelityPageContent({
   result,
   sessionsResult,
@@ -98,6 +135,10 @@ export function FidelityPageContent({
   filters: Filters;
   expansion: ProgrammeFidelityExpansion | null;
 }) {
+  const correlatedSessionsResult = correlateProgrammeFidelitySessions(
+    result,
+    sessionsResult
+  );
   return (
     <div className="mx-auto max-w-[100rem] space-y-4" data-testid="programme-fidelity-page">
       <header className="space-y-3">
@@ -134,6 +175,7 @@ export function FidelityPageContent({
       ) : (
         <div data-testid="programme-fidelity-success" className="space-y-4">
           <FreshnessBanner data={result.data} />
+          <HistoricalMasteryCaveat data={result.data} />
           <FidelityFilters
             filters={filters}
             options={result.data.filter_options}
@@ -154,7 +196,7 @@ export function FidelityPageContent({
             <div>
               <h2 className="font-bold text-slate-900">EA/group coaching queue</h2>
               <p className="mt-1 text-xs text-slate-500">
-                {result.data.rows.length} row{result.data.rows.length === 1 ? "" : "s"}; current-state attention appears first. This is not an EA ranking.
+                {result.data.rows.length} row{result.data.rows.length === 1 ? "" : "s"}; operational attention appears first. This is not an EA ranking.
               </p>
             </div>
             <FidelityExportButton
@@ -165,12 +207,14 @@ export function FidelityPageContent({
 
           {result.data.rows.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-600">
-              No EA/group rows match these filters. Causal-only filters remain empty until historical alignment is available.
+              {result.data.alignment_availability.status === "not_yet_available"
+                ? "No EA/group rows match these filters. Causal-only filters remain empty until historical alignment is available."
+                : "No EA/group rows match these filters in the current completed publication."}
             </div>
           ) : (
             <>
-              <FidelityTable rows={result.data.rows} filters={filters} expansion={expansion} sessionsResult={sessionsResult} />
-              <FidelityMobileCards rows={result.data.rows} filters={filters} expansion={expansion} sessionsResult={sessionsResult} />
+              <FidelityTable rows={result.data.rows} filters={filters} expansion={expansion} sessionsResult={correlatedSessionsResult} />
+              <FidelityMobileCards rows={result.data.rows} filters={filters} expansion={expansion} sessionsResult={correlatedSessionsResult} />
             </>
           )}
         </div>

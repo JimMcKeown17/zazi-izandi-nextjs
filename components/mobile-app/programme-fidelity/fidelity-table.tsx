@@ -24,7 +24,7 @@ export function FidelityOwnership({ row }: { row: ProgrammeFidelityRow }) {
     </span>
   ) : (
     <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-      Former owner · recent activity only
+      Historical activity · no current guidance
     </span>
   );
 }
@@ -47,14 +47,32 @@ export function FidelityCurrentGuidance({ row }: { row: ProgrammeFidelityRow }) 
 }
 
 export function FidelityAlignment({ row }: { row: ProgrammeFidelityRow }) {
+  const statusLabel = {
+    not_yet_available: "Not yet available",
+    no_eligible_sessions: "No eligible sessions",
+    partial: "Partial causal window",
+    scored: "Full causal window",
+  }[row.alignment_status];
   if (row.alignment_status === "not_yet_available") {
-    return <span className="text-xs text-slate-500">Historical alignment not calculated</span>;
+    return (
+      <div className="text-xs text-slate-500">
+        <p className="font-semibold text-slate-600">{statusLabel}</p>
+        <p className="mt-1">Historical alignment not calculated</p>
+      </div>
+    );
   }
   if (row.score === null) {
-    return <span className="text-xs text-slate-500">Not enough causal evidence</span>;
+    return (
+      <div className="text-xs text-slate-500">
+        <p className="font-semibold text-slate-600">{statusLabel}</p>
+        <p className="mt-1">Not enough causal evidence</p>
+        <p className="mt-1">{row.aligned_count} aligned · {row.below_count} below · {row.above_count} above · {row.unscored_count} unscored</p>
+      </div>
+    );
   }
   return (
     <div className="text-xs text-slate-600">
+      <p className="mb-1 font-semibold text-slate-600">{statusLabel}</p>
       <strong className="text-base text-slate-900">{row.score.toFixed(1)}%</strong>
       <p className="mt-1">{row.aligned_count} aligned · {row.below_count} below · {row.above_count} above · {row.unscored_count} unscored</p>
     </div>
@@ -107,7 +125,7 @@ export function FidelityTable({
                   <td className="px-4 py-4 text-sm text-slate-700">
                     {row.is_current_owner ? (
                       <><strong>{formatCoverage(row.tracker_coverage)}</strong><p className="mt-1 text-xs text-slate-500">{row.started_count}/{row.roster_size} started</p></>
-                    ) : <span className="text-xs text-slate-500">Current roster belongs to the current owner</span>}
+                    ) : <span className="text-xs text-slate-500">Current letter tracker is unavailable for this historical row</span>}
                   </td>
                   <td className="max-w-48 px-4 py-4"><FidelityAlignment row={row} /></td>
                   <td className="max-w-80 px-4 py-4"><FidelityReason row={row} /></td>

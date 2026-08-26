@@ -66,7 +66,7 @@ const currentRow: ProgrammeFidelityRow = {
     code: "CURRENT_TRACKER_COVERAGE_LOW",
     title: "Letter tracker coverage is still low",
     observation: "Fewer than half of the current roster have letter evidence in the tracker.",
-    recommended_check: "Check that the EA is recording taught or assessed letters for the current group.",
+    recommended_check: "Check that the EA is assessing children or recording letters each child has mastered.",
   },
   supporting_reasons: [],
   data_quality_counts: zeroQuality,

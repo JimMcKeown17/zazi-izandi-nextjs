@@ -152,6 +152,7 @@ export type ProgrammeFidelityInstanceReason =
   | "UNKNOWN_ASSESSMENT_FORM"
   | "SOURCE_DATA_INCOMPLETE"
   | "INVALID_SESSION_LETTERS"
+  | "MASTERY_SEMANTICS_UNVERIFIED"
   | "LOW_TRACKER_COVERAGE"
   | "EMPTY_ROSTER";
 
@@ -180,7 +181,7 @@ export interface ProgrammeFidelitySessionResponse {
       | "not_yet_available"
       | "pending_settlement"
       | "evaluated";
-    reason_code: ProgrammeFidelityInstanceReason;
+    reason_code: ProgrammeFidelityInstanceReason | null;
     historical_frontier: string[] | null;
     historical_roster_size: number | null;
     historical_started_count: number | null;

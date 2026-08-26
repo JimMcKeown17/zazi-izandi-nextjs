@@ -8,6 +8,7 @@ const ids = {
   formerEa: "00000000-0000-4000-8000-000000000021",
   inactiveEa: "00000000-0000-4000-8000-000000000022",
   group: "00000000-0000-4000-8000-000000000030",
+  causalGroup: "00000000-0000-4000-8000-000000000032",
   inactiveGroup: "00000000-0000-4000-8000-000000000031",
   class: "00000000-0000-4000-8000-000000000040",
 };
@@ -67,7 +68,7 @@ const current = {
     code: "CURRENT_TRACKER_COVERAGE_LOW",
     title: "Letter tracker coverage is still low",
     observation: "Fewer than half of the current roster have letter evidence in the tracker.",
-    recommended_check: "Check that the EA is assessing or recording taught letters for the current group.",
+    recommended_check: "Check that the EA is assessing children or recording letters each child has mastered.",
   },
   supporting_reasons: [],
   data_quality_counts: quality,
@@ -119,6 +120,36 @@ const rows = [
   },
 ];
 
+const causalRow = {
+  ...current,
+  group_id: ids.causalGroup,
+  group_name: "Group 2 — causal coaching example",
+  primary_reason: "TEACHING_AHEAD_OF_FRONTIER",
+  reason: {
+    code: "TEACHING_AHEAD_OF_FRONTIER",
+    title: "Teaching may be ahead of the historical frontier",
+    observation: "One recently focused letter was later than the reconstructed frontier.",
+    recommended_check: "Review the session and current app guidance with the EA.",
+  },
+  alignment_status: "partial",
+  alignment_scored_through_date: "2026-08-24",
+  aligned_count: 1,
+  below_count: 0,
+  above_count: 1,
+  unscored_count: 2,
+  scored_n: 2,
+  score: 50,
+  causal_post_install_count: 2,
+  bootstrap_influenced_count: 1,
+  client_clock_count: 11,
+  server_clock_count: 0,
+  bootstrap_clock_count: 4,
+  supporting_reasons: [{
+    code: "mastery_semantics_unverified",
+    observation: "Older tracker instructions were ambiguous, so this historical session was not scored. Its old manual marks cannot be corrected or reinterpreted, and this is not a conclusion that the EA taught incorrectly.",
+  }],
+};
+
 function filteredRows(url) {
   let selected = rows;
   const schoolId = url.searchParams.get("school_id");
@@ -135,7 +166,9 @@ function filteredRows(url) {
     ].includes(row.primary_reason));
   } else if (attention === "inactive") {
     selected = selected.filter((row) => row.recent_session_count === 0);
-  } else if (attention === "above" || attention === "unscored") {
+  } else if (attention === "above") {
+    selected = [causalRow];
+  } else if (attention === "unscored") {
     selected = [];
   }
   return { selected, schoolId, eaUserId, attention };
@@ -143,33 +176,50 @@ function filteredRows(url) {
 
 function aggregate(url) {
   const { selected, schoolId, eaUserId, attention } = filteredRows(url);
+  const causal = attention === "above";
   const owners = selected.filter((row) => row.is_current_owner);
   const roster = owners.reduce((sum, row) => sum + (row.roster_size ?? 0), 0);
   const started = owners.reduce((sum, row) => sum + (row.started_count ?? 0), 0);
   return {
     schema_version: 1,
-    calculation_version: "mobile_fidelity_current_state_v1_1",
+    calculation_version: causal
+      ? "mobile_fidelity_causal_alignment_v1"
+      : "mobile_fidelity_current_state_v1_1",
     window_days: 14,
     activity_through_date: "2026-08-25",
-    alignment_scored_through_date: null,
-    alignment_availability: {
-      status: "not_yet_available",
-      ledger_installed_at: "2026-08-25T15:30:08.234775+00:00",
-      last_complete_event_run_finished_at: null,
-      scored_through_date: null,
-      message: "Current guidance and recent activity are available; historical alignment is not yet calculated.",
-    },
+    alignment_scored_through_date: causal ? "2026-08-24" : null,
+    alignment_availability: causal
+      ? {
+          status: "partial",
+          ledger_installed_at: "2026-08-15T10:00:00+00:00",
+          last_complete_event_run_finished_at: "2026-08-25T15:05:00+00:00",
+          scored_through_date: "2026-08-24",
+          message: "Historical session alignment is available for a partial window through 2026-08-24.",
+        }
+      : {
+          status: "not_yet_available",
+          ledger_installed_at: "2026-08-25T15:30:08.234775+00:00",
+          last_complete_event_run_finished_at: null,
+          scored_through_date: null,
+          message: "Current guidance and recent activity are available; historical alignment is not yet calculated.",
+        },
     applied_filters: {
       school_id: schoolId,
       ea_user_id: eaUserId,
       attention,
     },
     freshness,
-    history_quality: {
-      status: "current_state_only",
-      causal_session_count: null,
-      bootstrap_influenced_count: null,
-    },
+    history_quality: causal
+      ? {
+          status: "causal_history_available",
+          causal_session_count: 3,
+          bootstrap_influenced_count: 1,
+        }
+      : {
+          status: "current_state_only",
+          causal_session_count: null,
+          bootstrap_influenced_count: null,
+        },
     aggregates: {
       groups_needing_attention: owners.filter((row) => row.primary_reason !== "NO_IMMEDIATE_FLAG").length,
       active_groups: owners.filter((row) => row.recent_session_count > 0).length,
@@ -194,9 +244,12 @@ function aggregate(url) {
 function sessions(url) {
   const groupId = url.searchParams.get("group_id");
   const eaUserId = url.searchParams.get("ea_user_id");
+  const causal = groupId === ids.causalGroup;
   return {
     schema_version: 1,
-    calculation_version: "mobile_fidelity_current_state_v1_1",
+    calculation_version: causal
+      ? "mobile_fidelity_causal_alignment_v1"
+      : "mobile_fidelity_current_state_v1_1",
     window_days: 14,
     applied_filters: {
       group_id: groupId,
@@ -210,7 +263,52 @@ function sessions(url) {
       union_date_to: "2026-08-25",
     },
     freshness,
-    sessions: [
+    sessions: causal
+      ? [
+          {
+            session_id: "00000000-0000-4000-8000-000000000052",
+            session_date: "2026-08-23",
+            session_time_quality: "started_at",
+            alignment_status: "evaluated",
+            reason_code: null,
+            historical_frontier: ["m", "a"],
+            historical_roster_size: 5,
+            historical_started_count: 4,
+            history_quality: "causal_post_install",
+            clock_quality_counts: { client: 6, server: 0, bootstrap: 0 },
+            letters: [
+              { letter: "m", band: "aligned" },
+              { letter: "s", band: "above" },
+            ],
+          },
+          {
+            session_id: "00000000-0000-4000-8000-000000000053",
+            session_date: "2026-08-22",
+            session_time_quality: "started_at",
+            alignment_status: "evaluated",
+            reason_code: "LOW_TRACKER_COVERAGE",
+            historical_frontier: null,
+            historical_roster_size: 5,
+            historical_started_count: 2,
+            history_quality: "bootstrap_influenced",
+            clock_quality_counts: { client: 1, server: 0, bootstrap: 4 },
+            letters: [{ letter: "m", band: "unscored" }],
+          },
+          {
+            session_id: "00000000-0000-4000-8000-000000000054",
+            session_date: "2026-08-21",
+            session_time_quality: "started_at",
+            alignment_status: "evaluated",
+            reason_code: "MASTERY_SEMANTICS_UNVERIFIED",
+            historical_frontier: null,
+            historical_roster_size: 5,
+            historical_started_count: 4,
+            history_quality: "causal_post_install",
+            clock_quality_counts: { client: 4, server: 0, bootstrap: 0 },
+            letters: [{ letter: "s", band: "unscored" }],
+          },
+        ]
+      : [
       {
         session_id: "00000000-0000-4000-8000-000000000050",
         session_date: "2026-08-25",
@@ -237,7 +335,7 @@ function sessions(url) {
         clock_quality_counts: null,
         letters: [],
       },
-    ],
+        ],
   };
 }
 

@@ -2,7 +2,7 @@ import type { ProgrammeFidelityRow } from "./types";
 
 function csvCell(value: string | number | null): string {
   let text = value === null ? "" : String(value);
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  if (/^[\t\r]/.test(text) || /^\s*[=+\-@]/.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 }
 
@@ -11,7 +11,7 @@ export function buildProgrammeFidelityCsv(rows: ProgrammeFidelityRow[]): string 
     "EA",
     "Group",
     "School",
-    "Current owner",
+    "Current letter guidance row",
     "Attention reason",
     "Observation",
     "Next mentor check",
@@ -33,7 +33,7 @@ export function buildProgrammeFidelityCsv(rows: ProgrammeFidelityRow[]): string 
     row.ea_display_name,
     row.group_name,
     row.school_name,
-    row.is_current_owner ? "Yes" : "No — former owner",
+    row.is_current_owner ? "Available" : "Unavailable — historical activity only",
     row.reason.title,
     row.reason.observation,
     row.reason.recommended_check,

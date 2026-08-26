@@ -25,11 +25,13 @@ test("current guidance names next letters without claiming the EA is on track", 
   assert.doesNotMatch(describeCurrentAdvice(noFlag), /on track/i);
 });
 
-test("former owners receive no current tracker guidance", () => {
+test("historical rows receive no current tracker guidance without an ownership claim", () => {
+  const copy = describeCurrentAdvice(VALID_PROGRAMME_FIDELITY_PAYLOAD.rows[1]);
   assert.match(
-    describeCurrentAdvice(VALID_PROGRAMME_FIDELITY_PAYLOAD.rows[1]),
-    /former owner.*not assigned/i
+    copy,
+    /current letter guidance is unavailable.*historical activity row/i
   );
+  assert.doesNotMatch(copy, /former owner/i);
 });
 
 test("expansion preserves recognized filters and exactly one group/EA pair", () => {

@@ -10,7 +10,7 @@ export function formatCoverage(value: number | null): string {
 
 export function describeCurrentAdvice(row: ProgrammeFidelityRow): string {
   if (!row.is_current_owner) {
-    return "Former owner — current tracker advice is not assigned to this EA.";
+    return "Current letter guidance is unavailable for this historical activity row.";
   }
   if (row.introduce_letters === null || row.advice_reason === null) {
     return "Current letter guidance is unavailable until the source-data issue is corrected.";

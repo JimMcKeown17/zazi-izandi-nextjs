@@ -11,6 +11,10 @@ const canonicalUuid = z
   .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 const date = z.iso.date();
 const timestamp = z.iso.datetime({ offset: true });
+const calculationVersion = z.enum([
+  "mobile_fidelity_current_state_v1_1",
+  "mobile_fidelity_causal_alignment_v1",
+]);
 const count = z.number().int().nonnegative();
 const nullableCount = count.nullable();
 const boundedText = z.string().min(1).max(1000);
@@ -37,6 +41,7 @@ const instanceReason = z.enum([
   "UNKNOWN_ASSESSMENT_FORM",
   "SOURCE_DATA_INCOMPLETE",
   "INVALID_SESSION_LETTERS",
+  "MASTERY_SEMANTICS_UNVERIFIED",
   "LOW_TRACKER_COVERAGE",
   "EMPTY_ROSTER",
 ]);
@@ -103,6 +108,7 @@ const rowSchema = z
             "invalid_last_letter_attempted",
             "invalid_mastery_letter",
             "invalid_session_letters",
+            "mastery_semantics_unverified",
             "registry_lookup_failed",
             "unknown_assessment_form",
             "unknown_language",
@@ -160,7 +166,10 @@ const rowSchema = z
       row.advice_reason !== null ||
       row.introduce_letters !== null
     ) {
-      ctx.addIssue({ code: "custom", message: "former owner cannot receive current advice" });
+      ctx.addIssue({
+        code: "custom",
+        message: "historical activity row cannot receive current advice",
+      });
     }
     if (row.roster_size === 0 && row.tracker_coverage !== null) {
       ctx.addIssue({ code: "custom", message: "empty roster coverage must be null" });
@@ -219,12 +228,43 @@ const rowSchema = z
     ) {
       ctx.addIssue({ code: "custom", message: "score availability must match scored_n" });
     }
+    if (
+      row.scored_n !== null &&
+      row.scored_n > 0 &&
+      row.score !== null &&
+      row.aligned_count !== null &&
+      row.below_count !== null
+    ) {
+      const expectedScore =
+        (100 * (row.aligned_count + 0.5 * row.below_count)) / row.scored_n;
+      if (Math.abs(row.score - expectedScore) > 1e-7) {
+        ctx.addIssue({ code: "custom", message: "score must match normalized band counts" });
+      }
+    }
+    if (
+      row.alignment_status === "no_eligible_sessions" &&
+      (row.score !== null ||
+        [
+          row.aligned_count,
+          row.below_count,
+          row.above_count,
+          row.unscored_count,
+          row.scored_n,
+          row.causal_post_install_count,
+          row.bootstrap_influenced_count,
+          row.client_clock_count,
+          row.server_clock_count,
+          row.bootstrap_clock_count,
+        ].some((value) => value !== 0))
+    ) {
+      ctx.addIssue({ code: "custom", message: "no-session alignment must contain only zero counts" });
+    }
   });
 
 export const programmeFidelitySchema = z
   .object({
     schema_version: z.literal(1),
-    calculation_version: z.string().min(1).max(100),
+    calculation_version: calculationVersion,
     window_days: z.literal(14),
     activity_through_date: date.nullable(),
     alignment_scored_through_date: date.nullable(),
@@ -273,6 +313,13 @@ export const programmeFidelitySchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (
+      value.calculation_version === "mobile_fidelity_current_state_v1_1" &&
+      (value.alignment_availability.status !== "not_yet_available" ||
+        value.history_quality.status !== "current_state_only")
+    ) {
+      ctx.addIssue({ code: "custom", message: "current-state calculation cannot claim causal availability" });
+    }
     if (value.alignment_availability.scored_through_date !== value.alignment_scored_through_date) {
       ctx.addIssue({ code: "custom", message: "alignment boundary mismatch" });
     }
@@ -297,6 +344,45 @@ export const programmeFidelitySchema = z
     ) {
       ctx.addIssue({ code: "custom", message: "current-state history summary must remain null" });
     }
+    if (value.history_quality.status === "causal_history_available") {
+      const expectedCausal = value.rows.reduce(
+        (sum, row) =>
+          sum +
+          (row.causal_post_install_count ?? 0) +
+          (row.bootstrap_influenced_count ?? 0),
+        0
+      );
+      const expectedBootstrap = value.rows.reduce(
+        (sum, row) => sum + (row.bootstrap_influenced_count ?? 0),
+        0
+      );
+      if (
+        value.history_quality.causal_session_count !== expectedCausal ||
+        value.history_quality.bootstrap_influenced_count !== expectedBootstrap
+      ) {
+        ctx.addIssue({ code: "custom", message: "causal history summary must reconcile" });
+      }
+    }
+    if (value.alignment_availability.status !== "not_yet_available") {
+      if (
+        value.history_quality.status !== "causal_history_available" ||
+        value.rows.some(
+          (row) =>
+            row.alignment_status === "not_yet_available" ||
+            row.alignment_scored_through_date !== value.alignment_scored_through_date
+        )
+      ) {
+        ctx.addIssue({ code: "custom", message: "causal publication rows must share the advertised boundary" });
+      }
+      if (
+        (value.alignment_availability.status === "partial" &&
+          value.rows.some((row) => row.alignment_status === "scored")) ||
+        (value.alignment_availability.status === "available" &&
+          value.rows.some((row) => row.alignment_status === "partial"))
+      ) {
+        ctx.addIssue({ code: "custom", message: "row alignment status contradicts publication availability" });
+      }
+    }
     if (
       value.activity_through_date !== null &&
       value.rows.some((row) => row.activity_date_to !== value.activity_through_date)
@@ -308,7 +394,9 @@ export const programmeFidelitySchema = z
     const roster = currentRows.reduce((sum, row) => sum + (row.roster_size ?? 0), 0);
     const started = currentRows.reduce((sum, row) => sum + (row.started_count ?? 0), 0);
     const expectedAggregates = {
-      groups_needing_attention: currentRows.filter((row) => row.primary_reason !== "NO_IMMEDIATE_FLAG").length,
+      groups_needing_attention: currentRows.filter(
+        (row) => !["NO_IMMEDIATE_FLAG", "BOOTSTRAP_HISTORY_LIMITED"].includes(row.primary_reason)
+      ).length,
       active_groups: currentRows.filter((row) => row.recent_session_count > 0).length,
       inactive_groups: currentRows.filter((row) => row.recent_session_count === 0).length,
       tracker_started_count: started,
@@ -346,7 +434,7 @@ const sessionSchema = z
     session_date: date,
     session_time_quality: z.enum(["started_at", "date_fallback"]),
     alignment_status: z.enum(["pre_ledger", "not_yet_available", "pending_settlement", "evaluated"]),
-    reason_code: instanceReason,
+    reason_code: instanceReason.nullable(),
     historical_frontier: z.array(letter).max(2).nullable(),
     historical_roster_size: nullableCount,
     historical_started_count: nullableCount,
@@ -377,18 +465,70 @@ const sessionSchema = z
       value.clock_quality_counts,
     ];
     if (value.alignment_status === "evaluated") {
-      if (historicalValues.some((item) => item === null)) {
+      const scorableBands = new Set(["aligned", "below", "above"]);
+      const fullyScorable =
+        value.letters.length > 0 &&
+        value.letters.every((item) => scorableBands.has(item.band));
+      const fullyUnscored =
+        value.letters.length > 0 && value.letters.every((item) => item.band === "unscored");
+      const unavailableHistoryReason =
+        ((value.reason_code === "INVALID_SESSION_LETTERS" && value.letters.length === 0) ||
+          (value.reason_code === "UNKNOWN_LANGUAGE" && fullyUnscored)) &&
+        value.historical_frontier === null &&
+        historicalValues.every((item) => item === null);
+      if (!unavailableHistoryReason && historicalValues.some((item) => item === null)) {
         ctx.addIssue({ code: "custom", message: "evaluated sessions require historical evidence" });
+      }
+      if (
+        (value.reason_code === null && !fullyScorable) ||
+        (value.reason_code !== null && !fullyUnscored && !unavailableHistoryReason)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "evaluated reason must match scorable or wholly unscored bands",
+        });
+      }
+      if (value.reason_code !== null && value.historical_frontier !== null) {
+        ctx.addIssue({
+          code: "custom",
+          message: "unscorable evaluated sessions cannot claim a frontier",
+        });
+      }
+      if (value.reason_code === null && value.historical_frontier === null) {
+        ctx.addIssue({
+          code: "custom",
+          message: "scorable evaluated sessions require a historical frontier",
+        });
+      }
+      if (
+        value.historical_started_count !== null &&
+        value.historical_roster_size !== null &&
+        value.historical_started_count > value.historical_roster_size
+      ) {
+        ctx.addIssue({ code: "custom", message: "historical started count exceeds roster" });
       }
     } else if (value.historical_frontier !== null || historicalValues.some((item) => item !== null)) {
       ctx.addIssue({ code: "custom", message: "unevaluated sessions cannot claim historical evidence" });
+    } else {
+      const expectedReason = {
+        pre_ledger: "PRE_LEDGER_NO_CAUSAL_HISTORY",
+        not_yet_available: "ALIGNMENT_NOT_YET_AVAILABLE",
+        pending_settlement: "PENDING_EVIDENCE_SETTLEMENT",
+      }[value.alignment_status];
+      if (value.reason_code !== expectedReason) {
+        ctx.addIssue({ code: "custom", message: "unevaluated reason must match alignment state" });
+      }
+      const expectedBand = value.alignment_status === "pending_settlement" ? "pending" : "unscored";
+      if (value.letters.some((item) => item.band !== expectedBand)) {
+        ctx.addIssue({ code: "custom", message: "unevaluated letter bands must match alignment state" });
+      }
     }
   });
 
 export const programmeFidelitySessionsSchema = z
   .object({
     schema_version: z.literal(1),
-    calculation_version: z.string().min(1).max(100),
+    calculation_version: calculationVersion,
     window_days: z.literal(14),
     applied_filters: z
       .object({
@@ -408,6 +548,14 @@ export const programmeFidelitySessionsSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (
+      value.calculation_version === "mobile_fidelity_current_state_v1_1" &&
+      value.sessions.some((session) =>
+        ["pending_settlement", "evaluated"].includes(session.alignment_status)
+      )
+    ) {
+      ctx.addIssue({ code: "custom", message: "current-state calculation cannot contain causal session results" });
+    }
     const applied = value.applied_filters;
     if (
       epochDay(applied.activity_date_to) - epochDay(applied.activity_date_from) !== 13 ||

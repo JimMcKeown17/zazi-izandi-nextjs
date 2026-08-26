@@ -1,16 +1,19 @@
 import Link from "next/link";
-import { ArrowUpRight, CheckCircle2 } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, Info } from "lucide-react";
 
 import { recentSessionsHref } from "@/lib/mobile/programme-fidelity/presentation";
 import type { ProgrammeFidelityRow } from "@/lib/mobile/programme-fidelity/types";
 
 export function FidelityReason({ row }: { row: ProgrammeFidelityRow }) {
   const quiet = row.primary_reason === "NO_IMMEDIATE_FLAG";
+  const bootstrapOnly = row.primary_reason === "BOOTSTRAP_HISTORY_LIMITED";
   return (
     <div className="space-y-2 text-sm">
       <div className="flex items-start gap-2">
         {quiet ? (
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+        ) : bootstrapOnly ? (
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
         ) : (
           <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" />
         )}
@@ -21,7 +24,7 @@ export function FidelityReason({ row }: { row: ProgrammeFidelityRow }) {
       </div>
       <div className="rounded-lg bg-slate-50 px-3 py-2">
         <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-          Next mentor check
+          {bootstrapOnly ? "Interpretation note" : "Next mentor check"}
         </p>
         <p className="mt-1 leading-relaxed text-slate-700">{row.reason.recommended_check}</p>
         {row.primary_reason === "NO_RECENT_MOBILE_SESSION" ? (

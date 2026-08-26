@@ -22,7 +22,8 @@ test.describe("Mobile programme fidelity — locally mocked Django contract", ()
     await expect(page.getByText("Current mobile guidance is live", { exact: false })).toBeVisible();
     await expect(page.getByText("Suggested next letters: m, a", { exact: false }).first()).toBeVisible();
     await expect(page.getByText("Historical alignment not calculated").first()).toBeVisible();
-    await expect(page.getByText("Former owner · recent activity only").first()).toBeVisible();
+    await expect(page.getByText("Historical activity · no current guidance").first()).toBeVisible();
+    await expect(page.getByText(/former owner/i)).toHaveCount(0);
     await expect(page.getByText(/This is not an EA ranking/)).toBeVisible();
 
     const desktopFilters = page.getByTestId("programme-fidelity-filters-desktop");
@@ -95,6 +96,42 @@ test.describe("Mobile programme fidelity — locally mocked Django contract", ()
     await page.screenshot({
       path: testInfo.outputPath("programme-fidelity-375x812-details.png"),
       fullPage: false,
+    });
+  });
+
+  test("v0-b causal coaching remains bounded, explainable, and non-ranking", async ({
+    page,
+    signInAsRole,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await signInAsRole("senior_staff");
+    await page.goto("/mobile-app/programme-fidelity?attention=above");
+
+    await expect(page.getByTestId("programme-fidelity-success")).toBeVisible();
+    await expect(page.getByText(/partial window through 2026-08-24/i)).toBeVisible();
+    await expect(page.getByText(/historical tracker instructions were ambiguous/i)).toBeVisible();
+    await expect(page.getByText(/unscored sessions are excluded/i)).toBeVisible();
+    await expect(page.getByText("Partial causal window").first()).toBeVisible();
+    await expect(page.getByText("50.0%").first()).toBeVisible();
+    await expect(page.getByText(/1 aligned.*1 above/i).first()).toBeVisible();
+    await expect(page.getByText(/Teaching may be ahead of the historical frontier/i).first()).toBeVisible();
+
+    await page.locator("table").getByRole("link", { name: "Sessions" }).click();
+    const details = page.getByTestId("programme-fidelity-session-details").first();
+    await expect(details).toBeVisible();
+    await expect(details.getByText(/Historical frontier:.*m, a/i)).toBeVisible();
+    await expect(details.getByText(/4 of 5.*letter evidence/i)).toBeVisible();
+    await expect(details.getByText(/Low tracker coverage/i)).toBeVisible();
+    await expect(details.getByText(/install baseline evidence.*timing is limited/i)).toBeVisible();
+    await expect(details.getByText(/Mastery meaning unverified/i)).toBeVisible();
+    await expect(details.getByText(/older tracker instructions used ambiguous wording/i)).toBeVisible();
+    await expect(details.getByText(/Assessment evidence at session.*4 of 5.*assessment-supported letter evidence/i)).toBeVisible();
+    await expect(page.getByText(/This is not an EA ranking/)).toBeVisible();
+    await expect(page.getByText(/on track|good EA|bad EA/i)).toHaveCount(0);
+
+    await page.screenshot({
+      path: testInfo.outputPath("programme-fidelity-v0b-1440-full.png"),
+      fullPage: true,
     });
   });
 
