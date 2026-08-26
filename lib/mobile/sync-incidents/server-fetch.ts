@@ -2,18 +2,29 @@ import "server-only";
 
 import { djangoFetch } from "@/lib/django-fetch";
 import type { SyncIncidentPageAuthorizationFailure } from "./load-page";
-import { buildSyncIncidentsRequest } from "./request";
-import { decodeMobileSyncIncidentsResponse } from "./response";
+import {
+  buildSyncIncidentsRequest,
+  buildSyncIncidentsV2Request,
+} from "./request";
+import {
+  decodeMobileSyncIncidentsResponse,
+  decodeMobileSyncIncidentsV2Response,
+} from "./response";
 import type {
   MobileSyncIncidentFilters,
   MobileSyncIncidentsResult,
 } from "./types";
 
-export async function fetchMobileSyncIncidentsWithToken(
+type SyncIncidentRequestBuilder = typeof buildSyncIncidentsRequest;
+type SyncIncidentResponseDecoder = typeof decodeMobileSyncIncidentsResponse;
+
+async function fetchVersionedMobileSyncIncidentsWithToken(
   token: string,
-  filters: MobileSyncIncidentFilters
+  filters: MobileSyncIncidentFilters,
+  buildRequest: SyncIncidentRequestBuilder,
+  decodeResponse: SyncIncidentResponseDecoder
 ): Promise<MobileSyncIncidentsResult | SyncIncidentPageAuthorizationFailure> {
-  const request = buildSyncIncidentsRequest(token, filters);
+  const request = buildRequest(token, filters);
   let response: Response;
   try {
     response = await djangoFetch(request.path, request.init);
@@ -35,5 +46,29 @@ export async function fetchMobileSyncIncidentsWithToken(
       message: "Your session has expired. Refresh and sign in again.",
     };
   }
-  return decodeMobileSyncIncidentsResponse(response, filters);
+  return decodeResponse(response, filters);
+}
+
+export async function fetchMobileSyncIncidentsWithToken(
+  token: string,
+  filters: MobileSyncIncidentFilters
+): Promise<MobileSyncIncidentsResult | SyncIncidentPageAuthorizationFailure> {
+  return fetchVersionedMobileSyncIncidentsWithToken(
+    token,
+    filters,
+    buildSyncIncidentsRequest,
+    decodeMobileSyncIncidentsResponse
+  );
+}
+
+export async function fetchMobileSyncIncidentsV2WithToken(
+  token: string,
+  filters: MobileSyncIncidentFilters
+): Promise<MobileSyncIncidentsResult | SyncIncidentPageAuthorizationFailure> {
+  return fetchVersionedMobileSyncIncidentsWithToken(
+    token,
+    filters,
+    buildSyncIncidentsV2Request,
+    decodeMobileSyncIncidentsV2Response
+  );
 }

@@ -12,6 +12,7 @@ import {
 } from "@/lib/mobile/sync-incidents/presentation";
 import type {
   MobileSyncIncidentItem,
+  MobileSyncIncidentReceipt,
   MobileSyncIncidentsResponse,
   MobileSyncIncidentsResult,
 } from "@/lib/mobile/sync-incidents/types";
@@ -35,6 +36,35 @@ function TechnicalValue({ label, value }: { label: string; value: unknown }) {
   );
 }
 
+function getReceiptProvenance(receipt: MobileSyncIncidentReceipt): {
+  observedReleaseLabel: string;
+  updateId: string;
+  launchSource: string;
+} {
+  if (receipt.schema_version === 1) {
+    return {
+      observedReleaseLabel: "Unknown",
+      updateId: "Unknown",
+      launchSource: "Unknown",
+    };
+  }
+
+  return {
+    observedReleaseLabel: receipt.observed_release_label ?? "Unknown",
+    updateId:
+      receipt.observed_update_id ??
+      (receipt.observed_is_embedded_launch === true
+        ? "Not applicable (embedded build)"
+        : "Unknown"),
+    launchSource:
+      receipt.observed_is_embedded_launch === false
+        ? "OTA update"
+        : receipt.observed_is_embedded_launch === true
+          ? "Embedded build"
+          : "Unknown",
+  };
+}
+
 export function SyncIncidentList({
   incidents,
 }: {
@@ -50,6 +80,7 @@ export function SyncIncidentList({
           actor.current_school_id === null
             ? "No current school recorded"
             : actor.current_school ?? "School name unavailable";
+        const provenance = getReceiptProvenance(receipt);
         return (
           <article
             key={getIncidentIdentity(item)}
@@ -122,6 +153,42 @@ export function SyncIncidentList({
                 </dd>
               </div>
             </dl>
+
+            <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-800">
+                Release that observed and queued this receipt
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                It does not prove which release first caused the underlying sync
+                condition.
+              </p>
+              <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <dt className="text-xs text-slate-500">Native build</dt>
+                  <dd className="break-all font-medium text-slate-800">
+                    {receipt.build_number ?? "Unknown"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Observed App Release</dt>
+                  <dd className="break-all font-medium text-slate-800">
+                    {provenance.observedReleaseLabel}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Update UUID</dt>
+                  <dd className="break-all font-mono text-xs text-slate-800">
+                    {provenance.updateId}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Launch source</dt>
+                  <dd className="font-medium text-slate-800">
+                    {provenance.launchSource}
+                  </dd>
+                </div>
+              </dl>
+            </div>
 
             <details className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
               <summary className="cursor-pointer text-sm font-semibold text-slate-700">

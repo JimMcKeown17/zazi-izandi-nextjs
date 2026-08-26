@@ -1,5 +1,6 @@
 import {
   mobileSyncIncidentsSchema,
+  mobileSyncIncidentsV2Schema,
   responseMatchesRequest,
 } from "./schema";
 import type {
@@ -10,6 +11,20 @@ import type {
 export async function decodeMobileSyncIncidentsResponse(
   response: Response,
   requestedFilters: MobileSyncIncidentFilters
+): Promise<MobileSyncIncidentsResult> {
+  return decodeVersionedMobileSyncIncidentsResponse(
+    response,
+    requestedFilters,
+    mobileSyncIncidentsSchema
+  );
+}
+
+async function decodeVersionedMobileSyncIncidentsResponse(
+  response: Response,
+  requestedFilters: MobileSyncIncidentFilters,
+  schema:
+    | typeof mobileSyncIncidentsSchema
+    | typeof mobileSyncIncidentsV2Schema
 ): Promise<MobileSyncIncidentsResult> {
   if (!response.ok) {
     if (response.status === 400) {
@@ -56,7 +71,7 @@ export async function decodeMobileSyncIncidentsResponse(
     };
   }
 
-  const parsed = mobileSyncIncidentsSchema.safeParse(payload);
+  const parsed = schema.safeParse(payload);
   if (!parsed.success || !responseMatchesRequest(parsed.data, requestedFilters)) {
     return {
       ok: false,
@@ -67,4 +82,15 @@ export async function decodeMobileSyncIncidentsResponse(
   }
 
   return { ok: true, data: parsed.data };
+}
+
+export async function decodeMobileSyncIncidentsV2Response(
+  response: Response,
+  requestedFilters: MobileSyncIncidentFilters
+): Promise<MobileSyncIncidentsResult> {
+  return decodeVersionedMobileSyncIncidentsResponse(
+    response,
+    requestedFilters,
+    mobileSyncIncidentsV2Schema
+  );
 }

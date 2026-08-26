@@ -29,6 +29,29 @@ test("Sync diagnostics has a route-backed page and owns its forensic fetch", () 
   assert.doesNotMatch(page, /getMobileUserHealth/);
 });
 
+test("only Sync diagnostics opts into the versioned receipt endpoint", () => {
+  const api = read("lib", "mobile", "api.ts");
+  const action = read(
+    "app",
+    "mobile-app",
+    "user-health",
+    "sync-incident-actions.ts"
+  );
+  const fetchBoundary = read(
+    "lib",
+    "mobile",
+    "sync-incidents",
+    "server-fetch.ts"
+  );
+
+  assert.match(api, /fetchMobileSyncIncidentsV2WithToken/);
+  assert.match(action, /fetchMobileSyncIncidentsV2WithToken/);
+  assert.doesNotMatch(api, /fetchMobileSyncIncidentsWithToken\b/);
+  assert.doesNotMatch(action, /fetchMobileSyncIncidentsWithToken\b/);
+  assert.match(fetchBoundary, /fetchMobileSyncIncidentsWithToken/);
+  assert.match(fetchBoundary, /fetchMobileSyncIncidentsV2WithToken/);
+});
+
 test("the Overview route defaults to seven calendar days and accepts Today", () => {
   const state = read("lib", "mobile", "user-health", "page-state.ts");
 

@@ -168,9 +168,8 @@ const actorSchema = z
     }
   });
 
-const receiptSchema = z
+const receiptShapeSchema = z
   .strictObject({
-    schema_version: z.literal(1),
     actor_user_id: canonicalUuid,
     incident_key: z.string().min(1).max(512),
     incident_kind: z.enum([
@@ -290,9 +289,52 @@ const receiptSchema = z
     }
   });
 
+const receiptSchema = receiptShapeSchema.safeExtend({
+  schema_version: z.literal(1),
+});
+
+const receiptV2Schema = receiptShapeSchema
+  .safeExtend({
+    schema_version: z.literal(2),
+    observed_release_label: version.nullable(),
+    observed_update_id: canonicalUuid.nullable(),
+    observed_is_embedded_launch: z.boolean().nullable(),
+  })
+  .superRefine((receipt, context) => {
+    if (
+      receipt.observed_is_embedded_launch === null &&
+      (receipt.observed_release_label !== null ||
+        receipt.observed_update_id !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["observed_is_embedded_launch"],
+        message: "unknown launch identity cannot claim release provenance",
+      });
+    }
+    if (
+      receipt.observed_is_embedded_launch === true &&
+      receipt.observed_update_id !== null
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["observed_update_id"],
+        message: "an embedded launch cannot claim an OTA update UUID",
+      });
+    }
+  });
+
 const itemSchema = z.strictObject({
   actor: actorSchema,
   receipt: receiptSchema,
+});
+
+const itemV2Schema = z.strictObject({
+  actor: actorSchema,
+  receipt: z.discriminatedUnion("schema_version", [
+    receiptSchema,
+    receiptV2Schema,
+  ]),
 });
 
 const appliedFiltersSchema = z.strictObject({
@@ -334,17 +376,35 @@ function expectedSastWindow(snapshot: string, days: number): {
   };
 }
 
-export const mobileSyncIncidentsSchema = z
-  .strictObject({
+const mobileSyncIncidentsCommonSchema = z.strictObject({
+  generated_at: controlTimestamp,
+  applied_filters: appliedFiltersSchema,
+  summary: summarySchema,
+  page_count: safeCount,
+  next_cursor: z.string().regex(ASCII_CURSOR_PATTERN).nullable(),
+});
+
+const mobileSyncIncidentsV1UnrefinedSchema =
+  mobileSyncIncidentsCommonSchema.safeExtend({
     schema_version: z.literal(1),
-    generated_at: controlTimestamp,
-    applied_filters: appliedFiltersSchema,
-    summary: summarySchema,
-    page_count: safeCount,
-    next_cursor: z.string().regex(ASCII_CURSOR_PATTERN).nullable(),
     incidents: z.array(itemSchema).max(100),
-  })
-  .superRefine((value, context) => {
+  });
+
+const mobileSyncIncidentsV2UnrefinedSchema =
+  mobileSyncIncidentsCommonSchema.safeExtend({
+    schema_version: z.literal(2),
+    incidents: z.array(itemV2Schema).max(100),
+  });
+
+type MobileSyncIncidentsRefinementValue = Omit<
+  z.infer<typeof mobileSyncIncidentsV2UnrefinedSchema>,
+  "schema_version"
+>;
+
+function refineMobileSyncIncidents(
+  value: MobileSyncIncidentsRefinementValue,
+  context: z.RefinementCtx
+): void {
     const { summary, incidents, applied_filters: filters } = value;
     const expectedWindow = expectedSastWindow(
       filters.snapshot_received_before,
@@ -526,10 +586,18 @@ export const mobileSyncIncidentsSchema = z
         message: "a cursor requires a full page",
       });
     }
-  });
+}
+
+export const mobileSyncIncidentsSchema =
+  mobileSyncIncidentsV1UnrefinedSchema.superRefine(refineMobileSyncIncidents);
+
+export const mobileSyncIncidentsV2Schema =
+  mobileSyncIncidentsV2UnrefinedSchema.superRefine(refineMobileSyncIncidents);
 
 export function responseMatchesRequest(
-  response: z.infer<typeof mobileSyncIncidentsSchema>,
+  response:
+    | z.infer<typeof mobileSyncIncidentsSchema>
+    | z.infer<typeof mobileSyncIncidentsV2Schema>,
   requestedFilters: MobileSyncIncidentFilters
 ): boolean {
   const expected = {
