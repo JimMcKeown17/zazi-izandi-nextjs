@@ -95,6 +95,7 @@ const rowSchema = z
       z
         .object({
           code: z.enum([
+            "assessment_form_language_mismatch",
             "assessment_recency_tie",
             "invalid_assessment_items",
             "invalid_assessment_date",
@@ -105,6 +106,7 @@ const rowSchema = z
             "registry_lookup_failed",
             "unknown_assessment_form",
             "unknown_language",
+            "unregistered_assessment_form",
           ]),
           observation: boundedText,
         })

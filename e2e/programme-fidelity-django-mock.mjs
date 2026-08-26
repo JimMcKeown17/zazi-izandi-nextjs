@@ -148,7 +148,7 @@ function aggregate(url) {
   const started = owners.reduce((sum, row) => sum + (row.started_count ?? 0), 0);
   return {
     schema_version: 1,
-    calculation_version: "mobile_fidelity_current_state_v1",
+    calculation_version: "mobile_fidelity_current_state_v1_1",
     window_days: 14,
     activity_through_date: "2026-08-25",
     alignment_scored_through_date: null,
@@ -196,7 +196,7 @@ function sessions(url) {
   const eaUserId = url.searchParams.get("ea_user_id");
   return {
     schema_version: 1,
-    calculation_version: "mobile_fidelity_current_state_v1",
+    calculation_version: "mobile_fidelity_current_state_v1_1",
     window_days: 14,
     applied_filters: {
       group_id: groupId,

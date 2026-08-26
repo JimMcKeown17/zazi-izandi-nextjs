@@ -18,6 +18,22 @@ test("the complete v0-a envelope is accepted with unavailable causal fields null
   );
 });
 
+test("self-describing assessment provenance annotations are accepted as closed codes", () => {
+  const payload = structuredClone(VALID_PROGRAMME_FIDELITY_PAYLOAD);
+  payload.rows[0].supporting_reasons = [
+    {
+      code: "unregistered_assessment_form",
+      observation: "Stored items were scored from an unregistered form.",
+    },
+    {
+      code: "assessment_form_language_mismatch",
+      observation: "Stored items were scored despite mismatched form metadata.",
+    },
+  ];
+
+  assert.equal(programmeFidelitySchema.safeParse(payload).success, true);
+});
+
 test("the decoder schema is recursively closed", () => {
   const poisoned = structuredClone(VALID_PROGRAMME_FIDELITY_PAYLOAD);
   (poisoned.rows[0] as unknown as Record<string, unknown>).learner_id = "secret";

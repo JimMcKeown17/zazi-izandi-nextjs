@@ -96,7 +96,7 @@ const formerRow: ProgrammeFidelityRow = {
 
 export const VALID_PROGRAMME_FIDELITY_PAYLOAD: ProgrammeFidelityResponse = {
   schema_version: 1,
-  calculation_version: "mobile_fidelity_current_state_v1",
+  calculation_version: "mobile_fidelity_current_state_v1_1",
   window_days: 14,
   activity_through_date: "2026-08-25",
   alignment_scored_through_date: null,
@@ -135,7 +135,7 @@ export const VALID_PROGRAMME_FIDELITY_PAYLOAD: ProgrammeFidelityResponse = {
 
 export const VALID_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD: ProgrammeFidelitySessionResponse = {
   schema_version: 1,
-  calculation_version: "mobile_fidelity_current_state_v1",
+  calculation_version: "mobile_fidelity_current_state_v1_1",
   window_days: 14,
   applied_filters: {
     group_id: GROUP_ID,
