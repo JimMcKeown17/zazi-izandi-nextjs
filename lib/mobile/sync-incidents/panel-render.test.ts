@@ -70,7 +70,7 @@ test("v2 labels the release that observed and queued the receipt", () => {
   assert.match(text, /Release that observed and queued this receipt/);
   assert.match(
     text,
-    /It does not prove which release first caused the underlying sync condition/
+    /It may differ from what the device runs now and does not prove which release first caused the underlying sync condition/
   );
   assert.match(text, /Native build 19/);
   assert.match(text, /Observed App Release 1\.1\.1\+30/);
@@ -81,7 +81,7 @@ test("v2 labels the release that observed and queued the receipt", () => {
   assert.match(text, /Launch source OTA update/);
 });
 
-test("historical v1 receipts in the v2 feed show unknown provenance honestly", () => {
+test("historical v1 receipts say provenance was not recorded by schema v1", () => {
   const payload = structuredClone(VALID_MOBILE_SYNC_INCIDENTS_V2_PAYLOAD);
   payload.incidents[0].receipt = structuredClone(
     VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD.incidents[0].receipt
@@ -96,9 +96,9 @@ test("historical v1 receipts in the v2 feed show unknown provenance honestly", (
   );
 
   assert.match(text, /Native build 19/);
-  assert.match(text, /Observed App Release Unknown/);
-  assert.match(text, /Update UUID Unknown/);
-  assert.match(text, /Launch source Unknown/);
+  assert.match(text, /Observed App Release Not recorded \(schema v1\)/);
+  assert.match(text, /Update UUID Not recorded \(schema v1\)/);
+  assert.match(text, /Launch source Not recorded \(schema v1\)/);
 });
 
 test("v2 distinguishes embedded and unknown launch provenance", () => {
@@ -137,9 +137,9 @@ test("v2 distinguishes embedded and unknown launch provenance", () => {
       })
     )
   );
-  assert.match(unknownText, /Observed App Release Unknown/);
-  assert.match(unknownText, /Update UUID Unknown/);
-  assert.match(unknownText, /Launch source Unknown/);
+  assert.match(unknownText, /Observed App Release Undetermined by device/);
+  assert.match(unknownText, /Update UUID Undetermined by device/);
+  assert.match(unknownText, /Launch source Undetermined by device/);
 });
 
 test("unknown classification tokens cannot resolve through Object prototype keys", () => {

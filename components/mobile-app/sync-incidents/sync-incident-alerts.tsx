@@ -43,25 +43,26 @@ function getReceiptProvenance(receipt: MobileSyncIncidentReceipt): {
 } {
   if (receipt.schema_version === 1) {
     return {
-      observedReleaseLabel: "Unknown",
-      updateId: "Unknown",
-      launchSource: "Unknown",
+      observedReleaseLabel: "Not recorded (schema v1)",
+      updateId: "Not recorded (schema v1)",
+      launchSource: "Not recorded (schema v1)",
     };
   }
 
   return {
-    observedReleaseLabel: receipt.observed_release_label ?? "Unknown",
+    observedReleaseLabel:
+      receipt.observed_release_label ?? "Undetermined by device",
     updateId:
       receipt.observed_update_id ??
       (receipt.observed_is_embedded_launch === true
         ? "Not applicable (embedded build)"
-        : "Unknown"),
+        : "Undetermined by device"),
     launchSource:
       receipt.observed_is_embedded_launch === false
         ? "OTA update"
         : receipt.observed_is_embedded_launch === true
           ? "Embedded build"
-          : "Unknown",
+          : "Undetermined by device",
   };
 }
 
@@ -159,8 +160,8 @@ export function SyncIncidentList({
                 Release that observed and queued this receipt
               </p>
               <p className="mt-1 text-xs leading-relaxed text-slate-600">
-                It does not prove which release first caused the underlying sync
-                condition.
+                It may differ from what the device runs now and does not prove
+                which release first caused the underlying sync condition.
               </p>
               <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
                 <div>
