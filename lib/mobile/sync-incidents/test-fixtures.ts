@@ -1,4 +1,7 @@
-import type { MobileSyncIncidentsResponse } from "./types";
+import type {
+  MobileSyncIncidentsResponseV1,
+  MobileSyncIncidentsResponseV2,
+} from "./types";
 
 export const ACTOR_ID = "00000000-0000-4000-8000-000000000001";
 export const MUTATION_ID = "00000000-0000-4000-8000-000000000002";
@@ -6,7 +9,7 @@ export const LOCAL_RECORD_ID = "00000000-0000-4000-8000-000000000003";
 export const STREAM_ID = "00000000-0000-4000-8000-000000000004";
 export const SCHOOL_ID = "00000000-0000-4000-8000-000000000010";
 
-export const VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD: MobileSyncIncidentsResponse = {
+export const VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD: MobileSyncIncidentsResponseV1 = {
   schema_version: 1,
   generated_at: "2026-08-14T12:00:00Z",
   applied_filters: {
@@ -74,4 +77,21 @@ export const VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD: MobileSyncIncidentsResponse = 
       },
     },
   ],
+};
+
+export const VALID_MOBILE_SYNC_INCIDENTS_V2_PAYLOAD: MobileSyncIncidentsResponseV2 = {
+  ...VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD,
+  schema_version: 2,
+  incidents: VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD.incidents.map(
+    ({ actor, receipt }) => ({
+      actor: { ...actor },
+      receipt: {
+        ...receipt,
+        schema_version: 2,
+        observed_release_label: "1.1.1+30",
+        observed_update_id: "00000000-0000-4000-8000-000000000030",
+        observed_is_embedded_launch: false,
+      },
+    })
+  ),
 };

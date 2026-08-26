@@ -64,7 +64,7 @@ import {
   decodeMobileUserProfileResponse,
   type MobileUserProfileResult,
 } from "./user-profile/response";
-import { fetchMobileSyncIncidentsWithToken } from "./sync-incidents/server-fetch";
+import { fetchMobileSyncIncidentsV2WithToken } from "./sync-incidents/server-fetch";
 import type {
   MobileSyncIncidentFilters,
   MobileSyncIncidentsResult,
@@ -198,7 +198,7 @@ export async function getMobileSyncIncidents(
   const token = await session.getToken();
   if (!token) redirect("/login?error=session_expired");
 
-  const result = await fetchMobileSyncIncidentsWithToken(token, filters);
+  const result = await fetchMobileSyncIncidentsV2WithToken(token, filters);
   if (!result.ok && result.kind === "not_authenticated") {
     redirect("/login?error=session_expired");
   }

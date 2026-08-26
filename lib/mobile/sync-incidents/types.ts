@@ -50,8 +50,7 @@ export interface MobileSyncIncidentActor {
   current_school: string | null;
 }
 
-export interface MobileSyncIncidentReceipt {
-  schema_version: 1;
+interface MobileSyncIncidentReceiptFields {
   actor_user_id: string;
   incident_key: string;
   incident_kind: MobileSyncIncidentKind;
@@ -83,13 +82,29 @@ export interface MobileSyncIncidentReceipt {
   received_at: string;
 }
 
+export interface MobileSyncIncidentReceiptV1
+  extends MobileSyncIncidentReceiptFields {
+  schema_version: 1;
+}
+
+export interface MobileSyncIncidentReceiptV2
+  extends MobileSyncIncidentReceiptFields {
+  schema_version: 2;
+  observed_release_label: string | null;
+  observed_update_id: string | null;
+  observed_is_embedded_launch: boolean | null;
+}
+
+export type MobileSyncIncidentReceipt =
+  | MobileSyncIncidentReceiptV1
+  | MobileSyncIncidentReceiptV2;
+
 export interface MobileSyncIncidentItem {
   actor: MobileSyncIncidentActor;
   receipt: MobileSyncIncidentReceipt;
 }
 
-export interface MobileSyncIncidentsResponse {
-  schema_version: 1;
+interface MobileSyncIncidentsResponseFields {
   generated_at: string;
   applied_filters: {
     days: number;
@@ -112,8 +127,25 @@ export interface MobileSyncIncidentsResponse {
   };
   page_count: number;
   next_cursor: string | null;
+}
+
+export interface MobileSyncIncidentsResponseV1
+  extends MobileSyncIncidentsResponseFields {
+  schema_version: 1;
+  incidents: Array<
+    MobileSyncIncidentItem & { receipt: MobileSyncIncidentReceiptV1 }
+  >;
+}
+
+export interface MobileSyncIncidentsResponseV2
+  extends MobileSyncIncidentsResponseFields {
+  schema_version: 2;
   incidents: MobileSyncIncidentItem[];
 }
+
+export type MobileSyncIncidentsResponse =
+  | MobileSyncIncidentsResponseV1
+  | MobileSyncIncidentsResponseV2;
 
 export type MobileSyncIncidentsResult =
   | { ok: true; data: MobileSyncIncidentsResponse }
