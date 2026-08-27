@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   Grid3X3,
   Users,
+  StickyNote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +35,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: "Letter Alignment", href: "/pm/letter-alignment", icon: Grid3X3 },
   { name: "Assessments", href: "/pm/assessments", icon: ClipboardCheck },
   { name: "Mentor Visits", href: "/pm/mentor-visits", icon: Eye },
+  { name: "Notes", href: "/pm/notes", icon: StickyNote },
 ];
 
 // Explicit mobile tabs — decoupled from desktop nav order
