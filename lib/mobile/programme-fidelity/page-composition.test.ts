@@ -13,6 +13,10 @@ import {
 import { FidelityReason } from "@/components/mobile-app/programme-fidelity/fidelity-reason";
 import { FidelitySessionDetails } from "@/components/mobile-app/programme-fidelity/fidelity-session-details";
 import {
+  VALID_CAUSAL_V1_PROGRAMME_FIDELITY_PAYLOAD,
+  VALID_CAUSAL_V1_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD,
+  VALID_CAUSAL_V2_PROGRAMME_FIDELITY_PAYLOAD,
+  VALID_CAUSAL_V2_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD,
   VALID_PROGRAMME_FIDELITY_PAYLOAD,
   VALID_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD,
 } from "./test-fixtures";
@@ -27,6 +31,28 @@ test("the server route guards capability and parallelizes independent aggregate/
   assert.match(page, /fetchProgrammeFidelityWithToken/);
   assert.match(page, /fetchProgrammeFidelitySessionsWithToken/);
   assert.doesNotMatch(page, /supabase|service_role/i);
+});
+
+test("mobile auth exposes one cached identity seam before capability enforcement", () => {
+  const auth = fs.readFileSync(
+    path.join(process.cwd(), "lib/mobile/auth.ts"),
+    "utf8"
+  );
+  assert.match(auth, /export const getAuthenticatedMobileSession = cache\(async \(\) =>/);
+  assert.match(auth, /const session = await auth\(\)/);
+  assert.match(auth, /if \(!session\.userId\) redirect\("\/login"\)/);
+  assert.match(
+    auth,
+    /requireMobileCapability[\s\S]*await getAuthenticatedMobileSession\(\)/
+  );
+  assert.match(
+    auth,
+    /requireMobileReportingSession[\s\S]*await getAuthenticatedMobileSession\(\)/
+  );
+  const accessorStart = auth.indexOf("export const getAuthenticatedMobileSession");
+  const accessorEnd = auth.indexOf("\n});", accessorStart);
+  assert.ok(accessorStart >= 0 && accessorEnd > accessorStart);
+  assert.doesNotMatch(auth.slice(accessorStart, accessorEnd), /hasCapability/);
 });
 
 test("the populated v0-a page renders coaching guidance without causal or ranking claims", () => {
@@ -207,6 +233,37 @@ test("parallel aggregate and session responses must come from one calculation", 
     kind: "unavailable",
     message: "Session detail crossed a nightly publication boundary. Reload to use one completed calculation.",
   });
+});
+
+test("current-state, causal v1, and causal v2 detail correlate only within one publication", () => {
+  for (const [aggregate, sessions] of [
+    [VALID_PROGRAMME_FIDELITY_PAYLOAD, VALID_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD],
+    [VALID_CAUSAL_V1_PROGRAMME_FIDELITY_PAYLOAD, VALID_CAUSAL_V1_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD],
+    [VALID_CAUSAL_V2_PROGRAMME_FIDELITY_PAYLOAD, VALID_CAUSAL_V2_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD],
+  ] as const) {
+    const result = { ok: true as const, data: aggregate };
+    const sessionsResult = { ok: true as const, data: sessions };
+    assert.deepEqual(correlateProgrammeFidelitySessions(result, sessionsResult), sessionsResult);
+  }
+});
+
+test("causal v2 detail fails closed when its availability boundary differs from the aggregate", () => {
+  const sessions = structuredClone(VALID_CAUSAL_V2_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD);
+  sessions.alignment_availability = {
+    status: "partial",
+    scored_through_date: "2026-08-20",
+  };
+
+  const correlated = correlateProgrammeFidelitySessions(
+    { ok: true, data: VALID_CAUSAL_V2_PROGRAMME_FIDELITY_PAYLOAD },
+    { ok: true, data: sessions }
+  );
+
+  assert.equal(correlated?.ok, false);
+  if (correlated && !correlated.ok) {
+    assert.equal(correlated.status, 503);
+    assert.match(correlated.message, /one completed calculation/i);
+  }
 });
 
 test("v0-b aggregate view shows the partial boundary, raw bands, and coaching language", () => {

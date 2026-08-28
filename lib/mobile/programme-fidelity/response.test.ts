@@ -8,6 +8,8 @@ import {
 import {
   EA_ID,
   GROUP_ID,
+  VALID_CAUSAL_V2_PROGRAMME_FIDELITY_PAYLOAD,
+  VALID_CAUSAL_V2_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD,
   VALID_PROGRAMME_FIDELITY_PAYLOAD,
   VALID_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD,
 } from "./test-fixtures";
@@ -28,6 +30,23 @@ test("aggregate and session decoders retain exact correlated envelopes", async (
       { groupId: GROUP_ID, eaUserId: EA_ID }
     ),
     { ok: true, data: VALID_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD }
+  );
+});
+
+test("aggregate and session decoders retain the exact causal v2 envelopes", async () => {
+  assert.deepEqual(
+    await decodeProgrammeFidelityResponse(
+      new Response(JSON.stringify(VALID_CAUSAL_V2_PROGRAMME_FIDELITY_PAYLOAD), { status: 200 }),
+      filters
+    ),
+    { ok: true, data: VALID_CAUSAL_V2_PROGRAMME_FIDELITY_PAYLOAD }
+  );
+  assert.deepEqual(
+    await decodeProgrammeFidelitySessionsResponse(
+      new Response(JSON.stringify(VALID_CAUSAL_V2_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD), { status: 200 }),
+      { groupId: GROUP_ID, eaUserId: EA_ID }
+    ),
+    { ok: true, data: VALID_CAUSAL_V2_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD }
   );
 });
 

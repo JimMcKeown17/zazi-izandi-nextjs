@@ -56,7 +56,14 @@ export interface ProgrammeFidelityReason {
   recommended_check: string;
 }
 
-export interface ProgrammeFidelityRow {
+export type ProgrammeFidelityV1CalculationVersion =
+  | "mobile_fidelity_current_state_v1_1"
+  | "mobile_fidelity_causal_alignment_v1";
+
+export type ProgrammeFidelityV2CalculationVersion =
+  "mobile_fidelity_causal_alignment_v2";
+
+export interface ProgrammeFidelityRowBase {
   group_id: string;
   ea_user_id: string;
   group_name: string;
@@ -106,9 +113,27 @@ export interface ProgrammeFidelityRow {
   bootstrap_clock_count: number | null;
 }
 
-export interface ProgrammeFidelityResponse {
-  schema_version: 1;
-  calculation_version: string;
+export interface ProgrammeFidelityLetterFocus {
+  focused_session_count: number;
+  mixed_session_count: number;
+  ahead_only_session_count: number;
+  unscored_session_count: number;
+  eligible_session_count: number;
+  session_value_sum: number;
+  score: number | null;
+}
+
+export type ProgrammeFidelityRowV1 = ProgrammeFidelityRowBase;
+
+export interface ProgrammeFidelityRowV2 extends ProgrammeFidelityRowBase {
+  letter_focus: ProgrammeFidelityLetterFocus | null;
+}
+
+export type ProgrammeFidelityRow =
+  | ProgrammeFidelityRowV1
+  | ProgrammeFidelityRowV2;
+
+interface ProgrammeFidelityResponseBase {
   window_days: 14;
   activity_through_date: string | null;
   alignment_scored_through_date: string | null;
@@ -134,15 +159,30 @@ export interface ProgrammeFidelityResponse {
     tracker_roster_size: number;
     tracker_coverage: number | null;
   };
-  data_quality: ProgrammeFidelityRow["data_quality_counts"] & {
+  data_quality: ProgrammeFidelityRowBase["data_quality_counts"] & {
     unattributed_session_count: number;
   };
   filter_options: {
     schools: Array<{ id: string; name: string }>;
     eas: Array<{ id: string; name: string }>;
   };
-  rows: ProgrammeFidelityRow[];
 }
+
+export interface ProgrammeFidelityResponseV1 extends ProgrammeFidelityResponseBase {
+  schema_version: 1;
+  calculation_version: ProgrammeFidelityV1CalculationVersion;
+  rows: ProgrammeFidelityRowV1[];
+}
+
+export interface ProgrammeFidelityResponseV2 extends ProgrammeFidelityResponseBase {
+  schema_version: 2;
+  calculation_version: ProgrammeFidelityV2CalculationVersion;
+  rows: ProgrammeFidelityRowV2[];
+}
+
+export type ProgrammeFidelityResponse =
+  | ProgrammeFidelityResponseV1
+  | ProgrammeFidelityResponseV2;
 
 export type ProgrammeFidelityInstanceReason =
   | "PRE_LEDGER_NO_CAUSAL_HISTORY"
@@ -156,9 +196,7 @@ export type ProgrammeFidelityInstanceReason =
   | "LOW_TRACKER_COVERAGE"
   | "EMPTY_ROSTER";
 
-export interface ProgrammeFidelitySessionResponse {
-  schema_version: 1;
-  calculation_version: string;
+export interface ProgrammeFidelitySessionResponseBase {
   window_days: 14;
   applied_filters: {
     group_id: string;
@@ -200,6 +238,26 @@ export interface ProgrammeFidelitySessionResponse {
     }>;
   }>;
 }
+
+export interface ProgrammeFidelitySessionResponseV1
+  extends ProgrammeFidelitySessionResponseBase {
+  schema_version: 1;
+  calculation_version: ProgrammeFidelityV1CalculationVersion;
+}
+
+export interface ProgrammeFidelitySessionResponseV2
+  extends ProgrammeFidelitySessionResponseBase {
+  schema_version: 2;
+  calculation_version: ProgrammeFidelityV2CalculationVersion;
+  alignment_availability: {
+    status: "not_yet_available" | "partial" | "available";
+    scored_through_date: string | null;
+  };
+}
+
+export type ProgrammeFidelitySessionResponse =
+  | ProgrammeFidelitySessionResponseV1
+  | ProgrammeFidelitySessionResponseV2;
 
 export type ProgrammeFidelityFailureKind =
   | "invalid_filters"

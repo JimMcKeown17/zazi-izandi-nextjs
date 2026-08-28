@@ -88,7 +88,7 @@ function FreshnessBanner({ data }: { data: ProgrammeFidelityResponse }) {
 }
 
 function HistoricalMasteryCaveat({ data }: { data: ProgrammeFidelityResponse }) {
-  if (data.calculation_version !== "mobile_fidelity_causal_alignment_v1") {
+  if (data.calculation_version === "mobile_fidelity_current_state_v1_1") {
     return null;
   }
   return (
@@ -110,9 +110,25 @@ export function correlateProgrammeFidelitySessions(
 ): ProgrammeFidelityResult<ProgrammeFidelitySessionResponse> | null {
   if (!result.ok || !sessionsResult?.ok) return sessionsResult;
   if (
+    sessionsResult.data.schema_version !== result.data.schema_version ||
     sessionsResult.data.calculation_version !== result.data.calculation_version ||
     sessionsResult.data.freshness.compute_completed_at !==
       result.data.freshness.compute_completed_at
+  ) {
+    return {
+      ok: false,
+      status: 503,
+      kind: "unavailable",
+      message: "Session detail crossed a nightly publication boundary. Reload to use one completed calculation.",
+    };
+  }
+  if (
+    result.data.schema_version === 2 &&
+    sessionsResult.data.schema_version === 2 &&
+    (sessionsResult.data.alignment_availability.status !==
+      result.data.alignment_availability.status ||
+      sessionsResult.data.alignment_availability.scored_through_date !==
+        result.data.alignment_availability.scored_through_date)
   ) {
     return {
       ok: false,

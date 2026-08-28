@@ -1,7 +1,9 @@
 import type {
   ProgrammeFidelityResponse,
+  ProgrammeFidelityResponseV2,
   ProgrammeFidelityRow,
   ProgrammeFidelitySessionResponse,
+  ProgrammeFidelitySessionResponseV2,
 } from "./types";
 
 export const SCHOOL_ID = "00000000-0000-4000-8000-000000000010";
@@ -178,3 +180,148 @@ export const VALID_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD: ProgrammeFidelitySession
     },
   ],
 };
+
+export const VALID_CAUSAL_V1_PROGRAMME_FIDELITY_PAYLOAD = (() => {
+  const payload = structuredClone(VALID_PROGRAMME_FIDELITY_PAYLOAD);
+  payload.calculation_version = "mobile_fidelity_causal_alignment_v1";
+  payload.alignment_scored_through_date = "2026-08-24";
+  payload.alignment_availability = {
+    status: "available",
+    ledger_installed_at: "2026-08-15T10:00:00+00:00",
+    last_complete_event_run_finished_at: "2026-08-25T12:01:00+00:00",
+    scored_through_date: "2026-08-24",
+    message: "Historical session alignment is available through 2026-08-24.",
+  };
+  payload.history_quality = {
+    status: "causal_history_available",
+    causal_session_count: 3,
+    bootstrap_influenced_count: 0,
+  };
+  Object.assign(payload.rows[0], {
+    alignment_status: "scored",
+    alignment_scored_through_date: "2026-08-24",
+    aligned_count: 1,
+    below_count: 1,
+    above_count: 1,
+    unscored_count: 1,
+    scored_n: 3,
+    score: 50,
+    causal_post_install_count: 3,
+    bootstrap_influenced_count: 0,
+    client_clock_count: 3,
+    server_clock_count: 0,
+    bootstrap_clock_count: 0,
+  });
+  Object.assign(payload.rows[1], {
+    alignment_status: "no_eligible_sessions",
+    alignment_scored_through_date: "2026-08-24",
+    aligned_count: 0,
+    below_count: 0,
+    above_count: 0,
+    unscored_count: 0,
+    scored_n: 0,
+    score: null,
+    causal_post_install_count: 0,
+    bootstrap_influenced_count: 0,
+    client_clock_count: 0,
+    server_clock_count: 0,
+    bootstrap_clock_count: 0,
+  });
+  return payload;
+})();
+
+export const VALID_CAUSAL_V1_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD = (() => {
+  const payload = structuredClone(VALID_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD);
+  payload.calculation_version = "mobile_fidelity_causal_alignment_v1";
+  payload.sessions[0] = {
+    ...payload.sessions[0],
+    session_date: "2026-08-24",
+    alignment_status: "evaluated",
+    reason_code: null,
+    historical_frontier: ["m"],
+    historical_roster_size: 5,
+    historical_started_count: 4,
+    history_quality: "causal_post_install",
+    clock_quality_counts: { client: 3, server: 0, bootstrap: 0 },
+    letters: [
+      { letter: "m", band: "aligned" },
+      { letter: "a", band: "below" },
+      { letter: "s", band: "above" },
+    ],
+  };
+  return payload;
+})();
+
+const letterFocus = {
+  focused_session_count: 1,
+  mixed_session_count: 1,
+  ahead_only_session_count: 1,
+  unscored_session_count: 1,
+  eligible_session_count: 3,
+  session_value_sum: 1.5,
+  score: 50,
+};
+
+export const VALID_CAUSAL_V2_PROGRAMME_FIDELITY_PAYLOAD = (() => {
+  const payload = structuredClone(
+    VALID_CAUSAL_V1_PROGRAMME_FIDELITY_PAYLOAD
+  ) as unknown as ProgrammeFidelityResponseV2;
+  payload.schema_version = 2;
+  payload.calculation_version = "mobile_fidelity_causal_alignment_v2";
+  payload.rows[0].letter_focus = { ...letterFocus };
+  payload.rows[1].letter_focus = {
+    focused_session_count: 0,
+    mixed_session_count: 0,
+    ahead_only_session_count: 0,
+    unscored_session_count: 0,
+    eligible_session_count: 0,
+    session_value_sum: 0,
+    score: null,
+  };
+  return payload;
+})();
+
+export const VALID_CAUSAL_V2_UNAVAILABLE_PROGRAMME_FIDELITY_PAYLOAD = (() => {
+  const payload = structuredClone(
+    VALID_PROGRAMME_FIDELITY_PAYLOAD
+  ) as unknown as ProgrammeFidelityResponseV2;
+  payload.schema_version = 2;
+  payload.calculation_version = "mobile_fidelity_causal_alignment_v2";
+  for (const row of payload.rows) row.letter_focus = null;
+  return payload;
+})();
+
+export const VALID_CAUSAL_V2_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD = (() => {
+  const payload = structuredClone(
+    VALID_CAUSAL_V1_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD
+  ) as unknown as ProgrammeFidelitySessionResponseV2;
+  payload.schema_version = 2;
+  payload.calculation_version = "mobile_fidelity_causal_alignment_v2";
+  payload.alignment_availability = {
+    status: "available",
+    scored_through_date: "2026-08-24",
+  };
+  return payload;
+})();
+
+export const VALID_CAUSAL_V2_PARTIAL_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD = (() => {
+  const payload = structuredClone(
+    VALID_CAUSAL_V2_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD
+  );
+  payload.alignment_availability = {
+    status: "partial",
+    scored_through_date: "2026-08-20",
+  };
+  return payload;
+})();
+
+export const VALID_CAUSAL_V2_LEDGER_SHORTENED_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD = (() => {
+  const payload = structuredClone(
+    VALID_CAUSAL_V2_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD
+  );
+  payload.alignment_availability = {
+    status: "partial",
+    scored_through_date: "2026-08-24",
+  };
+  return payload;
+})();

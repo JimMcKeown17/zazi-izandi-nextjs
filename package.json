@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test:unit": "node --import tsx --test lib/pm/*.test.ts",
     "test:mobile": "tsx --test lib/mobile/*.test.ts lib/mobile/*/*.test.ts",
+    "test:e2e:teaching-overview": "node scripts/run-teaching-overview-e2e.mjs",
     "seed:eas": "tsx scripts/seed-clerk-eas.ts"
   },
   "dependencies": {

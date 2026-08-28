@@ -11,10 +11,11 @@ const canonicalUuid = z
   .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 const date = z.iso.date();
 const timestamp = z.iso.datetime({ offset: true });
-const calculationVersion = z.enum([
+const v1CalculationVersion = z.enum([
   "mobile_fidelity_current_state_v1_1",
   "mobile_fidelity_causal_alignment_v1",
 ]);
+const v2CalculationVersion = z.literal("mobile_fidelity_causal_alignment_v2");
 const count = z.number().int().nonnegative();
 const nullableCount = count.nullable();
 const boundedText = z.string().min(1).max(1000);
@@ -63,7 +64,7 @@ const freshness = z
   })
   .strict();
 
-const rowSchema = z
+const rowBaseSchema = z
   .object({
     group_id: canonicalUuid,
     ea_user_id: canonicalUuid,
@@ -138,8 +139,12 @@ const rowSchema = z
     server_clock_count: nullableCount,
     bootstrap_clock_count: nullableCount,
   })
-  .strict()
-  .superRefine((row, ctx) => {
+  .strict();
+
+const refineRow = (
+  row: z.infer<typeof rowBaseSchema>,
+  ctx: z.RefinementCtx
+) => {
     if (row.reason.code !== row.primary_reason) {
       ctx.addIssue({ code: "custom", message: "reason must match primary_reason" });
     }
@@ -259,60 +264,205 @@ const rowSchema = z
     ) {
       ctx.addIssue({ code: "custom", message: "no-session alignment must contain only zero counts" });
     }
-  });
+  };
 
-export const programmeFidelitySchema = z
+const letterFocusSchema = z
   .object({
-    schema_version: z.literal(1),
-    calculation_version: calculationVersion,
-    window_days: z.literal(14),
-    activity_through_date: date.nullable(),
-    alignment_scored_through_date: date.nullable(),
-    alignment_availability: z
-      .object({
-        status: z.enum(["not_yet_available", "partial", "available"]),
-        ledger_installed_at: timestamp,
-        last_complete_event_run_finished_at: timestamp.nullable(),
-        scored_through_date: date.nullable(),
-        message: boundedText,
-      })
-      .strict(),
-    applied_filters: z
-      .object({
-        school_id: canonicalUuid.nullable(),
-        ea_user_id: canonicalUuid.nullable(),
-        attention: z.enum(["all", "current", "above", "unscored", "inactive"]),
-      })
-      .strict(),
-    freshness,
-    history_quality: z
-      .object({
-        status: z.enum(["current_state_only", "causal_history_available"]),
-        causal_session_count: nullableCount,
-        bootstrap_influenced_count: nullableCount,
-      })
-      .strict(),
-    aggregates: z
-      .object({
-        groups_needing_attention: count,
-        active_groups: count,
-        inactive_groups: count,
-        tracker_started_count: count,
-        tracker_roster_size: count,
-        tracker_coverage: z.number().min(0).max(1).nullable(),
-      })
-      .strict(),
-    data_quality: dataQuality.extend({ unattributed_session_count: count }).strict(),
-    filter_options: z
-      .object({
-        schools: z.array(z.object({ id: canonicalUuid, name: z.string().min(1).max(255) }).strict()),
-        eas: z.array(z.object({ id: canonicalUuid, name: z.string().min(1).max(255) }).strict()),
-      })
-      .strict(),
-    rows: z.array(rowSchema),
+    focused_session_count: count,
+    mixed_session_count: count,
+    ahead_only_session_count: count,
+    unscored_session_count: count,
+    eligible_session_count: count,
+    session_value_sum: z.number().nonnegative(),
+    score: z.number().min(0).max(100).nullable(),
   })
   .strict()
   .superRefine((value, ctx) => {
+    const expectedEligible =
+      value.focused_session_count +
+      value.mixed_session_count +
+      value.ahead_only_session_count;
+    if (value.eligible_session_count !== expectedEligible) {
+      ctx.addIssue({
+        code: "custom",
+        message: "eligible sessions must match Letter Focus class counts",
+      });
+    }
+
+    // Focused sessions contribute exactly 1, ahead-only sessions exactly 0,
+    // and mixed sessions a value strictly between them. These are the tight
+    // aggregate bounds available without republishing per-session detail.
+    const lowerBound = value.focused_session_count;
+    const upperBound = value.focused_session_count + value.mixed_session_count;
+    const arithmeticTolerance = Math.max(1, value.eligible_session_count) * 1e-12;
+    if (
+      value.session_value_sum < lowerBound - arithmeticTolerance ||
+      value.session_value_sum > upperBound + arithmeticTolerance
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Letter Focus value sum falls outside its class-count bounds",
+      });
+    }
+    if (
+      (value.mixed_session_count === 0 &&
+        Math.abs(value.session_value_sum - lowerBound) > arithmeticTolerance) ||
+      // Real mixed values are separated from either endpoint by at least one
+      // bounded letter fraction. A tolerance here would admit impossible
+      // all-focused or all-ahead mixed sessions, so these bounds stay strict.
+      (value.mixed_session_count > 0 &&
+        (value.session_value_sum <= lowerBound ||
+          value.session_value_sum >= upperBound))
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Letter Focus mixed-session values require strict class bounds",
+      });
+    }
+
+    if (value.eligible_session_count === 0) {
+      if (value.session_value_sum !== 0 || value.score !== null) {
+        ctx.addIssue({
+          code: "custom",
+          message: "zero eligible sessions require a zero value sum and no score",
+        });
+      }
+    } else {
+      const expectedScore =
+        (100 * value.session_value_sum) / value.eligible_session_count;
+      if (value.score === null || Math.abs(value.score - expectedScore) > 1e-7) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Letter Focus score must match its sufficient statistics",
+        });
+      }
+    }
+  });
+
+const rowV1Schema = rowBaseSchema.superRefine(refineRow);
+const rowV2Schema = rowBaseSchema
+  .extend({ letter_focus: letterFocusSchema.nullable() })
+  .strict()
+  .superRefine((row, ctx) => {
+    refineRow(row, ctx);
+    if ((row.alignment_status === "not_yet_available") !== (row.letter_focus === null)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Letter Focus availability must match alignment availability",
+      });
+    }
+    if (row.letter_focus === null) return;
+
+    if (
+      row.alignment_status === "no_eligible_sessions" &&
+      (row.letter_focus.focused_session_count !== 0 ||
+        row.letter_focus.mixed_session_count !== 0 ||
+        row.letter_focus.ahead_only_session_count !== 0 ||
+        row.letter_focus.unscored_session_count !== 0 ||
+        row.letter_focus.eligible_session_count !== 0 ||
+        row.letter_focus.session_value_sum !== 0 ||
+        row.letter_focus.score !== null)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "no-session alignment cannot claim Letter Focus evidence",
+      });
+    }
+    if (
+      row.letter_focus.eligible_session_count > 0 &&
+      (row.scored_n === null || row.scored_n === 0)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "eligible Letter Focus sessions require legacy scorable instances",
+      });
+    }
+    if (
+      row.letter_focus.eligible_session_count === 0 &&
+      (row.scored_n ?? 0) > 0 &&
+      row.letter_focus.unscored_session_count === 0
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "legacy scored instances without eligible sessions require an unscored session explanation",
+      });
+    }
+  });
+
+const aggregateCommonShape = {
+  window_days: z.literal(14),
+  activity_through_date: date.nullable(),
+  alignment_scored_through_date: date.nullable(),
+  alignment_availability: z
+    .object({
+      status: z.enum(["not_yet_available", "partial", "available"]),
+      ledger_installed_at: timestamp,
+      last_complete_event_run_finished_at: timestamp.nullable(),
+      scored_through_date: date.nullable(),
+      message: boundedText,
+    })
+    .strict(),
+  applied_filters: z
+    .object({
+      school_id: canonicalUuid.nullable(),
+      ea_user_id: canonicalUuid.nullable(),
+      attention: z.enum(["all", "current", "above", "unscored", "inactive"]),
+    })
+    .strict(),
+  freshness,
+  history_quality: z
+    .object({
+      status: z.enum(["current_state_only", "causal_history_available"]),
+      causal_session_count: nullableCount,
+      bootstrap_influenced_count: nullableCount,
+    })
+    .strict(),
+  aggregates: z
+    .object({
+      groups_needing_attention: count,
+      active_groups: count,
+      inactive_groups: count,
+      tracker_started_count: count,
+      tracker_roster_size: count,
+      tracker_coverage: z.number().min(0).max(1).nullable(),
+    })
+    .strict(),
+  data_quality: dataQuality.extend({ unattributed_session_count: count }).strict(),
+  filter_options: z
+    .object({
+      schools: z.array(
+        z.object({ id: canonicalUuid, name: z.string().min(1).max(255) }).strict()
+      ),
+      eas: z.array(
+        z.object({ id: canonicalUuid, name: z.string().min(1).max(255) }).strict()
+      ),
+    })
+    .strict(),
+};
+
+const programmeFidelityV1BaseSchema = z
+  .object({
+    schema_version: z.literal(1),
+    calculation_version: v1CalculationVersion,
+    ...aggregateCommonShape,
+    rows: z.array(rowV1Schema),
+  })
+  .strict();
+
+const programmeFidelityV2BaseSchema = z
+  .object({
+    schema_version: z.literal(2),
+    calculation_version: v2CalculationVersion,
+    ...aggregateCommonShape,
+    rows: z.array(rowV2Schema),
+  })
+  .strict();
+
+type DecodedAggregate =
+  | z.infer<typeof programmeFidelityV1BaseSchema>
+  | z.infer<typeof programmeFidelityV2BaseSchema>;
+
+const refineAggregate = (value: DecodedAggregate, ctx: z.RefinementCtx) => {
     if (
       value.calculation_version === "mobile_fidelity_current_state_v1_1" &&
       (value.alignment_availability.status !== "not_yet_available" ||
@@ -426,7 +576,17 @@ export const programmeFidelitySchema = z
         ctx.addIssue({ code: "custom", message: `data quality ${key} must reconcile` });
       }
     }
-  }) as z.ZodType<ProgrammeFidelityResponse>;
+  };
+
+const programmeFidelityV1Schema =
+  programmeFidelityV1BaseSchema.superRefine(refineAggregate);
+const programmeFidelityV2Schema =
+  programmeFidelityV2BaseSchema.superRefine(refineAggregate);
+
+export const programmeFidelitySchema = z.union([
+  programmeFidelityV1Schema,
+  programmeFidelityV2Schema,
+]) as z.ZodType<ProgrammeFidelityResponse>;
 
 const sessionSchema = z
   .object({
@@ -525,29 +685,57 @@ const sessionSchema = z
     }
   });
 
-export const programmeFidelitySessionsSchema = z
+const sessionResponseCommonShape = {
+  window_days: z.literal(14),
+  applied_filters: z
+    .object({
+      group_id: canonicalUuid,
+      ea_user_id: canonicalUuid,
+      window_days: z.literal(14),
+      activity_date_from: date,
+      activity_date_to: date,
+      alignment_date_from: date,
+      alignment_date_to: date,
+      union_date_from: date,
+      union_date_to: date,
+    })
+    .strict(),
+  freshness,
+  sessions: z.array(sessionSchema),
+};
+
+const programmeFidelitySessionsV1BaseSchema = z
   .object({
     schema_version: z.literal(1),
-    calculation_version: calculationVersion,
-    window_days: z.literal(14),
-    applied_filters: z
-      .object({
-        group_id: canonicalUuid,
-        ea_user_id: canonicalUuid,
-        window_days: z.literal(14),
-        activity_date_from: date,
-        activity_date_to: date,
-        alignment_date_from: date,
-        alignment_date_to: date,
-        union_date_from: date,
-        union_date_to: date,
-      })
-      .strict(),
-    freshness,
-    sessions: z.array(sessionSchema),
+    calculation_version: v1CalculationVersion,
+    ...sessionResponseCommonShape,
   })
-  .strict()
-  .superRefine((value, ctx) => {
+  .strict();
+
+const sessionAlignmentAvailability = z
+  .object({
+    status: z.enum(["not_yet_available", "partial", "available"]),
+    scored_through_date: date.nullable(),
+  })
+  .strict();
+
+const programmeFidelitySessionsV2BaseSchema = z
+  .object({
+    schema_version: z.literal(2),
+    calculation_version: v2CalculationVersion,
+    alignment_availability: sessionAlignmentAvailability,
+    ...sessionResponseCommonShape,
+  })
+  .strict();
+
+type DecodedSessionResponse =
+  | z.infer<typeof programmeFidelitySessionsV1BaseSchema>
+  | z.infer<typeof programmeFidelitySessionsV2BaseSchema>;
+
+const refineSessionResponse = (
+  value: DecodedSessionResponse,
+  ctx: z.RefinementCtx
+) => {
     if (
       value.calculation_version === "mobile_fidelity_current_state_v1_1" &&
       value.sessions.some((session) =>
@@ -575,7 +763,57 @@ export const programmeFidelitySessionsSchema = z
     })) {
       ctx.addIssue({ code: "custom", message: "session falls outside the bounded union" });
     }
-  }) as z.ZodType<ProgrammeFidelitySessionResponse>;
+    if (value.schema_version === 2) {
+      const availability = value.alignment_availability;
+      const candidateEnd = value.applied_filters.alignment_date_to;
+      if (
+        availability.status === "not_yet_available" &&
+        availability.scored_through_date !== null
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "unavailable session alignment requires a null scored boundary",
+        });
+      }
+      if (
+        availability.status !== "not_yet_available" &&
+        availability.scored_through_date === null
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "available session alignment requires a scored boundary",
+        });
+      }
+      if (
+        availability.scored_through_date !== null &&
+        epochDay(availability.scored_through_date) > epochDay(candidateEnd)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "session alignment cannot exceed the candidate end",
+        });
+      }
+      if (
+        availability.status === "available" &&
+        availability.scored_through_date !== candidateEnd
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "full session alignment must reach the candidate end",
+        });
+      }
+    }
+  };
+
+const programmeFidelitySessionsV1Schema =
+  programmeFidelitySessionsV1BaseSchema.superRefine(refineSessionResponse);
+const programmeFidelitySessionsV2Schema =
+  programmeFidelitySessionsV2BaseSchema.superRefine(refineSessionResponse);
+
+export const programmeFidelitySessionsSchema = z.union([
+  programmeFidelitySessionsV1Schema,
+  programmeFidelitySessionsV2Schema,
+]) as z.ZodType<ProgrammeFidelitySessionResponse>;
 
 export function aggregateResponseMatchesRequest(
   response: ProgrammeFidelityResponse,

@@ -6,6 +6,13 @@ import {
   programmeFidelitySessionsSchema,
 } from "./schema";
 import {
+  VALID_CAUSAL_V1_PROGRAMME_FIDELITY_PAYLOAD,
+  VALID_CAUSAL_V1_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD,
+  VALID_CAUSAL_V2_LEDGER_SHORTENED_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD,
+  VALID_CAUSAL_V2_PARTIAL_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD,
+  VALID_CAUSAL_V2_PROGRAMME_FIDELITY_PAYLOAD,
+  VALID_CAUSAL_V2_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD,
+  VALID_CAUSAL_V2_UNAVAILABLE_PROGRAMME_FIDELITY_PAYLOAD,
   VALID_PROGRAMME_FIDELITY_PAYLOAD,
   VALID_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD,
 } from "./test-fixtures";
@@ -47,11 +54,13 @@ test("the decoder schema is recursively closed", () => {
 
 test("unknown calculation versions fail closed", () => {
   const aggregate = structuredClone(VALID_PROGRAMME_FIDELITY_PAYLOAD);
-  aggregate.calculation_version = "arbitrary_future_or_corrupt_semantics";
+  (aggregate as unknown as Record<string, unknown>).calculation_version =
+    "arbitrary_future_or_corrupt_semantics";
   assert.equal(programmeFidelitySchema.safeParse(aggregate).success, false);
 
   const sessions = structuredClone(VALID_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD);
-  sessions.calculation_version = "arbitrary_future_or_corrupt_semantics";
+  (sessions as unknown as Record<string, unknown>).calculation_version =
+    "arbitrary_future_or_corrupt_semantics";
   assert.equal(programmeFidelitySessionsSchema.safeParse(sessions).success, false);
 });
 
@@ -213,4 +222,130 @@ test("v0-b accepts causal values and keeps a fully scorable evaluated reason nul
   const currentVersionWithEvaluation = structuredClone(sessions);
   currentVersionWithEvaluation.calculation_version = "mobile_fidelity_current_state_v1_1";
   assert.equal(programmeFidelitySessionsSchema.safeParse(currentVersionWithEvaluation).success, false);
+});
+
+test("the closed decoder accepts exact causal v1 and causal v2 envelopes", () => {
+  assert.equal(
+    programmeFidelitySchema.safeParse(VALID_CAUSAL_V1_PROGRAMME_FIDELITY_PAYLOAD).success,
+    true
+  );
+  assert.equal(
+    programmeFidelitySessionsSchema.safeParse(
+      VALID_CAUSAL_V1_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD
+    ).success,
+    true
+  );
+  assert.equal(
+    programmeFidelitySchema.safeParse(VALID_CAUSAL_V2_PROGRAMME_FIDELITY_PAYLOAD).success,
+    true
+  );
+  assert.equal(
+    programmeFidelitySchema.safeParse(
+      VALID_CAUSAL_V2_UNAVAILABLE_PROGRAMME_FIDELITY_PAYLOAD
+    ).success,
+    true
+  );
+  for (const payload of [
+    VALID_CAUSAL_V2_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD,
+    VALID_CAUSAL_V2_PARTIAL_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD,
+    VALID_CAUSAL_V2_LEDGER_SHORTENED_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD,
+  ]) {
+    assert.equal(programmeFidelitySessionsSchema.safeParse(payload).success, true);
+  }
+});
+
+test("schema and calculation versions cannot smuggle fields across contract versions", () => {
+  const v1WithLetterFocus = structuredClone(VALID_CAUSAL_V1_PROGRAMME_FIDELITY_PAYLOAD);
+  (v1WithLetterFocus.rows[0] as unknown as Record<string, unknown>).letter_focus = {};
+  assert.equal(programmeFidelitySchema.safeParse(v1WithLetterFocus).success, false);
+
+  const v2WithV1Calculation = structuredClone(VALID_CAUSAL_V2_PROGRAMME_FIDELITY_PAYLOAD);
+  (v2WithV1Calculation as unknown as Record<string, unknown>).calculation_version =
+    "mobile_fidelity_causal_alignment_v1";
+  assert.equal(programmeFidelitySchema.safeParse(v2WithV1Calculation).success, false);
+
+  const v2WithoutLetterFocus = structuredClone(VALID_CAUSAL_V2_PROGRAMME_FIDELITY_PAYLOAD);
+  delete (v2WithoutLetterFocus.rows[0] as unknown as Record<string, unknown>).letter_focus;
+  assert.equal(programmeFidelitySchema.safeParse(v2WithoutLetterFocus).success, false);
+
+  const v1SessionsWithAvailability = structuredClone(
+    VALID_CAUSAL_V1_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD
+  );
+  (v1SessionsWithAvailability as unknown as Record<string, unknown>).alignment_availability = {
+    status: "available",
+    scored_through_date: "2026-08-24",
+  };
+  assert.equal(programmeFidelitySessionsSchema.safeParse(v1SessionsWithAvailability).success, false);
+
+  const v2SessionsWithoutAvailability = structuredClone(
+    VALID_CAUSAL_V2_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD
+  );
+  delete (v2SessionsWithoutAvailability as unknown as Record<string, unknown>)
+    .alignment_availability;
+  assert.equal(programmeFidelitySessionsSchema.safeParse(v2SessionsWithoutAvailability).success, false);
+});
+
+test("Letter Focus sufficient statistics fail closed when their arithmetic drifts", () => {
+  const expectRejected = (mutate: (letterFocus: Record<string, unknown>) => void) => {
+    const payload = structuredClone(VALID_CAUSAL_V2_PROGRAMME_FIDELITY_PAYLOAD);
+    const letterFocus = payload.rows[0].letter_focus as unknown as Record<string, unknown>;
+    mutate(letterFocus);
+    assert.equal(programmeFidelitySchema.safeParse(payload).success, false);
+  };
+
+  expectRejected((letterFocus) => delete letterFocus.focused_session_count);
+  expectRejected((letterFocus) => { letterFocus.focused_session_count = -1; });
+  expectRejected((letterFocus) => { letterFocus.eligible_session_count = 4; });
+  expectRejected((letterFocus) => { letterFocus.session_value_sum = 2.1; });
+  expectRejected((letterFocus) => { letterFocus.score = 51; });
+  expectRejected((letterFocus) => {
+    letterFocus.session_value_sum = 1;
+    letterFocus.score = 100 / 3;
+  });
+  expectRejected((letterFocus) => {
+    letterFocus.session_value_sum = 2;
+    letterFocus.score = 200 / 3;
+  });
+
+  const zeroWithScore = structuredClone(VALID_CAUSAL_V2_PROGRAMME_FIDELITY_PAYLOAD);
+  (zeroWithScore.rows[1].letter_focus as unknown as Record<string, unknown>).score = 0;
+  assert.equal(programmeFidelitySchema.safeParse(zeroWithScore).success, false);
+
+  const noEligibleWithFocus = structuredClone(VALID_CAUSAL_V2_PROGRAMME_FIDELITY_PAYLOAD);
+  Object.assign(noEligibleWithFocus.rows[1].letter_focus as unknown as Record<string, unknown>, {
+    focused_session_count: 1,
+    eligible_session_count: 1,
+    session_value_sum: 1,
+    score: 100,
+  });
+  assert.equal(programmeFidelitySchema.safeParse(noEligibleWithFocus).success, false);
+});
+
+test("causal v2 session availability obeys the candidate-window geometry", () => {
+  const unavailableWithBoundary = structuredClone(
+    VALID_CAUSAL_V2_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD
+  );
+  unavailableWithBoundary.alignment_availability = {
+    status: "not_yet_available",
+    scored_through_date: "2026-08-24",
+  };
+  assert.equal(programmeFidelitySessionsSchema.safeParse(unavailableWithBoundary).success, false);
+
+  const fullBeforeCandidateEnd = structuredClone(
+    VALID_CAUSAL_V2_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD
+  );
+  fullBeforeCandidateEnd.alignment_availability.scored_through_date = "2026-08-20";
+  assert.equal(programmeFidelitySessionsSchema.safeParse(fullBeforeCandidateEnd).success, false);
+
+  const partialAfterCandidateEnd = structuredClone(
+    VALID_CAUSAL_V2_PARTIAL_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD
+  );
+  partialAfterCandidateEnd.alignment_availability.scored_through_date = "2026-08-25";
+  assert.equal(programmeFidelitySessionsSchema.safeParse(partialAfterCandidateEnd).success, false);
+
+  const partialWithoutBoundary = structuredClone(
+    VALID_CAUSAL_V2_PARTIAL_PROGRAMME_FIDELITY_SESSIONS_PAYLOAD
+  );
+  partialWithoutBoundary.alignment_availability.scored_through_date = null;
+  assert.equal(programmeFidelitySessionsSchema.safeParse(partialWithoutBoundary).success, false);
 });
