@@ -3,8 +3,11 @@ import { NextResponse } from "next/server";
 
 import { djangoFetch } from "@/lib/django-fetch";
 import { hasCapability, type Role } from "@/lib/mobile/capabilities";
+import { handleEaGroupsExport } from "@/lib/mobile/ea-groups-export/handler";
 import { buildTimeEntriesExportRequest } from "@/lib/mobile/time-entries/request";
 import { csvSchoolTypeAttestationSatisfied } from "@/lib/mobile/time-entries/export-attestation";
+
+export const maxDuration = 60;
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -32,13 +35,31 @@ function parseFilters(request: Request): {
   }
   return { days, schoolId, schoolType };
 }
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ kind: string }> }
 ) {
   const { kind } = await params;
-  if (kind !== "time-entries") {
+  if (kind !== "time-entries" && kind !== "ea-groups") {
     return NextResponse.json({ error: "export not found" }, { status: 404 });
+  }
+
+  if (kind === "ea-groups") {
+    return handleEaGroupsExport(request, {
+      getSession: async () => {
+        const session = await auth();
+        return {
+          userId: session.userId,
+          sessionClaims: session.sessionClaims as
+            | { metadata?: { role?: Role } }
+            | null
+            | undefined,
+          getToken: () => session.getToken(),
+        };
+      },
+      fetchUpstream: djangoFetch,
+    });
   }
 
   const session = await auth();
