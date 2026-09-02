@@ -18,7 +18,7 @@ export type SessionExportDownloadDependencies = {
 };
 
 const browserDependencies = (): SessionExportDownloadDependencies => ({
-  fetch,
+  fetch: (input, init) => window.fetch(input, init),
   createObjectURL: (blob) => URL.createObjectURL(blob),
   revokeObjectURL: (url) => URL.revokeObjectURL(url),
   createAnchor: () => {

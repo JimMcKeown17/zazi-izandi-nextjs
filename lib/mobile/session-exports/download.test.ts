@@ -7,6 +7,120 @@ import {
 } from "@/lib/mobile/session-exports/download";
 import { DETAIL_EXPORT_KIND } from "@/lib/mobile/session-exports/transport";
 
+test("preserves the Window receiver when using the default browser fetch", async () => {
+  const filename =
+    "zazi-mobile-sessions-detail-2026-02-20-to-2026-03-19-as-of-20260902T004010Z.csv";
+  const calls: string[] = [];
+  const anchor = {
+    href: "",
+    download: "",
+    click: () => calls.push("click"),
+    remove: () => calls.push("remove"),
+  };
+  const windowStub = {
+    fetch: (async function (this: object, input, init) {
+      if (this !== windowStub) {
+        throw new TypeError(
+          "Failed to execute 'fetch' on 'Window': Illegal invocation"
+        );
+      }
+      calls.push("fetch");
+      assert.equal(
+        input,
+        "/mobile-app/exports/sessions-detail?start_date=2026-02-20&end_date=2026-03-19"
+      );
+      assert.deepEqual(init, { cache: "no-store" });
+      return new Response(new Blob(["csv"]), {
+        headers: { "X-Zazi-Download-Filename": filename },
+      });
+    }) as typeof fetch,
+  };
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const originalFetch = Object.getOwnPropertyDescriptor(globalThis, "fetch");
+  const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const originalCreateObjectURL = Object.getOwnPropertyDescriptor(
+    URL,
+    "createObjectURL"
+  );
+  const originalRevokeObjectURL = Object.getOwnPropertyDescriptor(
+    URL,
+    "revokeObjectURL"
+  );
+
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: windowStub,
+  });
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    value: windowStub.fetch,
+  });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      createElement: (tagName: string) => {
+        assert.equal(tagName, "a");
+        calls.push("create-anchor");
+        return anchor;
+      },
+      body: {
+        appendChild: (candidate: unknown) => {
+          assert.equal(candidate, anchor);
+          calls.push("append-anchor");
+        },
+      },
+    },
+  });
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: (blob: Blob) => {
+      assert.ok(blob instanceof Blob);
+      calls.push("create-url");
+      return "blob:session-export-default";
+    },
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: (url: string) => calls.push(`revoke:${url}`),
+  });
+
+  try {
+    await downloadSessionExport({
+      kind: DETAIL_EXPORT_KIND,
+      startDate: "2026-02-20",
+      endDate: "2026-03-19",
+      schoolId: null,
+      schoolType: null,
+    });
+
+    assert.equal(anchor.href, "blob:session-export-default");
+    assert.equal(anchor.download, filename);
+    assert.deepEqual(calls, [
+      "fetch",
+      "create-url",
+      "create-anchor",
+      "append-anchor",
+      "click",
+      "remove",
+      "revoke:blob:session-export-default",
+    ]);
+  } finally {
+    for (const [target, key, descriptor] of [
+      [globalThis, "window", originalWindow],
+      [globalThis, "fetch", originalFetch],
+      [globalThis, "document", originalDocument],
+      [URL, "createObjectURL", originalCreateObjectURL],
+      [URL, "revokeObjectURL", originalRevokeObjectURL],
+    ] as const) {
+      if (descriptor) {
+        Object.defineProperty(target, key, descriptor);
+      } else {
+        Reflect.deleteProperty(target, key);
+      }
+    }
+  }
+});
+
 test("downloads the attested blob with school scope and always revokes its URL", async () => {
   const calls: string[] = [];
   const anchor = {
