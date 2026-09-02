@@ -5,12 +5,14 @@ import { SessionsTrendChart } from "@/components/pm/sessions/sessions-trend-char
 import { SessionFilters } from "@/components/mobile-app/sessions/session-filters";
 import { SessionSummaryTiles } from "@/components/mobile-app/sessions/session-summary-tiles";
 import { SessionsPageContent } from "@/components/mobile-app/sessions/sessions-page-content";
+import { SessionExportsPanel } from "@/components/mobile-app/sessions/session-exports-panel";
 import {
   getMobileSessionReviewFlags,
   getMobileSessionsActivity,
 } from "@/lib/mobile/api";
 import { requireMobileSessionsSession } from "@/lib/mobile/auth";
 import { hasCapability } from "@/lib/mobile/capabilities";
+import { getSastToday } from "@/lib/mobile/session-exports/date-range";
 import {
   toHeatmapDisplayRows,
   toSchoolSummaryDisplayRows,
@@ -46,9 +48,22 @@ export default async function MobileSessionsPage({
     getMobileSessionsActivity({ days, schoolId, schoolType }),
     getMobileSessionReviewFlags({ schoolId, schoolType }),
   ]);
+  const exportPanel = hasCapability(session.role, "mobile.csv.export") ? (
+    <SessionExportsPanel
+      today={getSastToday()}
+      schoolId={schoolId}
+      schoolType={schoolType}
+    />
+  ) : null;
 
   if (!result.ok) {
-    return <SessionsPageContent result={result} reviewFlags={reviewFlags} />;
+    return (
+      <SessionsPageContent
+        result={result}
+        reviewFlags={reviewFlags}
+        exportPanel={exportPanel}
+      />
+    );
   }
 
   const { data } = result;
@@ -57,7 +72,11 @@ export default async function MobileSessionsPage({
   );
 
   return (
-    <SessionsPageContent result={result} reviewFlags={reviewFlags}>
+    <SessionsPageContent
+      result={result}
+      reviewFlags={reviewFlags}
+      exportPanel={exportPanel}
+    >
       <SessionFilters
         days={data.days}
         selectedSchoolId={data.applied_filters.school_id}
@@ -95,7 +114,6 @@ export default async function MobileSessionsPage({
           session.role,
           "mobile.user_health.read"
         )}
-        exportFilenamePrefix="zazi-ea-activity"
       />
 
       <SessionsSchoolTable

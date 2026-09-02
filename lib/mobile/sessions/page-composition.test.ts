@@ -48,6 +48,24 @@ function render(
   );
 }
 
+function renderWithExportPanel(
+  result: MobileSessionsActivityResult
+): string {
+  return renderToStaticMarkup(
+    createElement(
+      SessionsPageContent,
+      {
+        result,
+        reviewFlags: flagsFailure,
+        exportPanel: createElement("section", {
+          "data-testid": "fixture-session-exports",
+        }),
+      },
+      createElement("section", { "data-testid": "fixture-sessions-success" })
+    )
+  );
+}
+
 test("session review alerts render independently of the sessions report", () => {
   const flagsOkReportError = render(reportFailure, flagsSuccess);
   assert.match(flagsOkReportError, /mobile-session-review-alerts/);
@@ -82,4 +100,20 @@ test("the page passes the selected school type to the independent review-alert l
     source,
     /getMobileSessionReviewFlags\(\{\s*schoolId,\s*schoolType\s*\}\)/
   );
+});
+
+test("the export panel remains available when the rolling report fails", () => {
+  assert.match(renderWithExportPanel(reportFailure), /fixture-session-exports/);
+  assert.doesNotMatch(renderWithExportPanel(reportFailure), /fixture-sessions-success/);
+});
+
+test("the page capability-gates new exports and removes the misleading heatmap CSV", () => {
+  const source = fs.readFileSync(
+    path.join(process.cwd(), "app/mobile-app/sessions/page.tsx"),
+    "utf8"
+  );
+  assert.match(source, /hasCapability\(session\.role, "mobile\.csv\.export"\)/);
+  assert.match(source, /<SessionExportsPanel/);
+  assert.match(source, /exportPanel=/);
+  assert.doesNotMatch(source, /exportFilenamePrefix=/);
 });

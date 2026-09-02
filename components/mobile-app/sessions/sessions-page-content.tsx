@@ -10,10 +10,12 @@ import type {
 export function SessionsPageContent({
   result,
   reviewFlags,
+  exportPanel,
   children,
 }: {
   result: MobileSessionsActivityResult;
   reviewFlags: MobileSessionReviewFlagsResult;
+  exportPanel?: ReactNode;
   children?: ReactNode;
 }) {
   return (
@@ -38,6 +40,8 @@ export function SessionsPageContent({
       </header>
 
       <SessionReviewAlerts result={reviewFlags} />
+
+      {exportPanel}
 
       {result.ok ? (
         children

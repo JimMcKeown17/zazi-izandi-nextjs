@@ -4,6 +4,11 @@ import { NextResponse } from "next/server";
 import { djangoFetch } from "@/lib/django-fetch";
 import { hasCapability, type Role } from "@/lib/mobile/capabilities";
 import { handleEaGroupsExport } from "@/lib/mobile/ea-groups-export/handler";
+import { handleSessionExport } from "@/lib/mobile/session-exports/handler";
+import {
+  DETAIL_EXPORT_KIND,
+  PAYROLL_EXPORT_KIND,
+} from "@/lib/mobile/session-exports/transport";
 import { buildTimeEntriesExportRequest } from "@/lib/mobile/time-entries/request";
 import { csvSchoolTypeAttestationSatisfied } from "@/lib/mobile/time-entries/export-attestation";
 
@@ -41,8 +46,30 @@ export async function GET(
   { params }: { params: Promise<{ kind: string }> }
 ) {
   const { kind } = await params;
-  if (kind !== "time-entries" && kind !== "ea-groups") {
+  if (
+    kind !== "time-entries" &&
+    kind !== "ea-groups" &&
+    kind !== PAYROLL_EXPORT_KIND &&
+    kind !== DETAIL_EXPORT_KIND
+  ) {
     return NextResponse.json({ error: "export not found" }, { status: 404 });
+  }
+
+  if (kind === PAYROLL_EXPORT_KIND || kind === DETAIL_EXPORT_KIND) {
+    return handleSessionExport(request, kind, {
+      getSession: async () => {
+        const session = await auth();
+        return {
+          userId: session.userId,
+          sessionClaims: session.sessionClaims as
+            | { metadata?: { role?: Role } }
+            | null
+            | undefined,
+          getToken: () => session.getToken(),
+        };
+      },
+      fetchUpstream: djangoFetch,
+    });
   }
 
   if (kind === "ea-groups") {
