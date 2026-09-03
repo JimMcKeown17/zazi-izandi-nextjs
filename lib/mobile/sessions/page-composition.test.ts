@@ -135,6 +135,24 @@ test("the page capability-gates new exports and removes the misleading heatmap C
   assert.doesNotMatch(source, /exportFilenamePrefix=/);
 });
 
+test("the successful report places exports after the charts and immediately before the heatmap", () => {
+  const source = fs.readFileSync(
+    path.join(process.cwd(), "app/mobile-app/sessions/page.tsx"),
+    "utf8"
+  );
+  const successMarkup = source.split("const { data } = result;")[1];
+
+  assert.ok(successMarkup, "expected successful report markup");
+  assert.match(
+    successMarkup,
+    /<SessionDistribution[\s\S]*<\/div>\s*\{exportPanel\}\s*<EAHeatmap/
+  );
+  assert.doesNotMatch(
+    successMarkup.match(/<SessionsPageContent[\s\S]*?>/)?.[0] ?? "",
+    /exportPanel=/
+  );
+});
+
 test("the sessions loader forwards and retains a request correlation id", () => {
   const source = fs.readFileSync(
     path.join(process.cwd(), "lib/mobile/api.ts"),

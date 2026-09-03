@@ -73,12 +73,17 @@ export function SessionExportsPanel({
   }
 
   return (
-    <section
+    <div
+      role="region"
+      aria-labelledby="mobile-session-exports-heading"
       data-testid="mobile-session-exports"
       className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 className="text-sm font-semibold text-slate-900">
+        <h2
+          id="mobile-session-exports-heading"
+          className="text-sm font-semibold text-slate-900"
+        >
           Download session records
         </h2>
         <p className="text-xs text-slate-500">
@@ -158,7 +163,7 @@ export function SessionExportsPanel({
       </div>
 
       <SessionExportStatus pending={isPending} message={message} />
-    </section>
+    </div>
   );
 }
 

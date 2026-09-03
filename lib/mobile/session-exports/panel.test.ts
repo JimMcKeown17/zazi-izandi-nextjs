@@ -32,6 +32,12 @@ test("renders the compact one-row export controls and concise unsynced note", ()
   assert.doesNotMatch(html, /share them only through approved staff channels/i);
   assert.doesNotMatch(html, /bg-amber-50/);
   assert.match(html, /aria-live="polite" class="sr-only"/);
+  assert.match(
+    html,
+    /<div role="region" aria-labelledby="mobile-session-exports-heading" data-testid="mobile-session-exports"/
+  );
+  assert.match(html, /id="mobile-session-exports-heading"/);
+  assert.doesNotMatch(html, /<section[^>]*mobile-session-exports/);
 });
 
 test("keeps custom dates grouped in the range slot before the two downloads", () => {

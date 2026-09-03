@@ -88,7 +88,6 @@ export default async function MobileSessionsPage({
     <SessionsPageContent
       result={result}
       reviewFlags={reviewFlags}
-      exportPanel={exportPanel}
       retryHref={retryHref}
     >
       <SessionFilters
@@ -118,6 +117,8 @@ export default async function MobileSessionsPage({
           <SessionDistribution data={data.distribution} />
         </div>
       </div>
+
+      {exportPanel}
 
       <EAHeatmap
         dates={data.ea_heatmap.dates}
