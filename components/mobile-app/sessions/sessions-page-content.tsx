@@ -11,11 +11,13 @@ export function SessionsPageContent({
   result,
   reviewFlags,
   exportPanel,
+  retryHref = "/mobile-app/sessions",
   children,
 }: {
   result: MobileSessionsActivityResult;
   reviewFlags: MobileSessionReviewFlagsResult;
   exportPanel?: ReactNode;
+  retryHref?: string;
   children?: ReactNode;
 }) {
   return (
@@ -51,7 +53,19 @@ export function SessionsPageContent({
           <div>
             <p className="font-semibold">Session report unavailable</p>
             <p className="mt-1">{result.message}</p>
+            <p className="mt-1">This may be temporary. Try the report again.</p>
+            <a
+              href={retryHref}
+              className="mt-3 inline-flex h-9 items-center justify-center rounded-md border border-red-300 bg-white px-3 text-sm font-semibold text-red-800 transition-colors hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2"
+            >
+              Retry report
+            </a>
             <p className="mt-2 text-xs text-red-600">Status {result.status}</p>
+            {result.reference ? (
+              <p className="mt-1 text-xs text-red-600">
+                Support reference: <code>{result.reference}</code>
+              </p>
+            ) : null}
           </div>
         </div>
       )}

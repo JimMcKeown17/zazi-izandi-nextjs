@@ -77,24 +77,41 @@ export async function getMobileSessionsActivity(
   const token = await session.getToken();
   if (!token) redirect("/login?error=session_expired");
 
+  const requestId = crypto.randomUUID();
   const request = buildSessionsActivityRequest(token, filters);
+  const headers = new Headers(request.init.headers);
+  headers.set("X-Zazi-Request-Id", requestId);
   let response: Response;
   try {
-    response = await djangoFetch(request.path, request.init);
+    response = await djangoFetch(request.path, { ...request.init, headers });
   } catch (error) {
-    console.error("[mobile/api] Failed to reach Django sessions report:", error);
+    console.error("[mobile/api] Failed to reach Django sessions report", {
+      requestId,
+      errorClass: error instanceof Error ? error.name : "UnknownError",
+    });
     return {
       ok: false,
       status: 502,
       message: "The mobile-app report service is currently unavailable.",
+      reference: requestId,
     };
   }
 
   if (response.status === 401) redirect("/login?error=session_expired");
   if (response.status === 403) redirect("/login?error=insufficient_role");
-  return decodeMobileSessionsActivityResponse(response, {
+  const result = await decodeMobileSessionsActivityResponse(response, {
     schoolType: filters.schoolType ?? null,
   });
+  if (!result.ok) {
+    console.error("[mobile/api] Django sessions report returned failure", {
+      requestId,
+      status: result.status,
+      djangoCorrelated:
+        response.headers.get("x-zazi-request-id") === requestId,
+    });
+    return { ...result, reference: requestId };
+  }
+  return result;
 }
 
 export async function getMobileSessionReviewFlags(

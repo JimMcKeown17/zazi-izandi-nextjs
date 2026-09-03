@@ -32,6 +32,17 @@ function parseDays(value: string | undefined): number {
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 90 ? parsed : 30;
 }
 
+function buildRetryHref(input: {
+  days: number;
+  schoolId: string | null;
+  schoolType: "ecd" | "primary" | null;
+}): string {
+  const query = new URLSearchParams({ days: String(input.days) });
+  if (input.schoolId) query.set("school_id", input.schoolId);
+  if (input.schoolType) query.set("school_type", input.schoolType);
+  return `/mobile-app/sessions?${query.toString()}`;
+}
+
 export default async function MobileSessionsPage({
   searchParams,
 }: SessionsPageProps) {
@@ -55,6 +66,7 @@ export default async function MobileSessionsPage({
       schoolType={schoolType}
     />
   ) : null;
+  const retryHref = buildRetryHref({ days, schoolId, schoolType });
 
   if (!result.ok) {
     return (
@@ -62,6 +74,7 @@ export default async function MobileSessionsPage({
         result={result}
         reviewFlags={reviewFlags}
         exportPanel={exportPanel}
+        retryHref={retryHref}
       />
     );
   }
@@ -76,6 +89,7 @@ export default async function MobileSessionsPage({
       result={result}
       reviewFlags={reviewFlags}
       exportPanel={exportPanel}
+      retryHref={retryHref}
     >
       <SessionFilters
         days={data.days}

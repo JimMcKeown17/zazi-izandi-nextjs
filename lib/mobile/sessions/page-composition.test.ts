@@ -24,6 +24,7 @@ const reportFailure: MobileSessionsActivityResult = {
   ok: false,
   status: 502,
   message: "The mobile-app report service is currently unavailable.",
+  reference: "4bbec663-7300-4aca-9e8d-bb8a01d821c2",
 };
 const flagsSuccess: MobileSessionReviewFlagsResult = {
   ok: true,
@@ -42,7 +43,11 @@ function render(
   return renderToStaticMarkup(
     createElement(
       SessionsPageContent,
-      { result, reviewFlags },
+      {
+        result,
+        reviewFlags,
+        retryHref: "/mobile-app/sessions?days=30&school_type=ecd",
+      },
       createElement("section", { "data-testid": "fixture-sessions-success" })
     )
   );
@@ -91,6 +96,18 @@ test("the sessions heading exists even when both reports fail", () => {
   assert.match(html, />Sessions</);
 });
 
+test("a transient report failure exposes an exact retry and support reference", () => {
+  const html = render(reportFailure, flagsSuccess);
+
+  assert.match(html, /This may be temporary/);
+  assert.match(html, /Retry report/);
+  assert.match(
+    html,
+    /href="\/mobile-app\/sessions\?days=30&amp;school_type=ecd"/
+  );
+  assert.match(html, /4bbec663-7300-4aca-9e8d-bb8a01d821c2/);
+});
+
 test("the page passes the selected school type to the independent review-alert loader", () => {
   const source = fs.readFileSync(
     path.join(process.cwd(), "app/mobile-app/sessions/page.tsx"),
@@ -116,4 +133,15 @@ test("the page capability-gates new exports and removes the misleading heatmap C
   assert.match(source, /<SessionExportsPanel/);
   assert.match(source, /exportPanel=/);
   assert.doesNotMatch(source, /exportFilenamePrefix=/);
+});
+
+test("the sessions loader forwards and retains a request correlation id", () => {
+  const source = fs.readFileSync(
+    path.join(process.cwd(), "lib/mobile/api.ts"),
+    "utf8"
+  );
+
+  assert.match(source, /crypto\.randomUUID\(\)/);
+  assert.match(source, /headers\.set\("X-Zazi-Request-Id", requestId\)/);
+  assert.match(source, /reference: requestId/);
 });

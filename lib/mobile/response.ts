@@ -9,7 +9,7 @@ export { SESSION_REVIEW_ALERTS_UNAVAILABLE } from "./session-review-copy";
 
 export type MobileSessionsActivityResult =
   | { ok: true; data: MobileSessionsActivityResponse }
-  | { ok: false; status: number; message: string };
+  | { ok: false; status: number; message: string; reference?: string };
 
 export type MobileSessionReviewFlagsResult =
   | { ok: true; data: MobileSessionReviewFlagsResponse }
