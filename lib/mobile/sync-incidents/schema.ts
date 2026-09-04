@@ -307,36 +307,49 @@ const receiptSchema = receiptShapeSchema.safeExtend({
   schema_version: z.literal(1),
 });
 
+const releaseProvenanceShape = {
+  observed_release_label: version.nullable(),
+  observed_update_id: canonicalUuid.nullable(),
+  observed_is_embedded_launch: z.boolean().nullable(),
+} as const;
+
+function refineReleaseProvenance(
+  receipt: {
+    observed_release_label: string | null;
+    observed_update_id: string | null;
+    observed_is_embedded_launch: boolean | null;
+  },
+  context: z.RefinementCtx
+): void {
+  if (
+    receipt.observed_is_embedded_launch === null &&
+    (receipt.observed_release_label !== null ||
+      receipt.observed_update_id !== null)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["observed_is_embedded_launch"],
+      message: "unknown launch identity cannot claim release provenance",
+    });
+  }
+  if (
+    receipt.observed_is_embedded_launch === true &&
+    receipt.observed_update_id !== null
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["observed_update_id"],
+      message: "an embedded launch cannot claim an OTA update UUID",
+    });
+  }
+}
+
 const receiptV2Schema = receiptShapeSchema
   .safeExtend({
     schema_version: z.literal(2),
-    observed_release_label: version.nullable(),
-    observed_update_id: canonicalUuid.nullable(),
-    observed_is_embedded_launch: z.boolean().nullable(),
+    ...releaseProvenanceShape,
   })
-  .superRefine((receipt, context) => {
-    if (
-      receipt.observed_is_embedded_launch === null &&
-      (receipt.observed_release_label !== null ||
-        receipt.observed_update_id !== null)
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["observed_is_embedded_launch"],
-        message: "unknown launch identity cannot claim release provenance",
-      });
-    }
-    if (
-      receipt.observed_is_embedded_launch === true &&
-      receipt.observed_update_id !== null
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["observed_update_id"],
-        message: "an embedded launch cannot claim an OTA update UUID",
-      });
-    }
-  });
+  .superRefine(refineReleaseProvenance);
 
 const conditionKey = z
   .string()
@@ -345,9 +358,10 @@ const conditionKey = z
     /^integrity-condition:v2\|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\|[A-Z][A-Z0-9_]{0,63}\|[A-Za-z0-9_.:-]{1,128}\|[A-Za-z0-9_.:-]{1,128}\|[A-Za-z0-9_.:-]{0,128}$/
   );
 
-const receiptV3Schema = receiptV2Schema
+const receiptV3Schema = receiptShapeSchema
   .safeExtend({
     schema_version: z.literal(3),
+    ...releaseProvenanceShape,
     incident_kind: z.literal("integrity_aggregate"),
     descriptor_key: descriptor,
     local_record_id: z.null(),
@@ -368,6 +382,7 @@ const receiptV3Schema = receiptV2Schema
     affected_record_count: positiveSafeCount,
   })
   .superRefine((receipt, context) => {
+    refineReleaseProvenance(receipt, context);
     const expectedCondition = [
       "integrity-condition:v2",
       receipt.client_stream_id,
@@ -464,26 +479,26 @@ function expectedSastWindow(snapshot: string, days: number): {
   };
 }
 
-const mobileSyncIncidentsCommonSchema = z.strictObject({
+const mobileSyncIncidentsCommonShape = {
   generated_at: controlTimestamp,
   applied_filters: appliedFiltersSchema,
-  summary: summarySchema,
   page_count: safeCount,
   next_cursor: z.string().regex(ASCII_CURSOR_PATTERN).nullable(),
+} as const;
+
+const mobileSyncIncidentsV1UnrefinedSchema = z.strictObject({
+  ...mobileSyncIncidentsCommonShape,
+  schema_version: z.literal(1),
+  summary: summarySchema,
+  incidents: z.array(itemSchema).max(100),
 });
 
-const mobileSyncIncidentsV1UnrefinedSchema =
-  mobileSyncIncidentsCommonSchema.safeExtend({
-    schema_version: z.literal(1),
-    incidents: z.array(itemSchema).max(100),
-  });
-
-const mobileSyncIncidentsV2UnrefinedSchema =
-  mobileSyncIncidentsCommonSchema.safeExtend({
-    schema_version: z.literal(2),
-    summary: transitionSummarySchema,
-    incidents: z.array(itemV2Schema).max(100),
-  });
+const mobileSyncIncidentsV2UnrefinedSchema = z.strictObject({
+  ...mobileSyncIncidentsCommonShape,
+  schema_version: z.literal(2),
+  summary: transitionSummarySchema,
+  incidents: z.array(itemV2Schema).max(100),
+});
 
 type MobileSyncIncidentsRefinementValue = Omit<
   z.infer<typeof mobileSyncIncidentsV2UnrefinedSchema>,

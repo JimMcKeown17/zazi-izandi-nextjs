@@ -98,6 +98,7 @@ export interface MobileSyncIncidentReceiptV2
 export interface MobileSyncIncidentReceiptV3
   extends MobileSyncIncidentReceiptFields {
   schema_version: 3;
+  client_stream_id: string;
   observed_release_label: string | null;
   observed_update_id: string | null;
   observed_is_embedded_launch: boolean | null;
