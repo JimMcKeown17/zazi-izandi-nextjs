@@ -82,6 +82,15 @@ export const VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD: MobileSyncIncidentsResponseV1 
 export const VALID_MOBILE_SYNC_INCIDENTS_V2_PAYLOAD: MobileSyncIncidentsResponseV2 = {
   ...VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD,
   schema_version: 2,
+  summary: {
+    receipts: 1,
+    affected_users: 1,
+    support_roots: 1,
+    legacy_receipts: 0,
+    effective_v3_conditions: 0,
+    coverage_constrained: 0,
+    newest_received_at: "2026-08-14T11:58:00Z",
+  },
   incidents: VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD.incidents.map(
     ({ actor, receipt }) => ({
       actor: { ...actor },

@@ -458,11 +458,6 @@ const successorSummarySchema = z.strictObject({
   newest_received_at: controlTimestamp.nullable(),
 });
 
-const transitionSummarySchema = z.union([
-  summarySchema,
-  successorSummarySchema,
-]);
-
 function expectedSastWindow(snapshot: string, days: number): {
   start: bigint;
   end: bigint;
@@ -496,7 +491,7 @@ const mobileSyncIncidentsV1UnrefinedSchema = z.strictObject({
 const mobileSyncIncidentsV2UnrefinedSchema = z.strictObject({
   ...mobileSyncIncidentsCommonShape,
   schema_version: z.literal(2),
-  summary: transitionSummarySchema,
+  summary: successorSummarySchema,
   incidents: z.array(itemV2Schema).max(100),
 });
 

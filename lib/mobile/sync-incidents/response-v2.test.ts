@@ -8,7 +8,7 @@ import {
 } from "./response";
 import { VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD } from "./test-fixtures";
 
-function validV2Payload(): Record<string, unknown> {
+function validV2Payload(options: { successorSummary?: boolean } = {}): Record<string, unknown> {
   const payload = structuredClone(VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD);
   const receipt = payload.incidents[0].receipt as unknown as Record<
     string,
@@ -19,6 +19,13 @@ function validV2Payload(): Record<string, unknown> {
   receipt.observed_release_label = "1.1.1+30";
   receipt.observed_update_id = "00000000-0000-4000-8000-000000000030";
   receipt.observed_is_embedded_launch = false;
+  if (options.successorSummary !== false) {
+    const summary = payload.summary as Record<string, unknown>;
+    const integrityFindings = summary.integrity_findings;
+    delete summary.integrity_findings;
+    summary.legacy_receipts = integrityFindings;
+    summary.effective_v3_conditions = 0;
+  }
   return payload as unknown as Record<string, unknown>;
 }
 
@@ -81,17 +88,25 @@ test("the v2 envelope retains exact v1 receipts during rolling adoption", async 
     VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD
   ) as unknown as Record<string, unknown>;
   payload.schema_version = 2;
+  const summary = payload.summary as Record<string, unknown>;
+  const integrityFindings = summary.integrity_findings;
+  delete summary.integrity_findings;
+  summary.legacy_receipts = integrityFindings;
+  summary.effective_v3_conditions = 0;
 
   const result = await decodeV2(payload);
 
   assert.deepEqual(result, { ok: true, data: payload });
 });
 
-test("the transition decoder accepts either old summaries or schema-3 summaries", async () => {
+test("the strict decoder requires successor summaries", async () => {
   for (const payload of [validV2Payload(), validV3Payload()]) {
     const result = await decodeV2(payload);
     assert.deepEqual(result, { ok: true, data: payload });
   }
+
+  const legacy = validV2Payload({ successorSummary: false });
+  assert.equal((await decodeV2(legacy)).ok, false);
 
   const mixed = validV3Payload();
   (mixed.summary as Record<string, unknown>).integrity_findings = 1;

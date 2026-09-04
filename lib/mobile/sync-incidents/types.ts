@@ -165,7 +165,7 @@ export interface MobileSyncIncidentsResponseV1
 export interface MobileSyncIncidentsResponseV2
   extends MobileSyncIncidentsResponseFields {
   schema_version: 2;
-  summary: MobileSyncIncidentLegacySummary | MobileSyncIncidentSuccessorSummary;
+  summary: MobileSyncIncidentSuccessorSummary;
   incidents: MobileSyncIncidentItem[];
 }
 
