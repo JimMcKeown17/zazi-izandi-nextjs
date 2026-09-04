@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import {
@@ -19,6 +20,46 @@ function validV2Payload(): Record<string, unknown> {
   receipt.observed_update_id = "00000000-0000-4000-8000-000000000030";
   receipt.observed_is_embedded_launch = false;
   return payload as unknown as Record<string, unknown>;
+}
+
+function validV3Payload(): Record<string, unknown> {
+  const payload = validV2Payload();
+  const summary = payload.summary as Record<string, unknown>;
+  delete summary.integrity_findings;
+  summary.support_roots = 0;
+  summary.legacy_receipts = 0;
+  summary.effective_v3_conditions = 1;
+  const receipt = (
+    payload.incidents as Array<{ receipt: Record<string, unknown> }>
+  )[0].receipt;
+  const conditionKey = [
+    "integrity-condition:v2",
+    "00000000-0000-4000-8000-000000000004",
+    "CHILDREN",
+    "ack_malformed",
+    "ack_error",
+    "malformed_response",
+  ].join("|");
+  Object.assign(receipt, {
+    schema_version: 3,
+    incident_key: `integrity:v3:${createHash("sha256").update(conditionKey).digest("hex")}:7`,
+    incident_kind: "integrity_aggregate",
+    descriptor_key: "CHILDREN",
+    local_record_id: null,
+    mutation_id: null,
+    client_stream_id: "00000000-0000-4000-8000-000000000004",
+    operation: null,
+    source_status: null,
+    error_class: "integrity",
+    error_code: "ack_malformed",
+    reason: "ack_malformed",
+    detail_kind: "ack_error",
+    detail_code: "malformed_response",
+    condition_key: conditionKey,
+    report_generation: 7,
+    affected_record_count: 205,
+  });
+  return payload;
 }
 
 async function decodeV2(payload: unknown) {
@@ -44,6 +85,52 @@ test("the v2 envelope retains exact v1 receipts during rolling adoption", async 
   const result = await decodeV2(payload);
 
   assert.deepEqual(result, { ok: true, data: payload });
+});
+
+test("the transition decoder accepts either old summaries or schema-3 summaries", async () => {
+  for (const payload of [validV2Payload(), validV3Payload()]) {
+    const result = await decodeV2(payload);
+    assert.deepEqual(result, { ok: true, data: payload });
+  }
+
+  const mixed = validV3Payload();
+  (mixed.summary as Record<string, unknown>).integrity_findings = 1;
+  assert.equal((await decodeV2(mixed)).ok, false);
+
+  const partial = validV3Payload();
+  delete (partial.summary as Record<string, unknown>).effective_v3_conditions;
+  assert.equal((await decodeV2(partial)).ok, false);
+});
+
+test("the v2 envelope accepts exact schema-3 condition receipts", async () => {
+  const payload = validV3Payload();
+  assert.deepEqual(await decodeV2(payload), { ok: true, data: payload });
+
+  const mutations: Array<(receipt: Record<string, unknown>) => void> = [
+    (receipt) => {
+      receipt.incident_key = `integrity:v3:${"a".repeat(64)}:7`;
+    },
+    (receipt) => {
+      receipt.condition_key = `${receipt.condition_key as string}x`;
+    },
+    (receipt) => {
+      receipt.report_generation = 8;
+    },
+    (receipt) => {
+      receipt.client_stream_id = null;
+    },
+    (receipt) => {
+      receipt.email = "must-not-leak@example.org";
+    },
+  ];
+  for (const mutate of mutations) {
+    const candidate = validV3Payload();
+    mutate(
+      (candidate.incidents as Array<{ receipt: Record<string, unknown> }>)[0]
+        .receipt
+    );
+    assert.equal((await decodeV2(candidate)).ok, false);
+  }
 });
 
 test("the v1 decoder remains exact and does not silently widen to v2", async () => {

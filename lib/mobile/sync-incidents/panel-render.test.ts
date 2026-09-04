@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -8,9 +9,54 @@ import {
   VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD,
   VALID_MOBILE_SYNC_INCIDENTS_V2_PAYLOAD,
 } from "./test-fixtures";
+import type { MobileSyncIncidentsResponse } from "./types";
 
 function visibleText(html: string): string {
   return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function schema3PanelPayload(): MobileSyncIncidentsResponse {
+  const payload = structuredClone(
+    VALID_MOBILE_SYNC_INCIDENTS_V2_PAYLOAD
+  ) as unknown as Record<string, unknown>;
+  const summary = payload.summary as Record<string, unknown>;
+  delete summary.integrity_findings;
+  Object.assign(summary, {
+    support_roots: 0,
+    legacy_receipts: 0,
+    effective_v3_conditions: 1,
+  });
+  const receipt = (
+    payload.incidents as Array<{ receipt: Record<string, unknown> }>
+  )[0].receipt;
+  const conditionKey = [
+    "integrity-condition:v2",
+    "00000000-0000-4000-8000-000000000004",
+    "CHILDREN",
+    "ack_malformed",
+    "ack_error",
+    "malformed_response",
+  ].join("|");
+  Object.assign(receipt, {
+    schema_version: 3,
+    incident_key: `integrity:v3:${createHash("sha256").update(conditionKey).digest("hex")}:7`,
+    incident_kind: "integrity_aggregate",
+    descriptor_key: "CHILDREN",
+    local_record_id: null,
+    mutation_id: null,
+    client_stream_id: "00000000-0000-4000-8000-000000000004",
+    operation: null,
+    source_status: null,
+    error_class: "integrity",
+    error_code: "ack_malformed",
+    reason: "ack_malformed",
+    detail_kind: "ack_error",
+    detail_code: "malformed_response",
+    condition_key: conditionKey,
+    report_generation: 7,
+    affected_record_count: 205,
+  });
+  return payload as unknown as MobileSyncIncidentsResponse;
 }
 
 test("the alert panel renders historical evidence, profile authority, and bounded detail", () => {
@@ -79,6 +125,26 @@ test("v2 labels the release that observed and queued the receipt", () => {
     /Update UUID 00000000-0000-4000-8000-000000000030/
   );
   assert.match(text, /Launch source OTA update/);
+});
+
+test("schema 3 distinguishes current condition breadth from legacy receipt volume", () => {
+  const text = visibleText(
+    renderToStaticMarkup(
+      createElement(SyncIncidentAlerts, {
+        result: { ok: true, data: schema3PanelPayload() },
+      })
+    )
+  );
+
+  assert.match(text, /Legacy integrity receipts 0/);
+  assert.match(text, /Latest condition snapshots in the selected window 1/);
+  assert.doesNotMatch(text, /Sync-integrity findings reported/);
+  assert.match(text, /Installed stream 00000000-0000-4000-8000-000000000004/);
+  assert.match(text, /Affected records 205/);
+  assert.match(text, /Occurrences 1/);
+  assert.match(text, /Generation 7/);
+  assert.match(text, /First observation/);
+  assert.match(text, /Last observation/);
 });
 
 test("historical v1 receipts say provenance was not recorded by schema v1", () => {

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 
 import { timestampMicros } from "./timestamps";
@@ -17,6 +18,16 @@ const CONTROL_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/;
 const ASCII_CURSOR_PATTERN = /^[\x20-\x7e]{1,2048}$/;
 const PROHIBITED_TEXT_PATTERN = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u;
+const ACK_INTEGRITY_REASONS = new Set([
+  "rpc_rejected",
+  "ack_malformed",
+  "ack_identity_mismatch",
+]);
+const PULL_INTEGRITY_REASONS = new Set([
+  "pull_drop_deferred",
+  "pull_drop_quarantined",
+]);
+const PULL_PRODUCERS = new Set(["merge_server_rows", "child_revocation"]);
 
 const canonicalUuid = z.string().regex(UUID_PATTERN);
 const safeCount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
@@ -252,6 +263,9 @@ const receiptShapeSchema = z
     }
 
     if (receipt.incident_kind === "integrity_aggregate") {
+      if ((receipt as typeof receipt & { schema_version?: number }).schema_version === 3) {
+        return;
+      }
       if (
         !/^integrity:v1:[0-9a-f]{64}$/.test(receipt.incident_key) ||
         receipt.mutation_id !== null ||
@@ -324,6 +338,64 @@ const receiptV2Schema = receiptShapeSchema
     }
   });
 
+const conditionKey = z
+  .string()
+  .max(512)
+  .regex(
+    /^integrity-condition:v2\|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\|[A-Z][A-Z0-9_]{0,63}\|[A-Za-z0-9_.:-]{1,128}\|[A-Za-z0-9_.:-]{1,128}\|[A-Za-z0-9_.:-]{0,128}$/
+  );
+
+const receiptV3Schema = receiptV2Schema
+  .safeExtend({
+    schema_version: z.literal(3),
+    incident_kind: z.literal("integrity_aggregate"),
+    descriptor_key: descriptor,
+    local_record_id: z.null(),
+    mutation_id: z.null(),
+    client_stream_id: canonicalUuid,
+    operation: z.null(),
+    source_status: z.null(),
+    reason: z.enum([
+      "rpc_rejected",
+      "ack_malformed",
+      "ack_identity_mismatch",
+      "pull_drop_deferred",
+      "pull_drop_quarantined",
+    ]),
+    detail_kind: token,
+    condition_key: conditionKey,
+    report_generation: positiveSafeCount,
+    affected_record_count: positiveSafeCount,
+  })
+  .superRefine((receipt, context) => {
+    const expectedCondition = [
+      "integrity-condition:v2",
+      receipt.client_stream_id,
+      receipt.descriptor_key,
+      receipt.reason,
+      receipt.detail_kind,
+      receipt.detail_code ?? "",
+    ].join("|");
+    const expectedKey = `integrity:v3:${createHash("sha256")
+      .update(receipt.condition_key, "ascii")
+      .digest("hex")}:${receipt.report_generation}`;
+    if (
+      receipt.condition_key !== expectedCondition ||
+      receipt.incident_key !== expectedKey ||
+      (ACK_INTEGRITY_REASONS.has(receipt.reason) &&
+        receipt.detail_code === null) ||
+      (PULL_INTEGRITY_REASONS.has(receipt.reason) &&
+        (!PULL_PRODUCERS.has(receipt.detail_kind) ||
+          receipt.detail_code !== null))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["condition_key"],
+        message: "schema-3 condition identity is invalid",
+      });
+    }
+  });
+
 const itemSchema = z.strictObject({
   actor: actorSchema,
   receipt: receiptSchema,
@@ -334,6 +406,7 @@ const itemV2Schema = z.strictObject({
   receipt: z.discriminatedUnion("schema_version", [
     receiptSchema,
     receiptV2Schema,
+    receiptV3Schema,
   ]),
 });
 
@@ -359,6 +432,21 @@ const summarySchema = z.strictObject({
   coverage_constrained: safeCount,
   newest_received_at: controlTimestamp.nullable(),
 });
+
+const successorSummarySchema = z.strictObject({
+  receipts: safeCount,
+  affected_users: safeCount,
+  support_roots: safeCount,
+  legacy_receipts: safeCount,
+  effective_v3_conditions: safeCount,
+  coverage_constrained: safeCount,
+  newest_received_at: controlTimestamp.nullable(),
+});
+
+const transitionSummarySchema = z.union([
+  summarySchema,
+  successorSummarySchema,
+]);
 
 function expectedSastWindow(snapshot: string, days: number): {
   start: bigint;
@@ -393,6 +481,7 @@ const mobileSyncIncidentsV1UnrefinedSchema =
 const mobileSyncIncidentsV2UnrefinedSchema =
   mobileSyncIncidentsCommonSchema.safeExtend({
     schema_version: z.literal(2),
+    summary: transitionSummarySchema,
     incidents: z.array(itemV2Schema).max(100),
   });
 
@@ -405,7 +494,11 @@ function refineMobileSyncIncidents(
   value: MobileSyncIncidentsRefinementValue,
   context: z.RefinementCtx
 ): void {
-    const { summary, incidents, applied_filters: filters } = value;
+  const { summary, incidents, applied_filters: filters } = value;
+  const integrityTotal =
+    "integrity_findings" in summary
+      ? summary.integrity_findings
+      : summary.legacy_receipts + summary.effective_v3_conditions;
     const expectedWindow = expectedSastWindow(
       filters.snapshot_received_before,
       filters.days
@@ -424,7 +517,7 @@ function refineMobileSyncIncidents(
     }
     if (
       summary.support_roots +
-        summary.integrity_findings +
+        integrityTotal +
         summary.coverage_constrained !==
       summary.receipts
     ) {
@@ -547,7 +640,7 @@ function refineMobileSyncIncidents(
     }
     if (
       pageKindCounts.support_root > summary.support_roots ||
-      pageKindCounts.integrity_aggregate > summary.integrity_findings ||
+      pageKindCounts.integrity_aggregate > integrityTotal ||
       pageKindCounts.queue_overflow > summary.coverage_constrained
     ) {
       context.addIssue({
@@ -567,7 +660,7 @@ function refineMobileSyncIncidents(
       if (
         summary.affected_users !== 0 ||
         summary.support_roots !== 0 ||
-        summary.integrity_findings !== 0 ||
+        integrityTotal !== 0 ||
         summary.coverage_constrained !== 0 ||
         incidents.length !== 0 ||
         value.next_cursor !== null

@@ -26,6 +26,10 @@ export const INCIDENT_KIND_COPY: Record<
   },
 };
 
+export const LEGACY_INTEGRITY_SUMMARY_LABEL = "Legacy integrity receipts";
+export const EFFECTIVE_CONDITION_SUMMARY_LABEL =
+  "Latest condition snapshots in the selected window";
+
 const CLASSIFICATION_COPY: Readonly<Record<string, string>> = {
   row_rejected: "The server rejected the saved-change upload.",
   rpc_rejected: "The device recorded a rejected sync acknowledgement.",
@@ -78,4 +82,25 @@ export function wasReceivedAfterDeviceObservation(
 
 export function getIncidentIdentity(item: MobileSyncIncidentItem): string {
   return `${item.receipt.actor_user_id}:${item.receipt.incident_key}`;
+}
+
+export function getConditionSnapshotDetails(
+  receipt: MobileSyncIncidentReceipt
+): null | {
+  installedStream: string;
+  affectedRecords: number;
+  occurrences: number;
+  firstObservation: string;
+  lastObservation: string;
+  generation: number;
+} {
+  if (receipt.schema_version !== 3) return null;
+  return {
+    installedStream: receipt.client_stream_id,
+    affectedRecords: receipt.affected_record_count,
+    occurrences: receipt.occurrence_count,
+    firstObservation: receipt.first_seen_at,
+    lastObservation: receipt.last_seen_at,
+    generation: receipt.report_generation,
+  };
 }

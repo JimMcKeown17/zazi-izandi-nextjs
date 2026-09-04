@@ -95,13 +95,44 @@ export interface MobileSyncIncidentReceiptV2
   observed_is_embedded_launch: boolean | null;
 }
 
+export interface MobileSyncIncidentReceiptV3
+  extends MobileSyncIncidentReceiptFields {
+  schema_version: 3;
+  observed_release_label: string | null;
+  observed_update_id: string | null;
+  observed_is_embedded_launch: boolean | null;
+  condition_key: string;
+  report_generation: number;
+  affected_record_count: number;
+}
+
 export type MobileSyncIncidentReceipt =
   | MobileSyncIncidentReceiptV1
-  | MobileSyncIncidentReceiptV2;
+  | MobileSyncIncidentReceiptV2
+  | MobileSyncIncidentReceiptV3;
 
 export interface MobileSyncIncidentItem {
   actor: MobileSyncIncidentActor;
   receipt: MobileSyncIncidentReceipt;
+}
+
+export interface MobileSyncIncidentLegacySummary {
+  receipts: number;
+  affected_users: number;
+  support_roots: number;
+  integrity_findings: number;
+  coverage_constrained: number;
+  newest_received_at: string | null;
+}
+
+export interface MobileSyncIncidentSuccessorSummary {
+  receipts: number;
+  affected_users: number;
+  support_roots: number;
+  legacy_receipts: number;
+  effective_v3_conditions: number;
+  coverage_constrained: number;
+  newest_received_at: string | null;
 }
 
 interface MobileSyncIncidentsResponseFields {
@@ -117,14 +148,6 @@ interface MobileSyncIncidentsResponseFields {
     descriptor_key: string | null;
     limit: number;
   };
-  summary: {
-    receipts: number;
-    affected_users: number;
-    support_roots: number;
-    integrity_findings: number;
-    coverage_constrained: number;
-    newest_received_at: string | null;
-  };
   page_count: number;
   next_cursor: string | null;
 }
@@ -132,6 +155,7 @@ interface MobileSyncIncidentsResponseFields {
 export interface MobileSyncIncidentsResponseV1
   extends MobileSyncIncidentsResponseFields {
   schema_version: 1;
+  summary: MobileSyncIncidentLegacySummary;
   incidents: Array<
     MobileSyncIncidentItem & { receipt: MobileSyncIncidentReceiptV1 }
   >;
@@ -140,6 +164,7 @@ export interface MobileSyncIncidentsResponseV1
 export interface MobileSyncIncidentsResponseV2
   extends MobileSyncIncidentsResponseFields {
   schema_version: 2;
+  summary: MobileSyncIncidentLegacySummary | MobileSyncIncidentSuccessorSummary;
   incidents: MobileSyncIncidentItem[];
 }
 
