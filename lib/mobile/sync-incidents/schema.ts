@@ -495,10 +495,15 @@ const mobileSyncIncidentsV2UnrefinedSchema = z.strictObject({
   incidents: z.array(itemV2Schema).max(100),
 });
 
-type MobileSyncIncidentsRefinementValue = Omit<
-  z.infer<typeof mobileSyncIncidentsV2UnrefinedSchema>,
-  "schema_version"
->;
+type MobileSyncIncidentsRefinementValue =
+  | Omit<
+      z.infer<typeof mobileSyncIncidentsV1UnrefinedSchema>,
+      "schema_version"
+    >
+  | Omit<
+      z.infer<typeof mobileSyncIncidentsV2UnrefinedSchema>,
+      "schema_version"
+    >;
 
 function refineMobileSyncIncidents(
   value: MobileSyncIncidentsRefinementValue,
