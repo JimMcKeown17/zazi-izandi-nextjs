@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { build } from "esbuild";
 
 const origin = "https://www.zazi-izandi.co.za";
-const callback = `${origin}/ea-set-password#access_token=synthetic-access&refresh_token=synthetic-refresh&type=recovery`;
+const callback = `${origin}/ea-set-password#access_token=synthetic-access&refresh_token=synthetic-refresh&type=recovery&sb=`;
 let bundle: string;
 
 type PasswordFixtureWindow = Window & {

@@ -140,6 +140,13 @@ test("callback capture accepts exact root evidence and rejects duplicate, malfor
   }
 });
 
+test("GoTrue v2.192.0 empty sb callback field is accepted without becoming authority", () => {
+  assert.deepEqual(capturePasswordCallback(`${CALLBACK_URL}&sb=`), capturePasswordCallback(CALLBACK_URL));
+  assert.equal(capturePasswordCallback(`${CALLBACK_URL}&sb=unexpected`), null);
+  assert.equal(capturePasswordCallback(`${CALLBACK_URL}&sb=&sb=`), null);
+  assert.equal(capturePasswordCallback(`${CALLBACK_URL}&unknown=`), null);
+});
+
 test("isolated client rejects wrong project pre-construction and disables URL auto-detection", () => {
   let constructionCount = 0;
   assert.throws(

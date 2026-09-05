@@ -2,7 +2,7 @@ const CALLBACK_PATH = "/ea-set-password";
 const CALLBACK_ORIGIN = "https://www.zazi-izandi.co.za";
 const TOKEN_PATTERN = /^[A-Za-z0-9._~-]{1,8192}$/;
 const CALLBACK_TYPES = new Set(["invite", "recovery"]);
-const OPTIONAL_FRAGMENT_FIELDS = new Set(["expires_in", "expires_at", "token_type"]);
+const OPTIONAL_FRAGMENT_FIELDS = new Set(["expires_in", "expires_at", "token_type", "sb"]);
 
 export type CapturedPasswordCallback = {
   accessToken: string;
@@ -70,6 +70,10 @@ export function capturePasswordCallback(href: string): CapturedPasswordCallback 
   ) {
     return null;
   }
+  // GoTrue v2.192.0 emits an empty sb marker on implicit redirects. It is
+  // compatibility syntax only; it grants no session/flow/operation authority.
+  const providerMarker = fragment.get("sb");
+  if (providerMarker !== null && providerMarker !== "") return null;
   const tokenType = fragment.get("token_type");
   if (tokenType !== null && tokenType !== "bearer") return null;
   const expiresIn = fragment.get("expires_in");
