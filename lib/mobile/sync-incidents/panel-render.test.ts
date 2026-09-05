@@ -1,13 +1,62 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { SyncIncidentAlerts } from "@/components/mobile-app/sync-incidents/sync-incident-alerts";
-import { VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD } from "./test-fixtures";
+import {
+  VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD,
+  VALID_MOBILE_SYNC_INCIDENTS_V2_PAYLOAD,
+} from "./test-fixtures";
+import type { MobileSyncIncidentsResponse } from "./types";
 
 function visibleText(html: string): string {
   return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function schema3PanelPayload(): MobileSyncIncidentsResponse {
+  const payload = structuredClone(
+    VALID_MOBILE_SYNC_INCIDENTS_V2_PAYLOAD
+  ) as unknown as Record<string, unknown>;
+  const summary = payload.summary as Record<string, unknown>;
+  delete summary.integrity_findings;
+  Object.assign(summary, {
+    support_roots: 0,
+    legacy_receipts: 0,
+    effective_v3_conditions: 1,
+  });
+  const receipt = (
+    payload.incidents as Array<{ receipt: Record<string, unknown> }>
+  )[0].receipt;
+  const conditionKey = [
+    "integrity-condition:v2",
+    "00000000-0000-4000-8000-000000000004",
+    "CHILDREN",
+    "ack_malformed",
+    "ack_error",
+    "malformed_response",
+  ].join("|");
+  Object.assign(receipt, {
+    schema_version: 3,
+    incident_key: `integrity:v3:${createHash("sha256").update(conditionKey).digest("hex")}:7`,
+    incident_kind: "integrity_aggregate",
+    descriptor_key: "CHILDREN",
+    local_record_id: null,
+    mutation_id: null,
+    client_stream_id: "00000000-0000-4000-8000-000000000004",
+    operation: null,
+    source_status: null,
+    error_class: "integrity",
+    error_code: "ack_malformed",
+    reason: "ack_malformed",
+    detail_kind: "ack_error",
+    detail_code: "malformed_response",
+    condition_key: conditionKey,
+    report_generation: 7,
+    affected_record_count: 205,
+  });
+  return payload as unknown as MobileSyncIncidentsResponse;
 }
 
 test("the alert panel renders historical evidence, profile authority, and bounded detail", () => {
@@ -53,6 +102,110 @@ test("the alert panel renders historical evidence, profile authority, and bounde
   assert.match(html, /href="\/mobile-app\/users\/00000000-0000-4000-8000-000000000001"/);
   assert.doesNotMatch(text, /unresolved|still active|lost work|corrupted/i);
   assert.doesNotMatch(html, /normalized_payload|fixture@example\.org/);
+});
+
+test("v2 labels the release that observed and queued the receipt", () => {
+  const text = visibleText(
+    renderToStaticMarkup(
+      createElement(SyncIncidentAlerts, {
+        result: { ok: true, data: VALID_MOBILE_SYNC_INCIDENTS_V2_PAYLOAD },
+      })
+    )
+  );
+
+  assert.match(text, /Release that observed and queued this receipt/);
+  assert.match(
+    text,
+    /It may differ from what the device runs now and does not prove which release first caused the underlying sync condition/
+  );
+  assert.match(text, /Native build 19/);
+  assert.match(text, /Observed App Release 1\.1\.1\+30/);
+  assert.match(
+    text,
+    /Update UUID 00000000-0000-4000-8000-000000000030/
+  );
+  assert.match(text, /Launch source OTA update/);
+});
+
+test("schema 3 distinguishes current condition breadth from legacy receipt volume", () => {
+  const text = visibleText(
+    renderToStaticMarkup(
+      createElement(SyncIncidentAlerts, {
+        result: { ok: true, data: schema3PanelPayload() },
+      })
+    )
+  );
+
+  assert.match(text, /Legacy integrity receipts 0/);
+  assert.match(text, /Latest condition snapshots in the selected window 1/);
+  assert.doesNotMatch(text, /Sync-integrity findings reported/);
+  assert.match(text, /Installed stream 00000000-0000-4000-8000-000000000004/);
+  assert.match(text, /Affected records 205/);
+  assert.match(text, /Occurrences 1/);
+  assert.match(text, /Generation 7/);
+  assert.match(text, /First observation/);
+  assert.match(text, /Last observation/);
+});
+
+test("historical v1 receipts say provenance was not recorded by schema v1", () => {
+  const payload = structuredClone(VALID_MOBILE_SYNC_INCIDENTS_V2_PAYLOAD);
+  payload.incidents[0].receipt = structuredClone(
+    VALID_MOBILE_SYNC_INCIDENTS_PAYLOAD.incidents[0].receipt
+  );
+
+  const text = visibleText(
+    renderToStaticMarkup(
+      createElement(SyncIncidentAlerts, {
+        result: { ok: true, data: payload },
+      })
+    )
+  );
+
+  assert.match(text, /Native build 19/);
+  assert.match(text, /Observed App Release Not recorded \(schema v1\)/);
+  assert.match(text, /Update UUID Not recorded \(schema v1\)/);
+  assert.match(text, /Launch source Not recorded \(schema v1\)/);
+});
+
+test("v2 distinguishes embedded and unknown launch provenance", () => {
+  const embedded = structuredClone(VALID_MOBILE_SYNC_INCIDENTS_V2_PAYLOAD);
+  if (embedded.incidents[0].receipt.schema_version !== 2) {
+    throw new Error("fixture must use a v2 receipt");
+  }
+  embedded.incidents[0].receipt.observed_update_id = null;
+  embedded.incidents[0].receipt.observed_is_embedded_launch = true;
+
+  const embeddedText = visibleText(
+    renderToStaticMarkup(
+      createElement(SyncIncidentAlerts, {
+        result: { ok: true, data: embedded },
+      })
+    )
+  );
+  assert.match(
+    embeddedText,
+    /Update UUID Not applicable \(embedded build\)/
+  );
+  assert.match(embeddedText, /Launch source Embedded build/);
+
+  const unknown = structuredClone(VALID_MOBILE_SYNC_INCIDENTS_V2_PAYLOAD);
+  if (unknown.incidents[0].receipt.schema_version !== 2) {
+    throw new Error("fixture must use a v2 receipt");
+  }
+  unknown.incidents[0].receipt.observed_release_label = null;
+  unknown.incidents[0].receipt.observed_update_id = null;
+  unknown.incidents[0].receipt.observed_is_embedded_launch = null;
+
+  const unknownText = visibleText(
+    renderToStaticMarkup(
+      createElement(SyncIncidentAlerts, {
+        result: { ok: true, data: unknown },
+      })
+    )
+  );
+  assert.match(unknownText, /Observed App Release Undetermined by device/);
+  assert.match(unknownText, /Update UUID Undetermined by device/);
+  assert.match(unknownText, /Launch source Undetermined by device/);
 });
 
 test("unknown classification tokens cannot resolve through Object prototype keys", () => {

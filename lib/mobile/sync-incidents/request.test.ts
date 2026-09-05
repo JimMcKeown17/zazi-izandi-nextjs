@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildSyncIncidentsRequest } from "./request";
+import {
+  buildSyncIncidentsRequest,
+  buildSyncIncidentsV2Request,
+} from "./request";
 
 const SCHOOL_ID = "00000000-0000-4000-8000-000000000010";
 
@@ -27,6 +30,21 @@ test("sync incident requests are deterministic, bounded, signed-cursor-only GETs
     "Bearer clerk-session-token"
   );
   assert.doesNotMatch(request.path, /cursor_received_at|cursor_actor|snapshot/);
+});
+
+test("the explicit v2 request uses only the versioned Django endpoint", () => {
+  const v1 = buildSyncIncidentsRequest("clerk-session-token", {
+    days: 7,
+    limit: 50,
+  });
+  const v2 = buildSyncIncidentsV2Request("clerk-session-token", {
+    days: 7,
+    limit: 50,
+  });
+
+  assert.equal(v1.path, "/api/mobile/sync-incidents/?days=7&limit=50");
+  assert.equal(v2.path, "/api/mobile/sync-incidents/v2/?days=7&limit=50");
+  assert.deepEqual(v2.init, v1.init);
 });
 
 test("sync incident request validation fails closed", () => {

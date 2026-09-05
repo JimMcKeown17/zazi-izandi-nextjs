@@ -1,13 +1,18 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient, type SupabaseClientOptions } from "@supabase/supabase-js";
 
 import { PERMITTED_SUPABASE_PROJECT_REF } from "./contract";
+import type { PasswordAuthBoundary } from "./journey";
 
 type PublicSupabaseEnvironment = {
   NEXT_PUBLIC_SUPABASE_URL?: string;
   NEXT_PUBLIC_SUPABASE_ANON_KEY?: string;
 };
 
-export type BrowserSupabaseClientFactory = typeof createClient;
+export type BrowserSupabaseClientFactory = (
+  url: string,
+  key: string,
+  options: SupabaseClientOptions<"public">
+) => SupabaseClient;
 
 /**
  * Parses a Supabase project URL without retaining or printing that URL. The
@@ -88,7 +93,7 @@ export function validatePublicSupabaseAnonKey(anonKey: string): void {
 export function createPasswordSupabaseClient(
   environment: PublicSupabaseEnvironment,
   factory: BrowserSupabaseClientFactory = createClient
-): SupabaseClient {
+): { auth: PasswordAuthBoundary } {
   const configuredUrl = environment.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = environment.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!configuredUrl || !anonKey) {
@@ -99,11 +104,43 @@ export function createPasswordSupabaseClient(
   derivePermittedSupabaseProjectRef(configuredUrl);
   validatePublicSupabaseAnonKey(anonKey);
 
-  return factory(configuredUrl, anonKey, {
+  let client: SupabaseClient | null = factory(configuredUrl, anonKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
       detectSessionInUrl: false,
     },
   });
+
+  // Expose only the password boundary. Supabase can retain its private memory
+  // session when logout fails, so neither the page nor its journey owns the raw
+  // client. Detach it synchronously and retire its listener after pending SDK
+  // calls settle, regardless of whether the provider revokes the session.
+  return {
+    auth: {
+      async setSession(tokens) {
+        if (!client) return {
+          data: { session: null, user: null },
+          error: { code: "session_disposed" },
+        };
+        return client.auth.setSession(tokens);
+      },
+      async updateUser(attributes) {
+        if (!client) return { error: { code: "session_disposed" } };
+        return client.auth.updateUser(attributes);
+      },
+      async signOut(options) {
+        const retiring = client;
+        client = null;
+        if (!retiring) return;
+        try {
+          return await retiring.auth.signOut(options);
+        } finally {
+          // signOut waits for initialization and serialized session operations.
+          // This public API also removes the SDK's visibilitychange listener.
+          await retiring.auth.stopAutoRefresh();
+        }
+      },
+    },
+  };
 }

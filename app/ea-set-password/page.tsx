@@ -29,6 +29,8 @@ function resultMessage(result: PasswordJourneyResult): string {
 
 export default function EaSetPasswordPage() {
   const journeyRef = useRef<PasswordJourney | null>(null);
+  const activeRef = useRef(false);
+  const submitInFlightRef = useRef(false);
   const [result, setResult] = useState<PasswordJourneyResult | null>(null);
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -36,64 +38,76 @@ export default function EaSetPasswordPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const bootstrap = bootstrapPasswordJourney({
-      href: window.location.href,
-      scrubOriginalCallbackUrl: () =>
-        window.history.replaceState(null, "", "/ea-set-password"),
-      createJourney: () => {
-        const client = createPasswordSupabaseClient({
-          NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    activeRef.current = true;
+    // React replays effects in Strict Mode. Let the cancelled setup expire before
+    // consuming the one-use URL; a real setup still scrubs before client creation.
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      const bootstrap = bootstrapPasswordJourney({
+        href: window.location.href,
+        scrubOriginalCallbackUrl: () =>
+          window.history.replaceState(null, "", "/ea-set-password"),
+        createJourney: () => {
+          const client = createPasswordSupabaseClient({
+            NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+            NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+          });
+          return createPasswordJourney({
+            auth: {
+              setSession: (tokens) => client.auth.setSession(tokens),
+              updateUser: (attributes) => client.auth.updateUser(attributes),
+              signOut: (options) => client.auth.signOut(options),
+            },
+            completion: async ({ operationId, bearer }) => {
+              try {
+                const response = await fetch("/api/mobile/password-completion", {
+                  method: "POST",
+                  cache: "no-store",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${bearer}`,
+                  },
+                  body: JSON.stringify({ operation_id: operationId }),
+                });
+                if (!response.ok) return { ok: false };
+                return { ok: isCompletedResponse(await response.json()) };
+              } catch {
+                return { ok: false };
+              }
+            },
+          });
+        },
+      });
+      if (bootstrap.journey) {
+        journeyRef.current = bootstrap.journey;
+        void bootstrap.journey.capture(bootstrap.callback).then((nextResult) => {
+          if (!cancelled) setResult(nextResult);
         });
-        return createPasswordJourney({
-          auth: {
-            setSession: (tokens) => client.auth.setSession(tokens),
-            updateUser: (attributes) => client.auth.updateUser(attributes),
-            signOut: (options) => client.auth.signOut(options),
-          },
-          completion: async ({ operationId, bearer }) => {
-            try {
-              const response = await fetch("/api/mobile/password-completion", {
-                method: "POST",
-                cache: "no-store",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${bearer}`,
-                },
-                body: JSON.stringify({ operation_id: operationId }),
-              });
-              if (!response.ok) return { ok: false };
-              return { ok: isCompletedResponse(await response.json()) };
-            } catch {
-              return { ok: false };
-            }
-          },
+      } else {
+        void Promise.resolve().then(() => {
+          if (!cancelled) {
+            setResult(bootstrap.result);
+          }
         });
-      },
+      }
     });
-    if (bootstrap.journey) {
-      journeyRef.current = bootstrap.journey;
-      void bootstrap.journey.capture(bootstrap.callback).then((nextResult) => {
-        if (!cancelled) setResult(nextResult);
-      });
-    } else {
-      void Promise.resolve().then(() => {
-        if (!cancelled) {
-          setResult(bootstrap.result);
-        }
-      });
-    }
     return () => {
       cancelled = true;
+      activeRef.current = false;
+      const journey = journeyRef.current;
       journeyRef.current = null;
+      void journey?.dispose();
     };
   }, []);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!journeyRef.current || submitting) return;
+    if (!journeyRef.current || submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     setSubmitting(true);
     const nextResult = await journeyRef.current.submit(password, confirmation);
+    submitInFlightRef.current = false;
+    if (!activeRef.current) return;
     setPassword("");
     setConfirmation("");
     setResult(nextResult);
@@ -111,9 +125,7 @@ export default function EaSetPasswordPage() {
           Set your password
         </h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          Choose a password for the Zazi iZandi mobile app. This page does not
-          retain your password in its own browser storage; your browser or
-          device may apply its own password-manager settings.
+          Choose a password for the Zazi iZandi mobile app.
         </p>
 
         <p

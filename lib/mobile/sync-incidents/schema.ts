@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 
 import { timestampMicros } from "./timestamps";
@@ -17,6 +18,16 @@ const CONTROL_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/;
 const ASCII_CURSOR_PATTERN = /^[\x20-\x7e]{1,2048}$/;
 const PROHIBITED_TEXT_PATTERN = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u;
+const ACK_INTEGRITY_REASONS = new Set([
+  "rpc_rejected",
+  "ack_malformed",
+  "ack_identity_mismatch",
+]);
+const PULL_INTEGRITY_REASONS = new Set([
+  "pull_drop_deferred",
+  "pull_drop_quarantined",
+]);
+const PULL_PRODUCERS = new Set(["merge_server_rows", "child_revocation"]);
 
 const canonicalUuid = z.string().regex(UUID_PATTERN);
 const safeCount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
@@ -168,9 +179,8 @@ const actorSchema = z
     }
   });
 
-const receiptSchema = z
+const receiptShapeSchema = z
   .strictObject({
-    schema_version: z.literal(1),
     actor_user_id: canonicalUuid,
     incident_key: z.string().min(1).max(512),
     incident_kind: z.enum([
@@ -253,6 +263,9 @@ const receiptSchema = z
     }
 
     if (receipt.incident_kind === "integrity_aggregate") {
+      if ((receipt as typeof receipt & { schema_version?: number }).schema_version === 3) {
+        return;
+      }
       if (
         !/^integrity:v1:[0-9a-f]{64}$/.test(receipt.incident_key) ||
         receipt.mutation_id !== null ||
@@ -290,9 +303,126 @@ const receiptSchema = z
     }
   });
 
+const receiptSchema = receiptShapeSchema.safeExtend({
+  schema_version: z.literal(1),
+});
+
+const releaseProvenanceShape = {
+  observed_release_label: version.nullable(),
+  observed_update_id: canonicalUuid.nullable(),
+  observed_is_embedded_launch: z.boolean().nullable(),
+} as const;
+
+function refineReleaseProvenance(
+  receipt: {
+    observed_release_label: string | null;
+    observed_update_id: string | null;
+    observed_is_embedded_launch: boolean | null;
+  },
+  context: z.RefinementCtx
+): void {
+  if (
+    receipt.observed_is_embedded_launch === null &&
+    (receipt.observed_release_label !== null ||
+      receipt.observed_update_id !== null)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["observed_is_embedded_launch"],
+      message: "unknown launch identity cannot claim release provenance",
+    });
+  }
+  if (
+    receipt.observed_is_embedded_launch === true &&
+    receipt.observed_update_id !== null
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["observed_update_id"],
+      message: "an embedded launch cannot claim an OTA update UUID",
+    });
+  }
+}
+
+const receiptV2Schema = receiptShapeSchema
+  .safeExtend({
+    schema_version: z.literal(2),
+    ...releaseProvenanceShape,
+  })
+  .superRefine(refineReleaseProvenance);
+
+const conditionKey = z
+  .string()
+  .max(512)
+  .regex(
+    /^integrity-condition:v2\|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\|[A-Z][A-Z0-9_]{0,63}\|[A-Za-z0-9_.:-]{1,128}\|[A-Za-z0-9_.:-]{1,128}\|[A-Za-z0-9_.:-]{0,128}$/
+  );
+
+const receiptV3Schema = receiptShapeSchema
+  .safeExtend({
+    schema_version: z.literal(3),
+    ...releaseProvenanceShape,
+    incident_kind: z.literal("integrity_aggregate"),
+    descriptor_key: descriptor,
+    local_record_id: z.null(),
+    mutation_id: z.null(),
+    client_stream_id: canonicalUuid,
+    operation: z.null(),
+    source_status: z.null(),
+    reason: z.enum([
+      "rpc_rejected",
+      "ack_malformed",
+      "ack_identity_mismatch",
+      "pull_drop_deferred",
+      "pull_drop_quarantined",
+    ]),
+    detail_kind: token,
+    condition_key: conditionKey,
+    report_generation: positiveSafeCount,
+    affected_record_count: positiveSafeCount,
+  })
+  .superRefine((receipt, context) => {
+    refineReleaseProvenance(receipt, context);
+    const expectedCondition = [
+      "integrity-condition:v2",
+      receipt.client_stream_id,
+      receipt.descriptor_key,
+      receipt.reason,
+      receipt.detail_kind,
+      receipt.detail_code ?? "",
+    ].join("|");
+    const expectedKey = `integrity:v3:${createHash("sha256")
+      .update(receipt.condition_key, "ascii")
+      .digest("hex")}:${receipt.report_generation}`;
+    if (
+      receipt.condition_key !== expectedCondition ||
+      receipt.incident_key !== expectedKey ||
+      (ACK_INTEGRITY_REASONS.has(receipt.reason) &&
+        receipt.detail_code === null) ||
+      (PULL_INTEGRITY_REASONS.has(receipt.reason) &&
+        (!PULL_PRODUCERS.has(receipt.detail_kind) ||
+          receipt.detail_code !== null))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["condition_key"],
+        message: "schema-3 condition identity is invalid",
+      });
+    }
+  });
+
 const itemSchema = z.strictObject({
   actor: actorSchema,
   receipt: receiptSchema,
+});
+
+const itemV2Schema = z.strictObject({
+  actor: actorSchema,
+  receipt: z.discriminatedUnion("schema_version", [
+    receiptSchema,
+    receiptV2Schema,
+    receiptV3Schema,
+  ]),
 });
 
 const appliedFiltersSchema = z.strictObject({
@@ -318,6 +448,16 @@ const summarySchema = z.strictObject({
   newest_received_at: controlTimestamp.nullable(),
 });
 
+const successorSummarySchema = z.strictObject({
+  receipts: safeCount,
+  affected_users: safeCount,
+  support_roots: safeCount,
+  legacy_receipts: safeCount,
+  effective_v3_conditions: safeCount,
+  coverage_constrained: safeCount,
+  newest_received_at: controlTimestamp.nullable(),
+});
+
 function expectedSastWindow(snapshot: string, days: number): {
   start: bigint;
   end: bigint;
@@ -334,18 +474,46 @@ function expectedSastWindow(snapshot: string, days: number): {
   };
 }
 
-export const mobileSyncIncidentsSchema = z
-  .strictObject({
-    schema_version: z.literal(1),
-    generated_at: controlTimestamp,
-    applied_filters: appliedFiltersSchema,
-    summary: summarySchema,
-    page_count: safeCount,
-    next_cursor: z.string().regex(ASCII_CURSOR_PATTERN).nullable(),
-    incidents: z.array(itemSchema).max(100),
-  })
-  .superRefine((value, context) => {
-    const { summary, incidents, applied_filters: filters } = value;
+const mobileSyncIncidentsCommonShape = {
+  generated_at: controlTimestamp,
+  applied_filters: appliedFiltersSchema,
+  page_count: safeCount,
+  next_cursor: z.string().regex(ASCII_CURSOR_PATTERN).nullable(),
+} as const;
+
+const mobileSyncIncidentsV1UnrefinedSchema = z.strictObject({
+  ...mobileSyncIncidentsCommonShape,
+  schema_version: z.literal(1),
+  summary: summarySchema,
+  incidents: z.array(itemSchema).max(100),
+});
+
+const mobileSyncIncidentsV2UnrefinedSchema = z.strictObject({
+  ...mobileSyncIncidentsCommonShape,
+  schema_version: z.literal(2),
+  summary: successorSummarySchema,
+  incidents: z.array(itemV2Schema).max(100),
+});
+
+type MobileSyncIncidentsRefinementValue =
+  | Omit<
+      z.infer<typeof mobileSyncIncidentsV1UnrefinedSchema>,
+      "schema_version"
+    >
+  | Omit<
+      z.infer<typeof mobileSyncIncidentsV2UnrefinedSchema>,
+      "schema_version"
+    >;
+
+function refineMobileSyncIncidents(
+  value: MobileSyncIncidentsRefinementValue,
+  context: z.RefinementCtx
+): void {
+  const { summary, incidents, applied_filters: filters } = value;
+  const integrityTotal =
+    "integrity_findings" in summary
+      ? summary.integrity_findings
+      : summary.legacy_receipts + summary.effective_v3_conditions;
     const expectedWindow = expectedSastWindow(
       filters.snapshot_received_before,
       filters.days
@@ -364,7 +532,7 @@ export const mobileSyncIncidentsSchema = z
     }
     if (
       summary.support_roots +
-        summary.integrity_findings +
+        integrityTotal +
         summary.coverage_constrained !==
       summary.receipts
     ) {
@@ -487,7 +655,7 @@ export const mobileSyncIncidentsSchema = z
     }
     if (
       pageKindCounts.support_root > summary.support_roots ||
-      pageKindCounts.integrity_aggregate > summary.integrity_findings ||
+      pageKindCounts.integrity_aggregate > integrityTotal ||
       pageKindCounts.queue_overflow > summary.coverage_constrained
     ) {
       context.addIssue({
@@ -507,7 +675,7 @@ export const mobileSyncIncidentsSchema = z
       if (
         summary.affected_users !== 0 ||
         summary.support_roots !== 0 ||
-        summary.integrity_findings !== 0 ||
+        integrityTotal !== 0 ||
         summary.coverage_constrained !== 0 ||
         incidents.length !== 0 ||
         value.next_cursor !== null
@@ -526,10 +694,18 @@ export const mobileSyncIncidentsSchema = z
         message: "a cursor requires a full page",
       });
     }
-  });
+}
+
+export const mobileSyncIncidentsSchema =
+  mobileSyncIncidentsV1UnrefinedSchema.superRefine(refineMobileSyncIncidents);
+
+export const mobileSyncIncidentsV2Schema =
+  mobileSyncIncidentsV2UnrefinedSchema.superRefine(refineMobileSyncIncidents);
 
 export function responseMatchesRequest(
-  response: z.infer<typeof mobileSyncIncidentsSchema>,
+  response:
+    | z.infer<typeof mobileSyncIncidentsSchema>
+    | z.infer<typeof mobileSyncIncidentsV2Schema>,
   requestedFilters: MobileSyncIncidentFilters
 ): boolean {
   const expected = {

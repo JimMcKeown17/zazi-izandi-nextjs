@@ -10,7 +10,9 @@
     "test:unit": "node --import tsx --test lib/pm/*.test.ts",
     "test:mobile": "tsx --test lib/mobile/*.test.ts lib/mobile/*/*.test.ts",
     "test:ea-set-password": "node --import tsx --test lib/ea-set-password/*.test.ts",
-    "seed:eas": "tsx scripts/seed-clerk-eas.ts"
+    "test:e2e:teaching-overview": "node scripts/run-teaching-overview-e2e.mjs",
+    "seed:eas": "tsx scripts/seed-clerk-eas.ts",
+    "test:e2e:ea-set-password": "playwright test --config playwright.password.config.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.53",
@@ -50,6 +52,7 @@
     "@types/react-dom": "^19",
     "csv-parse": "^6.2.1",
     "dotenv": "^17.4.2",
+    "esbuild": "0.27.7",
     "eslint": "^9",
     "eslint-config-next": "16.0.1",
     "tailwindcss": "^4",

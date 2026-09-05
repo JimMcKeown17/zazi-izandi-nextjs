@@ -24,6 +24,7 @@ export type CompletionBoundary = (request: {
 }) => Promise<{ ok: boolean }>;
 
 export type PasswordJourney = {
+  dispose(): Promise<void>;
   capture(callback: CapturedPasswordCallback): Promise<PasswordJourneyResult>;
   submit(password: string, confirmation: string): Promise<PasswordJourneyResult>;
 };
@@ -42,6 +43,7 @@ export function createPasswordJourney(dependencies: {
   auth: PasswordAuthBoundary;
   completion: CompletionBoundary;
 }): PasswordJourney {
+  let disposed = false;
   let temporarySession: TemporaryPasswordSession | null = null;
   let operationId: string | null = null;
 
@@ -56,7 +58,15 @@ export function createPasswordJourney(dependencies: {
   }
 
   return {
+    async dispose() {
+      disposed = true;
+      await discardSession();
+    },
+
     async capture(callback) {
+      if (disposed) {
+        return { kind: "terminal_error", code: "invalid_link", message: SAFE_MESSAGES.invalidLink };
+      }
       const candidate = parseOperationCandidate(callback.operationCandidate);
       operationId = candidate.kind === "valid" ? candidate.operationId : null;
       if (candidate.kind === "invalid") {
@@ -68,7 +78,7 @@ export function createPasswordJourney(dependencies: {
           access_token: callback.accessToken,
           refresh_token: callback.refreshToken,
         });
-        if (result.error || !result.data.session?.access_token || !result.data.user) {
+        if (disposed || result.error || !result.data.session?.access_token || !result.data.user) {
           await discardSession();
           return { kind: "terminal_error", code: "invalid_link", message: SAFE_MESSAGES.invalidLink };
         }
@@ -85,7 +95,7 @@ export function createPasswordJourney(dependencies: {
     },
 
     async submit(password, confirmation) {
-      if (!temporarySession) {
+      if (disposed || !temporarySession) {
         return { kind: "terminal_error", code: "invalid_link", message: SAFE_MESSAGES.invalidLink };
       }
       if (password !== confirmation) {
@@ -102,6 +112,12 @@ export function createPasswordJourney(dependencies: {
       } catch {
         await discardSession();
         return { kind: "terminal_error", code: "unavailable", message: SAFE_MESSAGES.unavailable };
+      }
+      // An in-flight provider call may finish after navigation. Clear any late
+      // session and never turn that abandoned update into operation acceptance.
+      if (disposed) {
+        await discardSession();
+        return { kind: "terminal_error", code: "invalid_link", message: SAFE_MESSAGES.invalidLink };
       }
       if (updateResult.error) {
         if (isWeakPassword(updateResult.error)) {

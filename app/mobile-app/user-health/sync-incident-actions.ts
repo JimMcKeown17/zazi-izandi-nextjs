@@ -7,7 +7,7 @@ import {
   createSyncIncidentPageLoader,
   type SyncIncidentPageActionResult,
 } from "@/lib/mobile/sync-incidents/load-page";
-import { fetchMobileSyncIncidentsWithToken } from "@/lib/mobile/sync-incidents/server-fetch";
+import { fetchMobileSyncIncidentsV2WithToken } from "@/lib/mobile/sync-incidents/server-fetch";
 
 const loadPage = createSyncIncidentPageLoader({
   authorize: async () => {
@@ -26,7 +26,7 @@ const loadPage = createSyncIncidentPageLoader({
       ? ({ ok: true, token } as const)
       : ({ ok: false, kind: "not_authenticated" } as const);
   },
-  fetchPage: fetchMobileSyncIncidentsWithToken,
+  fetchPage: fetchMobileSyncIncidentsV2WithToken,
 });
 
 export async function loadNextMobileSyncIncidentPage(

@@ -50,8 +50,7 @@ export interface MobileSyncIncidentActor {
   current_school: string | null;
 }
 
-export interface MobileSyncIncidentReceipt {
-  schema_version: 1;
+interface MobileSyncIncidentReceiptFields {
   actor_user_id: string;
   incident_key: string;
   incident_kind: MobileSyncIncidentKind;
@@ -83,13 +82,61 @@ export interface MobileSyncIncidentReceipt {
   received_at: string;
 }
 
+export interface MobileSyncIncidentReceiptV1
+  extends MobileSyncIncidentReceiptFields {
+  schema_version: 1;
+}
+
+export interface MobileSyncIncidentReceiptV2
+  extends MobileSyncIncidentReceiptFields {
+  schema_version: 2;
+  observed_release_label: string | null;
+  observed_update_id: string | null;
+  observed_is_embedded_launch: boolean | null;
+}
+
+export interface MobileSyncIncidentReceiptV3
+  extends MobileSyncIncidentReceiptFields {
+  schema_version: 3;
+  client_stream_id: string;
+  observed_release_label: string | null;
+  observed_update_id: string | null;
+  observed_is_embedded_launch: boolean | null;
+  condition_key: string;
+  report_generation: number;
+  affected_record_count: number;
+}
+
+export type MobileSyncIncidentReceipt =
+  | MobileSyncIncidentReceiptV1
+  | MobileSyncIncidentReceiptV2
+  | MobileSyncIncidentReceiptV3;
+
 export interface MobileSyncIncidentItem {
   actor: MobileSyncIncidentActor;
   receipt: MobileSyncIncidentReceipt;
 }
 
-export interface MobileSyncIncidentsResponse {
-  schema_version: 1;
+export interface MobileSyncIncidentLegacySummary {
+  receipts: number;
+  affected_users: number;
+  support_roots: number;
+  integrity_findings: number;
+  coverage_constrained: number;
+  newest_received_at: string | null;
+}
+
+export interface MobileSyncIncidentSuccessorSummary {
+  receipts: number;
+  affected_users: number;
+  support_roots: number;
+  legacy_receipts: number;
+  effective_v3_conditions: number;
+  coverage_constrained: number;
+  newest_received_at: string | null;
+}
+
+interface MobileSyncIncidentsResponseFields {
   generated_at: string;
   applied_filters: {
     days: number;
@@ -102,18 +149,29 @@ export interface MobileSyncIncidentsResponse {
     descriptor_key: string | null;
     limit: number;
   };
-  summary: {
-    receipts: number;
-    affected_users: number;
-    support_roots: number;
-    integrity_findings: number;
-    coverage_constrained: number;
-    newest_received_at: string | null;
-  };
   page_count: number;
   next_cursor: string | null;
+}
+
+export interface MobileSyncIncidentsResponseV1
+  extends MobileSyncIncidentsResponseFields {
+  schema_version: 1;
+  summary: MobileSyncIncidentLegacySummary;
+  incidents: Array<
+    MobileSyncIncidentItem & { receipt: MobileSyncIncidentReceiptV1 }
+  >;
+}
+
+export interface MobileSyncIncidentsResponseV2
+  extends MobileSyncIncidentsResponseFields {
+  schema_version: 2;
+  summary: MobileSyncIncidentSuccessorSummary;
   incidents: MobileSyncIncidentItem[];
 }
+
+export type MobileSyncIncidentsResponse =
+  | MobileSyncIncidentsResponseV1
+  | MobileSyncIncidentsResponseV2;
 
 export type MobileSyncIncidentsResult =
   | { ok: true; data: MobileSyncIncidentsResponse }

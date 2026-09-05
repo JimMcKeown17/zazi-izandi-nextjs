@@ -34,7 +34,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { name: "Overview", href: "/pm", icon: LayoutDashboard, exact: true },
-  { name: "Education Assistants", href: "/pm/education-assistants", icon: Users },
+  { name: "Teaching Overview", href: "/pm/education-assistants", icon: Users },
   { name: "Sessions", href: "/pm/sessions", icon: Calendar },
   { name: "Quality Flags", href: "/pm/quality-flags", icon: AlertTriangle },
   { name: "Letter Alignment", href: "/pm/letter-alignment", icon: Grid3X3 },
@@ -75,11 +75,14 @@ function getServerSnapshot() {
 }
 
 interface PMSidebarProps {
-  flagCount?: number;
+  flagBadge?: React.ReactNode;
   canSendNotifications?: boolean;
 }
 
-export function PMSidebar({ flagCount, canSendNotifications = false }: PMSidebarProps) {
+export function PMSidebar({
+  flagBadge,
+  canSendNotifications = false,
+}: PMSidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const isHydrated = useSyncExternalStore(
@@ -118,11 +121,7 @@ export function PMSidebar({ flagCount, canSendNotifications = false }: PMSidebar
       >
         <item.icon className="w-4 h-4 shrink-0" />
         <span className="truncate">{item.name}</span>
-        {isFlags && flagCount !== undefined && flagCount > 0 && (
-          <span className="ml-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-            {flagCount}
-          </span>
-        )}
+        {isFlags && flagBadge}
       </Link>
     );
   }

@@ -3,15 +3,19 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import {
+  EFFECTIVE_CONDITION_SUMMARY_LABEL,
   formatSastTimestamp,
+  getConditionSnapshotDetails,
   getIncidentClassification,
   getIncidentIdentity,
   INCIDENT_KIND_COPY,
+  LEGACY_INTEGRITY_SUMMARY_LABEL,
   shortenActorUuid,
   wasReceivedAfterDeviceObservation,
 } from "@/lib/mobile/sync-incidents/presentation";
 import type {
   MobileSyncIncidentItem,
+  MobileSyncIncidentReceipt,
   MobileSyncIncidentsResponse,
   MobileSyncIncidentsResult,
 } from "@/lib/mobile/sync-incidents/types";
@@ -35,6 +39,36 @@ function TechnicalValue({ label, value }: { label: string; value: unknown }) {
   );
 }
 
+function getReceiptProvenance(receipt: MobileSyncIncidentReceipt): {
+  observedReleaseLabel: string;
+  updateId: string;
+  launchSource: string;
+} {
+  if (receipt.schema_version === 1) {
+    return {
+      observedReleaseLabel: "Not recorded (schema v1)",
+      updateId: "Not recorded (schema v1)",
+      launchSource: "Not recorded (schema v1)",
+    };
+  }
+
+  return {
+    observedReleaseLabel:
+      receipt.observed_release_label ?? "Undetermined by device",
+    updateId:
+      receipt.observed_update_id ??
+      (receipt.observed_is_embedded_launch === true
+        ? "Not applicable (embedded build)"
+        : "Undetermined by device"),
+    launchSource:
+      receipt.observed_is_embedded_launch === false
+        ? "OTA update"
+        : receipt.observed_is_embedded_launch === true
+          ? "Embedded build"
+          : "Undetermined by device",
+  };
+}
+
 export function SyncIncidentList({
   incidents,
 }: {
@@ -50,6 +84,8 @@ export function SyncIncidentList({
           actor.current_school_id === null
             ? "No current school recorded"
             : actor.current_school ?? "School name unavailable";
+        const provenance = getReceiptProvenance(receipt);
+        const condition = getConditionSnapshotDetails(receipt);
         return (
           <article
             key={getIncidentIdentity(item)}
@@ -92,6 +128,47 @@ export function SyncIncidentList({
               {getIncidentClassification(receipt)}
             </p>
 
+            {condition ? (
+              <dl className="mt-3 grid gap-2 rounded-lg border border-violet-100 bg-violet-50/60 p-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
+                <div>
+                  <dt className="text-xs text-slate-500">Installed stream</dt>
+                  <dd className="break-all font-mono text-xs text-slate-800">
+                    {condition.installedStream}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Affected records</dt>
+                  <dd className="font-medium text-slate-800 tabular-nums">
+                    {condition.affectedRecords}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Occurrences</dt>
+                  <dd className="font-medium text-slate-800 tabular-nums">
+                    {condition.occurrences}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">First observation</dt>
+                  <dd className="font-medium text-slate-800">
+                    {formatSastTimestamp(condition.firstObservation)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Last observation</dt>
+                  <dd className="font-medium text-slate-800">
+                    {formatSastTimestamp(condition.lastObservation)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Generation</dt>
+                  <dd className="font-medium text-slate-800 tabular-nums">
+                    {condition.generation}
+                  </dd>
+                </div>
+              </dl>
+            ) : null}
+
             {wasReceivedAfterDeviceObservation(receipt) ? (
               <p className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
                 The server received this later than the device-reported observation
@@ -123,6 +200,42 @@ export function SyncIncidentList({
               </div>
             </dl>
 
+            <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-800">
+                Release that observed and queued this receipt
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                It may differ from what the device runs now and does not prove
+                which release first caused the underlying sync condition.
+              </p>
+              <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <dt className="text-xs text-slate-500">Native build</dt>
+                  <dd className="break-all font-medium text-slate-800">
+                    {receipt.build_number ?? "Unknown"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Observed App Release</dt>
+                  <dd className="break-all font-medium text-slate-800">
+                    {provenance.observedReleaseLabel}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Update UUID</dt>
+                  <dd className="break-all font-mono text-xs text-slate-800">
+                    {provenance.updateId}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Launch source</dt>
+                  <dd className="font-medium text-slate-800">
+                    {provenance.launchSource}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+
             <details className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
               <summary className="cursor-pointer text-sm font-semibold text-slate-700">
                 Technical detail
@@ -144,6 +257,18 @@ export function SyncIncidentList({
                 <TechnicalValue label="Integrity reason" value={receipt.reason} />
                 <TechnicalValue label="Detail kind" value={receipt.detail_kind} />
                 <TechnicalValue label="Detail code" value={receipt.detail_code} />
+                <TechnicalValue
+                  label="Condition key"
+                  value={receipt.schema_version === 3 ? receipt.condition_key : null}
+                />
+                <TechnicalValue
+                  label="Report generation"
+                  value={receipt.schema_version === 3 ? receipt.report_generation : null}
+                />
+                <TechnicalValue
+                  label="Affected record count"
+                  value={receipt.schema_version === 3 ? receipt.affected_record_count : null}
+                />
                 <TechnicalValue label="Last reported as observed on device" value={receipt.last_seen_at} />
                 <TechnicalValue label="Occurrence count" value={receipt.occurrence_count} />
                 <TechnicalValue label="Build" value={receipt.build_number} />
@@ -196,7 +321,23 @@ function SuccessPanel({
         <SummaryTile label="Receipts" value={data.summary.receipts} />
         <SummaryTile label="Affected users" value={data.summary.affected_users} />
         <SummaryTile label="Saved-change support receipts" value={data.summary.support_roots} />
-        <SummaryTile label="Sync-integrity findings reported" value={data.summary.integrity_findings} />
+        {"integrity_findings" in data.summary ? (
+          <SummaryTile
+            label="Sync-integrity findings reported"
+            value={data.summary.integrity_findings}
+          />
+        ) : (
+          <>
+            <SummaryTile
+              label={LEGACY_INTEGRITY_SUMMARY_LABEL}
+              value={data.summary.legacy_receipts}
+            />
+            <SummaryTile
+              label={EFFECTIVE_CONDITION_SUMMARY_LABEL}
+              value={data.summary.effective_v3_conditions}
+            />
+          </>
+        )}
         <SummaryTile label="Diagnostic coverage constrained" value={data.summary.coverage_constrained} />
         <SummaryTile
           label="Newest backend receipt"

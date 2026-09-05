@@ -58,9 +58,10 @@ export function validateSyncIncidentFilters(
   };
 }
 
-export function buildSyncIncidentsRequest(
+function buildVersionedSyncIncidentsRequest(
   clerkSessionToken: string,
-  filters: MobileSyncIncidentFilters
+  filters: MobileSyncIncidentFilters,
+  endpoint: "/api/mobile/sync-incidents/" | "/api/mobile/sync-incidents/v2/"
 ): { path: string; init: RequestInit } {
   if (!clerkSessionToken) throw new Error("A Clerk session token is required");
 
@@ -79,7 +80,7 @@ export function buildSyncIncidentsRequest(
   if (validated.cursor) query.set("cursor", validated.cursor);
 
   return {
-    path: `/api/mobile/sync-incidents/?${query.toString()}`,
+    path: `${endpoint}?${query.toString()}`,
     init: {
       method: "GET",
       cache: "no-store",
@@ -87,4 +88,26 @@ export function buildSyncIncidentsRequest(
       headers: { Authorization: `Bearer ${clerkSessionToken}` },
     },
   };
+}
+
+export function buildSyncIncidentsRequest(
+  clerkSessionToken: string,
+  filters: MobileSyncIncidentFilters
+): { path: string; init: RequestInit } {
+  return buildVersionedSyncIncidentsRequest(
+    clerkSessionToken,
+    filters,
+    "/api/mobile/sync-incidents/"
+  );
+}
+
+export function buildSyncIncidentsV2Request(
+  clerkSessionToken: string,
+  filters: MobileSyncIncidentFilters
+): { path: string; init: RequestInit } {
+  return buildVersionedSyncIncidentsRequest(
+    clerkSessionToken,
+    filters,
+    "/api/mobile/sync-incidents/v2/"
+  );
 }

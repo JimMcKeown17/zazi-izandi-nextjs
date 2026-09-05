@@ -54,3 +54,13 @@ Loaded via `next/font/google` in `app/layout.tsx` as `--font-roboto` and `--font
 - `html`: `scroll-behavior: smooth`
 - `section`: `py-16` (mobile), `py-20` (tablet+)
 - Custom scrollbar: primary blue thumb
+
+The bare `section` rule is public-page marketing spacing, not dashboard-card
+spacing. Operational components under `/mobile-app/*` and `/pm/*` must not use
+a bare `<section>` as a compact panel root: the global rule adds `4rem` of
+vertical padding on mobile and `5rem` at tablet widths, independently of the
+panel's Tailwind `p-*` class. Use a `<div>` with `role="region"` and an
+`aria-labelledby` heading when named-region semantics are needed, or explicitly
+neutralize the global spacing when a semantic `<section>` is essential. Add a
+render/source regression assertion for compact operational panels so this
+marketing-to-dashboard style leak is caught before visual review.

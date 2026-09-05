@@ -10,7 +10,7 @@ import {
   type Role,
 } from "./capabilities";
 
-const getMobileSession = cache(async () => {
+export const getAuthenticatedMobileSession = cache(async () => {
   const session = await auth();
   if (!session.userId) redirect("/login");
 
@@ -28,7 +28,7 @@ const getMobileSession = cache(async () => {
 export async function requireMobileCapability(
   capability: MobileCapability
 ) {
-  const session = await getMobileSession();
+  const session = await getAuthenticatedMobileSession();
   if (!hasCapability(session.role, capability)) {
     redirect("/login?error=insufficient_role");
   }
@@ -41,7 +41,7 @@ export async function requireMobileCapability(
 }
 
 export async function requireMobileReportingSession() {
-  const session = await getMobileSession();
+  const session = await getAuthenticatedMobileSession();
   const canReadAnyReport = (
     [
       "mobile.sessions.read",

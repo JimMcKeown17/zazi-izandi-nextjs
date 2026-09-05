@@ -70,7 +70,7 @@ concern is proved once at its authoritative boundary:
 |---|---|
 | Form and supported-v1 domain rules | Pure materializer tests |
 | Exact RPC, envelope, payload, and retry bytes | Frozen conformance fixtures plus materializer tests |
-| Corrupt or cross-actor persisted commands | IndexedDB journal decoder and actor namespace |
+| Corrupt or cross-actor persisted commands | CaptureService actor-record decoder and namespace |
 | Fixed writer selection | Two-method gateway |
 | Network result shape and command/family identity | Gateway result classifier |
 | Authentication, RLS, receipts, locks, concurrency, SQL byte limits, collision handling, and transactional family integrity | Disposable PostgreSQL 17 |
@@ -119,7 +119,7 @@ RPCs remain available.
 | 17 | Provisioning | Account, class, roster, and groups are provisioned and read back before an EA receives the link |
 | 18 | Offline | No service worker, cached roster promise, background sync, or cold-start-offline claim |
 | 19 | Provenance | No source column, sidecar, badge, source filter, or automated source-based policy in v1 |
-| 20 | Pilot concurrency | One active capture browser/device per pilot EA; same-browser tabs are fenced locally |
+| 20 | Pilot concurrency | One active capture browser/device per pilot EA; same-browser tabs are serialized by one origin-wide Web Lock |
 | 21 | Field proof | Huawei and low-storage Android plus a controlled real-EA school day; staff-only testing is not field proof |
 
 ## 4. Guarantees and honest non-guarantees
@@ -144,10 +144,10 @@ RPCs remain available.
 - UI-only current-day, clock-coverage, and one-device rules are not global
   database security invariants.
 - Absence of positive server-side web provenance cannot classify a row as
-  mobile. Lean v1 creates no server-side provenance marker or source field. Its
-  minimal accepted-web-clock marker is actor/browser-local authority only:
-  presence can authorize the supported local clock-out path, while absence
-  means unknown origin and keeps the row read-only.
+  mobile. Lean v1 creates no server-side provenance marker or source field.
+  Under the web-only EA operating rule, one actor-owned open row is sufficient
+  clock-out authority after a fresh bootstrap/readback; browser storage loss
+  does not turn that row into an unknown-origin read-only row.
 - Two distinct devices can create distinct UUIDs. Existing idempotency prevents
   replay of one command, not every semantically duplicate command.
 - A stale browser clock is not automatically corrected.
@@ -204,8 +204,8 @@ EA browser
   └─ Zazi iZandi Web (Next.js)
       ├─ public Supabase URL + anon key only
       ├─ Supabase email/password session
-      ├─ actor-scoped IndexedDB draft + exact command journal
-      ├─ same-browser capture lease
+      ├─ actor-scoped IndexedDB CaptureService record (draft + exact pending command)
+      ├─ same-browser origin-wide Web Lock
       ├─ bounded actor-scoped read adapter
       └─ two fixed write methods
            ├─ submitTimeEntry()
@@ -251,7 +251,7 @@ adapter rejects outside the narrower product allowlist before network I/O:
 
 | Descriptor | Lean-v1 operations |
 |---|---|
-| `TIME_ENTRIES` | `insert`, `update` (update only for the locally marked accepted web clock) |
+| `TIME_ENTRIES` | `insert`, `update` (update only for the freshly reread actor-owned open row) |
 | `SESSIONS` | `insert` only |
 | `LETTER_MASTERY` | none |
 
@@ -285,7 +285,7 @@ bounded readiness snapshot containing only the teaching data v1 needs:
   rows for that actor; any count above one blocks capture, so a bounded response
   never lets `LIMIT 1` mask duplicate clocks;
 - the exact actor-owned wire fields/record identity needed to close a visible
-  entry that this browser journal previously clocked in and the row's current
+  entry that this actor's CaptureService previously clocked in and the row's current
   `server_updated_at` observation for diagnostics only, never as a server-side
   write precondition or cross-stream compare-and-set;
 - bounded recent time-entry/session roots needed for duplicate warnings; and
@@ -437,21 +437,26 @@ falling back to volatile memory. Browser storage estimates/persistence grants
 are advisory only. This is preservation evidence, not a guarantee against the
 user clearing all site data or complete browser eviction.
 
-All learner/journal records are keyed by authenticated actor UUID and schema
-version. Bounded PII-free origin-global metadata may contain only the database
-schema/capability sentinel and the origin-wide lock owner/fence—never learner,
-command, actor-profile, Auth, or bootstrap data. Persist:
+The single CaptureService actor record is keyed by authenticated actor UUID and
+schema version. Bounded PII-free origin-global metadata may contain only the
+database schema/capability sentinel; the Web Lock owner is runtime state, not a
+persisted owner or fence. Never persist learner, command, actor-profile, Auth,
+or bootstrap data in that origin-global metadata. The actor record contains
+only the fields frozen in §8.3/ADR, with learner-linked draft and exact pending
+command fields as narrowly enumerated below:
 
 - the minimum learner-linked draft state required to resume the loaded flow;
 - exact materialized command envelopes and operation order;
 - immutable UUIDs, mutation IDs, stream IDs, generations, and audit sequences;
-- submission status, retry count, timestamps, and expected result class; and
-- a bounded PII-free diagnostic ring.
+- a sanitized failure classification and bounded revision; and
+- a bounded PII-free diagnostic ring only where a public-boundary test proves it
+  necessary. There is no separate durable status, attempt counter, or phase
+  union.
 
-#### Journal data classification
+#### Exact command data classification
 
-The exact retry journal is **temporary learner-linked operational data**, not a
-PII-free store. Its permitted fields are narrowly enumerated:
+The exact pending command is **temporary learner-linked operational data**, not
+a PII-free store. Its permitted fields are narrowly enumerated:
 
 | Command | Permitted persisted learner-linked fields |
 |---|---|
@@ -474,21 +479,22 @@ Retention is state-based:
 
 - accepted `TIME_ENTRIES`: immediately purge the exact command payload,
   timestamp/GPS envelope, and mutation ID after strict in-memory accepted
-  classification. Retain only the actor-scoped stream/audit counter, per-key
-  generation counter, and a minimal local marker containing the accepted open
-  entry ID; after accepted clock-out, clear that marker and per-key counter;
+  classification. Retain only the actor-scoped stream/audit state; there is no
+  accepted-web marker or separate per-key generation store;
 - accepted session: purge the exact command immediately after authoritative
   accepted classification;
-- classified refusal with no accepted family: retain only while the EA corrects
-  or deliberately dispositions the intent, then purge the refused envelope;
+- classified reviewed refusal with definite no accepted family: retain while
+  the EA corrects or deliberately dispositions the intent, then allow explicit
+  purge of the refused envelope;
 - `needs_parent/session_child_reference_unavailable`: retain the exact immutable
-  command while the bounded same-day readiness-recheck policy below is active;
-  it has no receipt to resolve and is never purged as though accepted;
-- ambiguous/integrity/historical-entry-required: retain exact evidence until a
-  preservation-first support disposition; never expire or clear it silently;
-  and
-- confirmed sign-out may delete unresolved evidence only after a specific
-  warning and explicit confirmation.
+  command until the EA explicitly retries or discards it after the required
+  fresh readiness check; it has no receipt to resolve and is never purged as
+  though accepted;
+- ambiguous or integrity failure: retain the exact pending command and allow
+  exact Retry only; client timeout/unknown completion cannot prove the writer
+  performed no DML, so local deletion is forbidden; and
+- confirmed sign-out preserves the exact actor record byte-for-byte after an
+  exact warning/preflight. It never deletes unresolved evidence.
 
 Task 6 tests must prove that no fields beyond the command-specific allowlists
 enter IndexedDB. The UI warns against sensitive notes; browser storage is not
@@ -496,11 +502,10 @@ marketed as encrypted or as a secure vault.
 
 The time-entry retention tests additionally prove that accepted clock-in and
 clock-out GPS/timestamp envelopes disappear immediately, ambiguous entries keep
-their exact envelopes until resolution/disposition, and an IndexedDB inspection
-after acceptance contains no completed location payload. A later clock-out is
+their exact envelopes until exact Retry/accepted resolution, and an IndexedDB inspection after
+acceptance contains no completed location payload. A later clock-out is
 materialized only from an immediate fresh bootstrap row whose ID and actor
-match a minimal marker created after a strictly accepted supported-web clock-in
-by this actor/browser stream. It is only that marker-owned entry's
+match the verified actor namespace. It is that actor-owned row's
 generation-one-to-generation-two update, never a retained clock-in request.
 
 On actor change, the new actor cannot enumerate, render, or dispatch another
@@ -508,199 +513,106 @@ actor's records. Sign-out with unresolved work requires an explicit warning;
 support guidance preserves evidence before any deletion.
 
 Persisted actor UUIDs are partition keys, not reusable authorization. The live
-`ActorNamespace` object issued by Task 4 is required for every actor-visible
-operation; its in-memory epoch/object identity is never persisted or rebuilt as
-a capability. Recheck that live authority before foreground transport and after
-every awaited bootstrap, geolocation, lock acquisition, or transport result.
-Only the provider-internal sign-out evidence port is deliberately permitted to
-continue after Task 4 synchronously revokes the live namespace. It remains
-bound to the already-held origin lock, its exact actor/fence/quarantine, and the
-opaque revision/evidence set issued during that one sign-out transition.
+`ActorNamespace` object issued by Task 4 constructs one actor-scoped capture
+service instance and is never persisted or rebuilt as authority. Disposing the
+instance synchronously prevents late transport/local publication. The service
+checks its own live object identity internally before each external effect;
+React and domain callers never carry an epoch. The provider-internal sign-out
+evidence adapter may inspect and compare only the exact revision of that actor
+instance's draft/pending record after Task 4 revokes the namespace; sign-out
+never disposes it.
 
-### 8.2 Command state machine
+### 8.2 Deep capture-service boundary
 
-```text
-draft
-  → materialized
-  → submitting
-      ├─ ambiguous_same_day → retryable_same_day → submitting
-      ├─ child_reference_unavailable → readiness_recheck
-      │    ├─ same actor/day + same ready group/complete roster
-      │    │    + fewer than 3 total dispatches → retryable_same_day
-      │    └─ changed/non-ready/rollover/3 dispatches → support_or_historical
-      ├─ classified_refusal → correct_or_support
-      ├─ integrity_fault    → support_only
-      └─ accepted           → complete
+The 2026-08-22 client-collapse ADR supersedes the former durable command phase
+machine and public journal/runtime API. The frozen client contract is now one
+deep, actor-scoped service with six operation families: read state, clock in/out,
+begin/update/cancel draft, submit session, retry exact saved command, and discard
+exact saved work. React and domain UI never receive storage, lock, fence,
+evidence, reservation, quarantine, attempt, or phase-machine concepts.
 
-At Johannesburg rollover before command confirmation:
-  materialized | submitting | retryable_same_day
-    → readback_pending
-       ├─ exact resolved accepted receipt → complete
-       ├─ not_found → historical_entry_required
-       ├─ timeout | unavailable → readback_pending
-       └─ malformed | wrong identity → integrity_fault → support_only
-```
+There is no durable attempt budget, same-day retry window, or terminal phase.
+One pending exact command blocks new capture until it is accepted or the EA
+exactly retries it, unless a reviewed definite no-family-DML refusal permits
+explicit Discard. `needs_parent` remains receipt-free and requires
+fresh actor/day/group/complete-roster readiness before exact retry. A reviewed
+typed refusal remains visible with its sanitized reason; it is never presented
+as transport loss.
 
-The only rollover mechanism is the optional resolution list inside a fresh
-`web_capture_bootstrap_v1` call. There is no separate resolver, automatic replay,
-or fallback writer. A `not_found` result preserves local evidence and moves to
-`historical_entry_required`. The successor's receipt-free
-`needs_parent/session_child_reference_unavailable` outcome never enters receipt
-resolution. It permits at most three total dispatches of the exact same command,
-including the initial call. Every committed reservation consumes one attempt,
-whether it returns a known outcome or its transport completion is unknown.
-Before either retry, a fresh actor-matching
-bootstrap must still be `ready` and must re-confirm the same group and complete
-child roster, programme level, and other bootstrap authority fields consumed by
-the frozen materializer on the same Johannesburg date. The browser never changes the
-mutation, stream, audit, generation, root, or member identities. A changed
-roster, non-ready bootstrap, exhausted budget, or rollover preserves evidence
-and routes to support or `historical_entry_required`; it cannot invoke another
-writer path.
+Every mechanism below the service boundary must be justified by a failing test
+at that boundary. Storage plus service source above 800 lines triggers an
+architecture review with Jim. This is a tripwire, not an instruction to compress
+correctness into fewer lines.
 
-### 8.3 Materialization rule
+### 8.3 Actor record and exact pending command
 
-Before the first network call, generate and persist every identity and exact
-wire argument once. Every retry reloads the stored command. UI edits never
-mutate an in-flight command. If nothing was accepted and the EA deliberately
-edits, the old intent is dispositioned and a new command receives new identity.
+IndexedDB stores one schema-versioned record per actor containing `streamId`,
+`nextAuditSeq`, `draft`, `pending`, `lastFailure`, and a bounded revision. It
+does not persist bootstrap/roster responses, auth Session/User/token/email,
+display PII outside the learner-linked draft/exact command, or generic queues.
 
-The browser owns one durable stream UUID per actor/browser installation. Audit
-sequence is monotonically allocated across that stream. Generation is allocated
-per stream + descriptor + canonical record key, including the exact root/member
-rules of a session family. The first intent for a key in a fresh stream starts
-at the contract's initial generation; a later new intent for the same key
-increments it. Retry never increments either counter. Stream, audit, generation,
-and command persistence are one IndexedDB transaction so a crash cannot reuse a
-counter for different work.
+The exact frozen ten-argument TIME or SESSIONS command is committed before the
+first writer call. Allocation of stream/audit state and pending persistence is
+one transaction. Retry reuses every byte and identity. An accepted identity-
+bound classified result clears pending atomically. Transport uncertainty,
+typed refusal, receipt-free `needs_parent`, and resolution `not_found` preserve
+the command. Only a reviewed definite no-family-DML refusal permits Discard;
+unknown completion permits exact Retry only.
 
-The durable command preserves the exact frozen ten-argument tuple and the
-original `p_payload` string byte-for-byte, including key order, nulls, and
-escaping. A bounded fingerprint detects accidental corruption only; it is not
-an authenticity claim. Before the atomic write, prepare UUIDs, the proposed
-counter state, materializer output, validation, and fingerprint outside the
-read-write transaction. The transaction then re-reads and compare-and-sets the
-expected actor state/fence before persisting the counters and command together.
-A failed compare-and-set discards that candidate and recomputes from fresh
-state; it never mutates or retries the candidate under new identity counters.
-No network, timer, geolocation, or asynchronous digest is awaited inside an
-IndexedDB transaction. Durability is acknowledged only from the transaction's
-`complete` event, never from an individual request's `success` event.
+`p_resolution_requests` is accepted-only. `resolved` still passes the Task 3
+classifier before clearing. `not_found` is not a known refusal and never auto-
+clears; exact writer retry is safe and returns the stored accepted/refusal result
+when a completed receipt exists. No RPC/table/URL/result union is caller-
+selectable, and there is no automatic/background retry.
 
-Task 6 may expose a transaction-backed **dispatch reservation**, but it does not
-invoke a transport or select an RPC. Reserving a foreground attempt advances
-the bounded attempt count, changes the stored phase to `submitting`,
-and returns only the immutable typed command plus an actor/lease/attempt-bound
-reservation token. That transaction commits before network I/O. The journal
-accepts only sanitized classified outcomes, never raw HTTP/Supabase results or
-errors. Applying an outcome must compare the current actor quarantine, lease
-fence, command revision, and reservation token in one transaction. A crash or
-abort after reservation cannot claim completion: the exact command remains
-durable and reload treats the abandoned `submitting` attempt as
-ambiguous evidence. An accepted outcome purges the exact command and performs
-any permitted minimal clock-marker/counter change atomically in the same
-compare-and-set transaction.
+Under the strict web-only EA rule, the actor's authoritative single open-time-
+entry row is clock-out authority; no accepted-web marker is required. Duplicate
+open rows remain a hard block. The fresh-clock escape hatch remains withheld
+until the server one-open-clock constraint is proven against existing data,
+old mobile outbox behavior, disposable PostgreSQL, and real SQLite.
 
-Losing the browser store does not permit reconstruction of an unresolved
-command under a new stream. Preserve/read back authoritative actor-owned state
-or route to support. A fresh stream may create new work only after readiness is
-refreshed and no unresolved prior intent is being inferred from memory.
+The 2026-08-22 read-only source preflight confirmed that a global partial
+unique index cannot be released independently: the current mobile-v2 TIME RPC
+does not translate the resulting cross-record `23505` into a completed typed
+receipt, and the installed v2 client would treat it as a generic row retry.
+Hold the index until a reviewed typed RPC/acknowledgement path and the listed
+PostgreSQL/mobile-outbox proof are separately authorized and green.
 
-A same-day exact writer retry may return any stored canonical result; only the
-descriptor-specific accepted `{kind, code}` is success, while stale, rejected,
-integrity, or pre-receipt outcomes retain their exact classification. The
-read-only rollover resolver is intentionally narrower: it resolves only an
-accepted result whose embedded audit sequence and complete persisted identity
-can be proven. Refusal receipts without provable audit identity become uniform
-`not_found` and preserve the local command for support.
+Recent accepted sessions provide a same-group/day duplicate warning after
+browser-state loss. The warning requires explicit confirmation but is not
+represented as a uniqueness guarantee.
 
-Reload cannot infer the authoritative day from the device. It first performs a
-fresh empty-resolution bootstrap. A matching server Johannesburg date may
-permit an explicit same-day retry; rollover prohibits every writer call and
-uses a second bounded bootstrap containing deterministic resolution batches of
-at most 20 commands. Every response index and identity must match its request,
-and each resolved canonical result still passes through the frozen Task 3
-classifier. Timeout/unavailable readback stays `readback_pending`; `not_found`
-moves to `historical_entry_required`; malformed or wrong-identity readback moves
-to integrity/support. Every outcome preserves the exact bytes until its allowed
-disposition, and none authorizes a writer. Foreground bootstrap and readback use
-a finite orchestration deadline, and actor/fence checks discard a late result.
+### 8.4 Instance ownership, Web Lock, and sign-out evidence
 
-### 8.4 Same-browser concurrency
+Construct one service instance per server-verified `ActorNamespace`. Disposing
+that instance synchronously prevents its late work from reaching transport or
+local publication and confines every storage operation to its actor partition.
+Consumers do not compare epochs.
 
-Only one capture surface may own the actor's local lease. A second tab is
-read-only and explains where capture is active. One origin-wide exclusive Web
-Lock is the browser-lifetime ownership primitive because all tabs share one
-Supabase Auth storage namespace; actor-specific locks could otherwise permit
-two differently named owners around one changing session. After acquiring the
-lock, the owner advances a monotonic actor-scoped IndexedDB fence and binds the
-current tab and verified actor to that fence. Every command materialization,
-dispatch reservation, outcome, purge, and accepted-clock-marker transaction
-must compare the live actor namespace, quarantine state, tab owner, and fence.
-A heartbeat, `BroadcastChannel`, storage event, or UI flag is notification only
-and never authorizes capture or stale takeover; ownership changes only after the
-Web Lock is actually released/acquired and the durable fence advances. If Web
-Locks are unavailable, capture is read-only/disabled.
-Do not add a `localStorage` lock or time-expiry fallback in v1.
+One origin-wide exclusive Web Lock with `ifAvailable: true` is held for the
+service lifetime because Supabase Auth storage is shared across tabs. A second
+tab is read-only. There is no persisted lock owner, fence counter, heartbeat
+authority, or localStorage timeout fallback. Page exit releases the lock and
+BFCache restoration reacquires it before capture.
 
-Sign-out quarantine is durable and cross-tab. The provider-internal sign-out
-evidence sequence is the deliberate live-namespace exception: immediately
-before calling the Task 4 sign-out action, the provider synchronously verifies
-the live namespace and origin-lock actor/fence and arms an opaque one-shot
-transition without an awaited gap. Task 4 then synchronously revokes its live
-namespace before the evidence port's first await. `inspect(actorUserId)` accepts
-only that exact lock-bound transition, then atomically quarantines the actor,
-advances the fence, and reads one coherent revision-bound exact evidence set.
-It never reconstructs authority from the actor UUID. Other tabs and late
-results cannot materialize, reserve, dispatch, apply, or purge under the old
-fence. Releasing a Web Lock or losing a tab never deletes or changes a command;
-a later verified same-actor owner must explicitly resume/recover the journal
-under a newly advanced fence. Quarantine survives confirmation UI, refresh,
-sign-out failure, and reload and is never silently cleared by an Auth event. A
-different actor cannot clear it.
+The actor record's draft/pending content is the sign-out evidence. Ordinary
+sign-out never deletes it. The Task 4 evidence interface adapts to an exact
+revision-matched read/compare of that record; no durable quarantine, disposal,
+or separate evidence universe is created. Stay signed in and local sign-out
+both preserve the record. Draft Cancel remains explicit; pending Discard is a
+separate service operation allowed only after a definite no-family-DML refusal.
 
-The Task 6 runtime exposes its `EvidenceDispositionPort` view separately from
-an explicit `readQuarantine(namespace)` / `resumeQuarantinedActor(...)` control.
-The provider gates readiness/capture on this journal state even when Task 4 is
-otherwise authenticated. “Stay signed in” first calls the existing Task 4
-server-verification path for the exact warned actor, retains/reuses the already-
-held origin Web Lock, then resumes with the live `ActorNamespace`, exact
-quarantine ID/generation, lock owner, and current fence. Reload/crash/later-
-login recovery must newly acquire the released origin lock before resume. One
-IndexedDB transaction advances the fence and clears quarantine while preserving
-every evidence record. Any
-failed actor/lock check or event before transaction completion aborts and leaves
-quarantine intact. An actor/lock event after commit cannot retroactively restore
-quarantine; it synchronously revokes the live namespace/owner so capture remains
-blocked. A later same-actor login after a normal sign-out receives the same
-explicit resume action; quarantine is not auto-cleared. This composition does
-not change the frozen Task 4 lifecycle or evidence interface.
-
-The evidence revision increments for every evidence-affecting transition even
-when its ID set is unchanged. The exact sorted evidence universe includes
-learner-linked drafts and every nonterminal/reserved/ambiguous/refusal/
-integrity/historical/support command, each under a separate opaque evidence
-UUID rather than a child/session/mutation/business identifier. It excludes
-accepted/purged sessions, PII-free diagnostics, counters, and the minimal
-accepted open-clock marker. `compareExact` and `compareAndDisposeExact` remain
-usable after local sign-out, compare the exact actor/revision/set in one
-transaction, and fail closed as `unknown` on storage/schema/corruption/overflow
-errors. Generic sign-out disposal never deletes the accepted open-clock marker.
-The later `compareExact` and post-sign-out `compareAndDisposeExact` calls hold
-the same origin Web Lock and compare the opaque issued ticket, exact actor,
-quarantine ID/generation, tab owner/fence, evidence revision, and sorted
-evidence set in one transaction. The provider keeps that lock through the
-complete disposition even when the SDK sign-out event synchronously revokes
-actor authority, then releases it only after disposal/preservation has settled.
-These transition calls never require or reconstruct an `ActorNamespace`.
+Persist only a reviewed sanitized failure classification. Raw PostgREST
+messages/details/hints, payloads beyond the exact pending command, auth data,
+URLs, and credentials never enter diagnostics or UI.
 
 This does not coordinate different phones or browsers. The pilot operating rule
 is one active capture device/browser per EA, with a fresh bootstrap before clock
-or session materialization. Cross-client clock handling is prohibited: an open
-clock without the current browser's accepted-web marker is read-only and must
-be completed in its owning client or through support. Any observed mobile or
-second-browser clock handoff/closure is a pilot escalation and requires
-re-evaluating a server-governed wrapper/locking lane before the cohort widens.
+or session materialization. Pilot EAs are explicitly web-only or mobile-only;
+for a web-only EA, the actor's one authoritative open row is eligible for
+clock-out even after browser-state loss. Duplicate open rows remain blocked.
+Any evidence that the operating rule is not holding is a pilot escalation and
+requires re-evaluating server-governed locking before the cohort widens.
 
 ## 9. Live-day, clock, and session behavior
 
@@ -717,28 +629,26 @@ say that explicitly.
 - Read the current actor-scoped open clock before enabling clock-in.
 - Refresh the readiness/open-clock snapshot immediately before materializing a
   clock-in or session command; stale UI state is not sufficient authority.
-- If exactly one exists and its ID matches this actor/browser journal's minimal
-  accepted-web-clock marker, display it prominently and offer clock-out; never
-  generate a second clock merely because local state is empty.
-- If an open entry is mobile-created or its local origin marker was lost, show
-  it read-only and route the EA to mobile/support. Lean v1 must not submit a
-  full-row clock-out from another stream because a concurrent mobile clock-out
-  could be silently overwritten.
+- If exactly one actor-owned open row exists, display it prominently and offer
+  clock-out. Under the web-only operating rule, losing browser storage does not
+  strand the EA. If the actor record was recreated, allocate its web stream and
+  audit authority before materializing the frozen generation-two update.
 - If more than one exists, block capture and route to support.
 - Obtain geolocation with a finite timeout. A complete valid pair is sent; denial
   or failure sends null/null and is visible but non-blocking.
 - Materialize and persist the exact v2 time-entry command before dispatch.
-- Immediately before clock-out materialization, require the local marker to
-  originate from a strictly accepted supported-web clock-in, then immediately
-  re-read the entry and require matching entry/actor identity and
-  `sign_out_time IS NULL`. Materialize only the generation-one-to-generation-two
-  update and send all 10 exact writer arguments. The unchanged time-entry RPC does not
+- Immediately before clock-out materialization, re-read the entry and require
+  exact entry/actor identity and `sign_out_time IS NULL`. Materialize only the
+  generation-one-to-generation-two update and send all 10 exact writer
+  arguments. The unchanged time-entry RPC does not
   compare `server_updated_at` as a cross-stream compare-and-set: a mobile or
   second-browser close after this re-read but before the RPC can still be
   overwritten. This is an eligibility check, not a race guarantee; the
   one-active-device rule and cross-client escalation remain field boundaries.
-- A lost response remains ambiguous and retries the same command.
-- Do not allow clock-out while a session command is unresolved.
+- A lost response retains one exact pending command and retries the same bytes.
+- Do not allow clock-out while a session command is pending. Exact Retry is
+  always available; Discard appears only after a reviewed definite
+  no-family-DML refusal. There is no terminal local phase.
 - No stale-clock auto-close exists in v1. Returning EAs see the open clock before
   any other capture action.
 
@@ -764,7 +674,7 @@ may either accept the family with its existing server-side review flag or
 return the bounded no-receipt
 `needs_parent/session_child_reference_unavailable` result. The browser never
 interprets that result as acceptance, never rematerializes new identities for
-it, and preserves the original command for the Task 6 retry/support policy.
+it, and preserves the original command for explicit service Retry or Discard.
 
 Letter Tracker changes are not collected or written in lean v1. The unchanged
 mastery writer performs `ON CONFLICT ... DO UPDATE` even for a claimed `insert`,
@@ -844,18 +754,18 @@ Task 2 deliberately does **not** mirror PostgreSQL raw-JSON parsing, every
 field-byte limit, every SQL rejection branch, RLS, locks, receipt/head races, or
 natural-key collision behavior. It also does not defend against contrived hidden
 prototype/symbol APIs inside application memory. Those are proved at the
-materializer, journal, source-review, or disposable-engine boundary where they
+materializer, actor-record, source-review, or disposable-engine boundary where they
 actually matter.
 
 ### 11.2 Pure/domain tests
 
 Use `node:test` through `tsx` for exact serialization, date handling,
-materialization, state-machine, storage, actor isolation, tab lease,
+materialization, CaptureService transitions, storage, actor isolation, Web Lock,
 geolocation, validation, completion, and redaction logic.
 
 Materializer tests—not the transport conformance gate—own the supported-browser
-rules: a marker-originated same-browser clock transition only from accepted
-generation one to generation two after the immediate reread; fresh
+rules: an actor-owned clock transition from generation one to generation two
+after the immediate reread; fresh
 session/root/member generations; one selected provisioned group; attendance/
 programme/activity consistency; deduplicated teaching selections, GPS pair/null
 semantics, session/clock chronology, and byte-equivalent repeated
@@ -920,16 +830,18 @@ Use production `next build`/`next start`, not only development mode. Cover:
 
 - login/reset and session expiry;
 - unprovisioned/readiness-blocked state;
-- web-journal-owned open clock and manual clock-out;
-- mobile-created/unknown-origin open clock shown read-only with support route;
+- actor-owned open clock and manual clock-out;
+- mixed-client clock evidence surfaced as a pilot escalation under the
+  one-client-per-EA rule;
 - GPS success, denial, and timeout;
 - full letters and blends sessions;
 - attendance/reading-level/activity variants and explicit no-Letter-Tracker
   copy;
 - response-lost exact retry with one authoritative session;
-- reload from durable journal;
-- Johannesburg rollover readback and historical-entry-required paths;
-- two-tab fencing and actor switch isolation;
+- reload from the durable actor record;
+- Johannesburg rollover readback with unresolved work retained for exact Retry,
+  and conditional Discard only after a definite no-family-DML refusal;
+- two-tab Web Lock serialization and actor switch isolation;
 - malformed server payloads and integrity faults;
 - 320×740 overflow/touch/focus/contrast; and
 - strict CSP/HSTS with no unsafe script directive in production.
@@ -948,8 +860,8 @@ Minimum device matrix:
 
 Test login/reset, foreground/background return, killed-tab recovery, denied
 location, intermittent network, low storage, tab duplication, clock status,
-web-owned versus unknown-origin open entries, complete session, explicit
-no-Letter-Tracker behavior, and sign-out warning.
+actor-owned open entries under the web-only rule, mixed-client escalation,
+complete session, explicit no-Letter-Tracker behavior, and sign-out warning.
 
 The controlled field gate requires at least three provisioned EAs to complete
 one school day. Compare browser state, Supabase rows, mobile pull, and existing
@@ -960,7 +872,7 @@ business reporting. Review their open clocks daily during the pilot.
 ### Planning repository
 
 - Repository: `/Users/jimmckeown/Development/Zazi_iZandi_Website_2026/zazi-izandi-nextjs`
-- Current revision branch: `plan/task6-journal-contract`
+- Current revision branch: `plan/web-capture-client-collapse`
 - Owns this governing plan and design history only.
 
 ### Web repository
@@ -969,7 +881,7 @@ business reporting. Review their open clocks daily during the pilot.
 - Branch: `feat/field-capture-v1`
 - Original scaffold commit: `9be35c8`
 - Current reviewed checkpoint: `e199a93`
-- Owns auth, bounded reads, IndexedDB journal, fixed write adapters, UI, E2E,
+- Owns auth, bounded reads, IndexedDB actor record, fixed write adapters, UI, E2E,
   security headers, and rollout documentation.
 - Has no remote/hosted project at this checkpoint.
 
@@ -1093,8 +1005,8 @@ any Letter Mastery dispatch. No React component or generic data layer can
 choose a writer.
 
 Materializers own supported-browser semantics instead of duplicating them in
-the gateway: clock-in generation one; same-browser accepted clock-out only from
-the marker and immediate reread as generation two; fresh session/root/member
+the gateway: clock-in generation one; actor-owned clock-out after an immediate
+reread as generation two; fresh session/root/member
 generation one; one selected provisioned group with root `record.group_ids`
 exactly that group and matching member `record.group_id` values; complete
 attendance with at least one present child; exact letters/blending activity
@@ -1163,24 +1075,22 @@ Planned web files:
 Freeze the following client-auth contract before UI implementation:
 
 - A usable authenticated namespace is created only after definitive
-  `auth.getUser()` verification. Bind that verified actor ID to a monotonically
-  advancing local actor epoch; a cached session, JWT, or auth-state event alone
-  cannot bind or advance an actor namespace.
+  `auth.getUser()` verification. Bind that verified actor ID to one live
+  `ActorNamespace` object; a cached session, JWT, or auth-state event alone
+  cannot publish or replace the actor-scoped CaptureService.
 - Enable password sign-in only after definitive unauthenticated state. Loading,
   recovery, or unverified state is neither sign-in nor capture-ready.
 - Use `signOut({ scope: "local" })` only. Web sign-out must not globally revoke
   refresh tokens held by the installed mobile app or another supported client.
-- Before ordinary local sign-out, quarantine the current actor namespace: stop
-  reads, retries, and dispatch, then require confirmation against an opaque
-  actor-bound evidence reference, its exact revision, and its exact evidence
-  set. A stale, missing, or mismatched reference before local sign-out requires
-  a new warning. If the exact set changes only after preflight and local-only
-  sign-out succeeds, compare-and-dispose must preserve the changed evidence,
-  finish unauthenticated locally, and route the preserved evidence to later
-  recovery/support; it must never delete the changed set. Task 4 withholds the
-  ordinary sign-out UI while its default evidence port is fail-closed; Task 6
-  exposes that action only after the real journal-backed port and preserved-
-  evidence recovery handoff are proven.
+- Before ordinary local sign-out, stop reads, retries, and dispatch, then
+  require confirmation against an opaque actor-bound evidence reference and
+  exact revision of the actor record. A stale, missing, or mismatched reference
+  before local sign-out requires a new warning. After a current preflight,
+  local-only sign-out finishes unauthenticated while preserving the exact actor
+  record byte-for-byte for later same-actor retry/support; it never invokes a
+  capture discard. Task 4 withholds the ordinary sign-out UI while its default
+  evidence port is fail-closed; Task 8A exposes that action only after the
+  CaptureService-backed evidence handoff is proven.
 - Password recovery uses separate bounded, PII-free durable `exchanging`,
   `active`, and `cleanup` marker phases. Only a purpose-checked PKCE exchange
   whose returned actor exactly matches a server `getUser()` verification may
@@ -1189,31 +1099,36 @@ Freeze the following client-auth contract before UI implementation:
   not reload authority: reloads and other tabs clean it up and require a fresh
   link. Reload during `exchanging` likewise fails closed through local Auth
   cleanup. A recovery marker written in another tab
-  immediately quarantines an ordinary authenticated namespace, every Auth
+  immediately blocks an ordinary authenticated namespace, every Auth
   event synchronously revokes stale destructive authority before deferred
   `getUser()` verification, and the protected shell independently requires both
   authenticated status and marker absence. Live marker validity is rechecked
   before password update. Recovery never disposes application evidence, and
   required local Auth cleanup is resumable across reload until complete.
+  These recovery-marker phases are Auth-link lifecycle state only; they are not
+  CaptureService command phases, attempt state, epoch/fence authority, or a
+  durable capture quarantine.
 - Task 4 tests this transition through an injectable fake evidence port only.
-  Task 6 must prove the real IndexedDB composition, including durable
-  quarantine/cleanup and reload behavior; Task 4 makes no storage proof claim.
-- Password update is fenced to the currently `getUser()`-verified actor and
-  epoch. It is refused after an actor/epoch transition and never persists or
-  logs the password.
+  Task 8A must prove the real IndexedDB composition, including actor-record
+  preservation/cleanup and reload behavior; Task 4 makes no storage proof
+  claim.
+- Password update is bound to the currently `getUser()`-verified actor and live
+  namespace object. It is refused after an actor transition and never persists
+  or logs the password.
 - Use manual exact-route PKCE recovery with `detectSessionInUrl: false`; only
   the reviewed reset route may consume its PKCE state. Pin the reviewed
   auth-js `redirectType` implementation dependency, and treat any auth-js
   upgrade affecting that behavior or PKCE URL handling as a review-blocking
   compatibility gate.
-- Login and reset copy is account-enumeration-safe. App context, journal, and
+- Login and reset copy is account-enumeration-safe. App context, capture record, and
   logs contain no raw session, user object, email address, access token, refresh
   token, or raw auth response.
 
-RED cases include session absence/expiry, definitive actor bind/unbind and epoch
-change, cross-actor local-state denial, sign-in while authentication is
-unverified, local-only sign-out with unresolved-evidence quarantine, stale
-evidence confirmation, reload-resumable cleanup, actor-fenced password update,
+RED cases include session absence/expiry, definitive actor bind/unbind and live
+namespace replacement, cross-actor local-state denial, sign-in while
+authentication is unverified, local-only sign-out with unresolved actor-record
+evidence, stale evidence confirmation, reload-resumable cleanup,
+actor-bound password update,
 manual PKCE exact-route/open-redirect refusal, account-enumeration-safe
 messages, and service-secret absence. Configure hosted reset redirect allowlist
 only during an authorized deployment gate.
@@ -1376,7 +1291,7 @@ index ascending. `unprovisioned`, `invalid_graph`, and `over_limit` provisioning
 return empty critical arrays rather than a consumable partial prefix. The web
 derives only `ready`, `unprovisioned`, `invalid_snapshot`,
 `duplicate_open_clock`, or `group_roster_unavailable` at this stage. It adds no
-capture/journal behavior.
+capture behavior.
 
 The only allowed Supabase files are one additive read-only migration, one
 dedicated PostgreSQL harness, one verifier, the required migration-manifest
@@ -1403,59 +1318,16 @@ lookups are indistinguishable; proves legacy-fallback-only and malformed
 provisioning cannot become ready; and compares all frozen mobile sources and
 function hashes before and after. No hosted apply occurs in this task.
 
-### Task 6 — Implement the actor-scoped durable journal
+### Task 6 — Close out the historical journal design and preserve its characterization
 
-Planned web files:
-
-- `lib/storage/database.ts`
-- `lib/storage/journal.ts`
-- `lib/storage/lease.ts`
-- `lib/capture/state-machine.ts`
-- `lib/capture/retry-policy.ts`
-- `components/field/submission-status.tsx`
-- `components/auth/auth-provider.tsx`
-- `components/auth/authenticated-field-shell.tsx`
-- `AGENTS.md`, `CLAUDE.md`, and `README.md` only for bounded current-scope
-  corrections that remove already-implemented bootstrap/future-task claims
-- focused storage/state tests and `e2e/journal.spec.ts`.
-
-Task 6 is a client-only persistence, command-ownership, and recovery task. It
-does not define a new materializer or domain intent, invoke a writer transport,
-render capture controls, or cache a roster for offline use. A dispatch
-reservation is local durability/accounting before Task 7/8 foreground
-transport; it is not dispatch. The exact retry journal remains
-temporary learner-linked operational data under Section 8.1; only the bounded
-diagnostic ring is PII-free. Task 6 replaces Task 4's default fail-closed
-evidence port with the real actor-scoped IndexedDB port and exposes ordinary
-local sign-out only after that composition, quarantine, compare-and-dispose,
-and reload behavior are proven.
-
-The public journal union is closed to the frozen `TIME_ENTRIES` and `SESSIONS`
-commands. It cannot accept a caller-selected RPC/table/URL/descriptor, generic
-operation, transport callback, arbitrary exception, or raw result. It returns a
-reserved exact typed command to Task 7/8 and accepts only the small classified
-outcome union (`accepted`, exact successor `needs_parent`, known refusal,
-ambiguous, integrity fault). It has no autonomous queue worker or replay loop.
-
-Prove storage capability before capture, immutable materialized commands,
-byte-equivalent retry, reload recovery, rollover resolution,
-actor isolation, tab fencing, a bounded PII-free diagnostic ring, exact journal
-field allowlists/retention rules, and evidence-preserving sign-out. Prove the exact
-successor `needs_parent` transition: no receipt lookup, fresh same-actor/day
-ready bootstrap, unchanged group/complete roster, exact-byte retry, three total
-dispatches including the initial call, and support/historical preservation on
-any failed precondition or exhausted budget. Do not add service-worker/
-background-sync code.
-
-Pure tests use injected storage/lock clocks for state discrimination, but they
-are not durability proof. Playwright must exercise native IndexedDB and Web
-Locks for transaction completion/abort, close/reopen recovery, unavailable
-capability, two-tab exclusive ownership, lock release plus fence advance, stale
-owner late-result rejection, durable sign-out quarantine/exact-set disposal,
-and 320px warning/resume/sign-out behavior. Correctness must remain unchanged
-when notification messages are dropped. No automatic queue worker, timer/
-`online`-event retry, CacheStorage, service worker, Background Sync, or Periodic
-Sync is permitted.
+This historical task produced the first native IndexedDB/Web-Lock and sign-out
+evidence characterization. Its public Journal, durable phase machine, fence,
+quarantine, reservation, and evidence-universe design are superseded by the
+2026-08-22 client-collapse ADR and are not release targets. Preserve the native
+failure/reload/two-tab/actor-switch scenarios as characterization evidence for
+Task 8A; do not preserve the old internal API for its own sake. Task 6 is
+therefore closed out by that migration note, not reopened as a separate
+journal implementation milestone.
 
 ### Task 7 — Implement live clock flow
 
@@ -1466,9 +1338,8 @@ Planned web files:
 - `components/field/clock-card.tsx`
 - focused unit/E2E tests.
 
-GREEN requires accepted-web-clock marker matching, unknown/mobile-origin
-view-only handling, duplicate-open block, immediate freshness reread, explicit
-surface/block of cross-client clock handling, GPS pair/null rules,
+GREEN requires actor-owned server-row clock-out, duplicate-open block, immediate
+freshness reread, explicit one-client operating copy, GPS pair/null rules,
 authoritative acceptance, immediate accepted-envelope purge, exact
 lost-response retry, unresolved-session clock-out block, strong returning-EA
 reminder, and no date editor or sweeper. It states that the reread is not a
@@ -1489,11 +1360,35 @@ letters/blends E2E flows, and an executable proof that no Letter Mastery RPC is
 reachable. Task 8 does not create a second session validator. Historical entry,
 Letter Mastery changes, and assessment mode are absent.
 
+### Task 8A — Collapse the client behind the deep capture service
+
+Implement the accepted 2026-08-22 ADR before Task 9:
+
+- one actor record with stream/audit, draft, one exact pending command,
+  sanitized failure, and revision;
+- one service instance per verified actor and one page-lifetime origin Web Lock;
+- no public Journal/database/lease/fence/evidence/reservation/attempt/phase API;
+- accepted-only mount resolution, exact writer retry, and explicit Discard only
+  after a reviewed definite no-family-DML refusal;
+- receipt-free `needs_parent` exact retry after fresh readiness;
+- server-row clock-out without an accepted-web marker;
+- draft Cancel, debounced text persistence, and bootstrap only at dashboard,
+  begin, submit, explicit retry, or completed-action refresh;
+- same-group/day recent-session warning with explicit confirmation; and
+- reviewed sanitized failures without raw upstream/Auth data.
+
+Write public-boundary RED tests first. Preserve the existing real browser,
+PostgreSQL, and SQLite characterization proof. Storage plus service above 800
+source lines stops for an architecture review. The server one-open-clock
+constraint is a parallel task and gates server-enforced concurrency across
+storage/device loss, not this client rewrite.
+
 ### Task 9 — Add preservation-first support and diagnostics
 
-- bounded actor-scoped PII-free diagnostic ring;
+- reviewed sanitized failure code and PII-free support reference;
 - human-readable reference code without raw payload/token;
-- `Historical entry required` state;
+- explicit Retry for every pending command, and Discard only for a reviewed
+  definite no-family-DML refusal, with no terminal local phase or dead action;
 - support, rollout, privacy/storage, and daily open-clock review runbooks;
 - no instruction to clear storage before unresolved evidence is retained; and
 - no centralized telemetry sink or provenance store without a separate privacy
@@ -1502,7 +1397,7 @@ Letter Mastery changes, and assessment mode are absent.
 ### Task 10 — Re-run cross-engine compatibility as a release regression
 
 - rerun the Task 3A exact web-generated fixtures against disposable PostgreSQL
-  17 after auth, bootstrap, journal, clock, and session implementation;
+  17 after auth, bootstrap, CaptureService, clock, and session implementation;
 - rerun pre-web accepted receipt replay and all five digest pins;
 - prove actor isolation, replay, collision, and atomic family;
 - prove two streams can overwrite one time entry, opposing mastery operations
@@ -1611,12 +1506,12 @@ Every item must be true:
       Tracker was not updated.
 - [ ] Exact successor `needs_parent/session_child_reference_unavailable` is a
       known non-success, leaves no session/attendee/review-flag/receipt/head
-      residue, and retains the exact command under the three-total-dispatch
-      Task 6 policy.
-- [ ] Web closes only a locally attested accepted web clock after its immediate
-      reread; unknown/mobile entries are view-only, the UI surfaces and blocks
-      cross-client clock handling, accepted time-entry GPS envelopes purge, and
-      pilot materials state that legacy v2 has no cross-stream
+      residue, and retains the exact command for explicit service Retry or
+      Discard after the required fresh readiness check.
+- [ ] Under the web-only operating rule, Web closes one actor-owned open clock
+      after its immediate reread even if browser storage was recreated; mixed-
+      client evidence is a pilot escalation, accepted time-entry GPS envelopes
+      purge, and pilot materials state that legacy v2 has no cross-stream
       `server_updated_at` compare-and-set.
 - [ ] No Letter Mastery mutation is materialized or dispatched by v1.
 - [ ] The single bootstrap/resolution RPC resolves only an exact completed

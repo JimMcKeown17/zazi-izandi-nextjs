@@ -1,3 +1,5 @@
+import type { ProgrammeFidelityRow } from "@/lib/mobile/programme-fidelity/types";
+
 export type Cohort = "treatment" | "sef" | "ecd" | "all";
 
 export const COHORT_OPTIONS: { value: Cohort; label: string; description: string }[] = [
@@ -87,6 +89,149 @@ export const SEF_SCHOOLS = new Set<string>([
   "DIAS FARM SCHOOL",
   "PHAKAMA PUBLIC SCHOOL",
 ]);
+
+// Mobile publications currently carry shortened ledger school labels. These aliases
+// were reviewed against the populated production publication on 2026-08-28. Keep the
+// mapping explicit: fuzzy matching would silently put staff in the wrong cohort.
+export const PROGRAMME_FIDELITY_SCHOOL_ALIASES: ReadonlyArray<{
+  alias: string;
+  canonical: string;
+  cohort: "treatment" | "sef";
+}> = [
+  { alias: "ABRAHAM LEVY", canonical: "ABRAHAM LEVY PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "ALFONSO ARRIES", canonical: "ALFONSO ARRIES PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "AMANZI", canonical: "AMANZI PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "BOET JEGELS", canonical: "BOET JEGELS PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "CANZIBE", canonical: "CANZIBE PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "CEBELIHLE", canonical: "CEBELIHLE PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "CEDARBERG", canonical: "CEDARBERG PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "COEGA", canonical: "COEGA PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "DANIELS", canonical: "DANIELS PUBLIC PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "DR A W HABELGAARN", canonical: "DR A W HABELGAARN PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "EMAFINI", canonical: "EMAFINI PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "EMFUNDWENI", canonical: "EMFUNDWENI PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "EMZOMNCANE", canonical: "EMZOMNCANE PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "ENKULEKWENI", canonical: "ENKULULEKWENI PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "ENQILENI", canonical: "ENQILENI INTERMEDIATE SCHOOL", cohort: "treatment" },
+  { alias: "FERNWOOD PARK", canonical: "FERNWOOD PARK PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "FRANK JOUBERT", canonical: "FRANK JOUBERT PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "FUNIMFUNDO", canonical: "FUNIMFUNDO PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "ILINGE", canonical: "ILINGE PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "IMBASA", canonical: "IMBASA PUBLIC PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "JAMES NTUNGWANA", canonical: "JAMES NTUNGWANA PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "JARVIS GQAMLANA", canonical: "JARVIS GQAMLANA PUBLIC PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "J K ZONDI", canonical: "J K ZONDI PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "KAYSER NGXWANA", canonical: "KAYSER NGXWANA PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "KLEINSKOOL", canonical: "KLEINSKOOL COMMUNITY PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "LAMANI", canonical: "LAMANI PUBLIC PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "MACHIU", canonical: "MACHIU PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "MAGQABI", canonical: "MAGQABI PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "MELISIZWE", canonical: "MELISIZWE PUBLIC PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "MJULENI", canonical: "MJULENI JUNIOR PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "MNQOPHISO", canonical: "MNQOPHISO PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "MTHONJENI", canonical: "MTHONJENI SENIOR PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "NKUTHALO", canonical: "NKUTHALO PUBLIC PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "NOMATHAMSANQA", canonical: "NOMATHAMSANQA PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "NOSIPHO", canonical: "NOSIPHO PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "NXANELWIMFUNDO", canonical: "NXANELWIMFUNDO INTERMIDIATE SCHOOL", cohort: "treatment" },
+  { alias: "PHAKAMILE", canonical: "PHAKAMILE PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "SAMUEL NONGOGO", canonical: "SAMUEL NONGOGO PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "SIKHOTHINA", canonical: "SIKHOTHINA PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "SIPHO HASHE", canonical: "SIPHO HASHE COMBINED SCHOOL", cohort: "treatment" },
+  { alias: "SOWETO-ON-SEA", canonical: "SOWETO-ON-SEA PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "SPENCER MABIJA", canonical: "SPENCER MABIJA COMBINED SCHOOL", cohort: "treatment" },
+  { alias: "ST JOSEPH'S", canonical: "ST JOSEPH'S (RC) PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "UITENHAGE", canonical: "UITENHAGE PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "VUKANIBANTU", canonical: "VUKANIBANTU PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "WALMER", canonical: "WALMER PRIMARY SCHOOL", cohort: "treatment" },
+  { alias: "KWANOXOLO", canonical: "KWANOXOLO PRIMARY SCHOOL", cohort: "sef" },
+  { alias: "SAPPHIRE", canonical: "SAPPHIRE ROAD PRIMARY SCHOOL", cohort: "sef" },
+  { alias: "STRELITZIA", canonical: "STRELITZIA PRIMARY SCHOOL", cohort: "sef" },
+  { alias: "BETHVALE", canonical: "BETHVALE PRIMARY SCHOOL", cohort: "sef" },
+  { alias: "GARRETT", canonical: "GARRETT PUBLIC PRIMARY SCHOOL", cohort: "sef" },
+  { alias: "EMSENGENI", canonical: "EMSENGENI PRIMARY SCHOOL", cohort: "sef" },
+  { alias: "ESITIYENI", canonical: "ESITIYENI PUBLIC PRIMARY SCHOOL", cohort: "sef" },
+  { alias: "W B TSHUME", canonical: "W B TSHUME PRIMARY SCHOOL", cohort: "sef" },
+  { alias: "DIAS", canonical: "DIAS FARM SCHOOL", cohort: "sef" },
+  { alias: "PHAKAMA", canonical: "PHAKAMA PUBLIC SCHOOL", cohort: "sef" },
+] as const;
+
+const PROGRAMME_FIDELITY_ALIAS_COHORT = new Map(
+  PROGRAMME_FIDELITY_SCHOOL_ALIASES.map(({ alias, cohort }) => [alias, cohort] as const)
+);
+const PROGRAMME_FIDELITY_ECD_TYPES = new Set(["ECD"]);
+
+const normalizeProgrammeFidelityLabel = (value: string | null | undefined): string | null => {
+  if (value === null || value === undefined) return null;
+  const normalized = value.trim().replace(/\s+/g, " ").toUpperCase();
+  return normalized || null;
+};
+
+export type ProgrammeFidelityCohortClassification =
+  | { kind: "cohort"; cohort: Exclude<Cohort, "all"> }
+  | { kind: "missing" }
+  | { kind: "unrecognized" };
+
+export function classifyProgrammeFidelityRowCohort(row: {
+  school_name: string | null;
+  school_type: string | null;
+}): ProgrammeFidelityCohortClassification {
+  const schoolName = normalizeProgrammeFidelityLabel(row.school_name);
+  const schoolType = normalizeProgrammeFidelityLabel(row.school_type);
+  const nameCohort = schoolName
+    ? TREATMENT_SCHOOLS.has(schoolName)
+      ? "treatment"
+      : SEF_SCHOOLS.has(schoolName)
+        ? "sef"
+        : PROGRAMME_FIDELITY_ALIAS_COHORT.get(schoolName)
+    : undefined;
+  const isEcd = schoolType !== null && PROGRAMME_FIDELITY_ECD_TYPES.has(schoolType);
+
+  if (nameCohort && isEcd) return { kind: "unrecognized" };
+  if (nameCohort) return { kind: "cohort", cohort: nameCohort };
+  if (isEcd) return { kind: "cohort", cohort: "ecd" };
+  if (schoolName === null) return { kind: "missing" };
+  return { kind: "unrecognized" };
+}
+
+export function filterProgrammeFidelityRowsByCohort<T extends ProgrammeFidelityRow>(
+  rows: readonly T[],
+  cohort: Cohort
+): {
+  rows: T[];
+  exclusionCounts: {
+    missingSchoolEvidence: number;
+    unrecognizedSchoolEvidence: number;
+  };
+} {
+  const currentRows = rows.filter((row) => row.is_current_owner);
+  if (cohort === "all") {
+    return {
+      rows: currentRows,
+      exclusionCounts: {
+        missingSchoolEvidence: 0,
+        unrecognizedSchoolEvidence: 0,
+      },
+    };
+  }
+
+  const result: T[] = [];
+  const exclusionCounts = {
+    missingSchoolEvidence: 0,
+    unrecognizedSchoolEvidence: 0,
+  };
+  for (const row of currentRows) {
+    const classification = classifyProgrammeFidelityRowCohort(row);
+    if (classification.kind === "cohort") {
+      if (classification.cohort === cohort) result.push(row);
+    } else if (classification.kind === "missing") {
+      exclusionCounts.missingSchoolEvidence += 1;
+    } else {
+      exclusionCounts.unrecognizedSchoolEvidence += 1;
+    }
+  }
+  return { rows: result, exclusionCounts };
+}
 
 // ─── Filtering ───────────────────────────────────────────────────
 

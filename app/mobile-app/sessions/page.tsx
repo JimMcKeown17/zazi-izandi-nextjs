@@ -5,12 +5,14 @@ import { SessionsTrendChart } from "@/components/pm/sessions/sessions-trend-char
 import { SessionFilters } from "@/components/mobile-app/sessions/session-filters";
 import { SessionSummaryTiles } from "@/components/mobile-app/sessions/session-summary-tiles";
 import { SessionsPageContent } from "@/components/mobile-app/sessions/sessions-page-content";
+import { SessionExportsPanel } from "@/components/mobile-app/sessions/session-exports-panel";
 import {
   getMobileSessionReviewFlags,
   getMobileSessionsActivity,
 } from "@/lib/mobile/api";
 import { requireMobileSessionsSession } from "@/lib/mobile/auth";
 import { hasCapability } from "@/lib/mobile/capabilities";
+import { getSastToday } from "@/lib/mobile/session-exports/date-range";
 import {
   toHeatmapDisplayRows,
   toSchoolSummaryDisplayRows,
@@ -30,6 +32,17 @@ function parseDays(value: string | undefined): number {
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 90 ? parsed : 30;
 }
 
+function buildRetryHref(input: {
+  days: number;
+  schoolId: string | null;
+  schoolType: "ecd" | "primary" | null;
+}): string {
+  const query = new URLSearchParams({ days: String(input.days) });
+  if (input.schoolId) query.set("school_id", input.schoolId);
+  if (input.schoolType) query.set("school_type", input.schoolType);
+  return `/mobile-app/sessions?${query.toString()}`;
+}
+
 export default async function MobileSessionsPage({
   searchParams,
 }: SessionsPageProps) {
@@ -46,9 +59,24 @@ export default async function MobileSessionsPage({
     getMobileSessionsActivity({ days, schoolId, schoolType }),
     getMobileSessionReviewFlags({ schoolId, schoolType }),
   ]);
+  const exportPanel = hasCapability(session.role, "mobile.csv.export") ? (
+    <SessionExportsPanel
+      today={getSastToday()}
+      schoolId={schoolId}
+      schoolType={schoolType}
+    />
+  ) : null;
+  const retryHref = buildRetryHref({ days, schoolId, schoolType });
 
   if (!result.ok) {
-    return <SessionsPageContent result={result} reviewFlags={reviewFlags} />;
+    return (
+      <SessionsPageContent
+        result={result}
+        reviewFlags={reviewFlags}
+        exportPanel={exportPanel}
+        retryHref={retryHref}
+      />
+    );
   }
 
   const { data } = result;
@@ -57,7 +85,11 @@ export default async function MobileSessionsPage({
   );
 
   return (
-    <SessionsPageContent result={result} reviewFlags={reviewFlags}>
+    <SessionsPageContent
+      result={result}
+      reviewFlags={reviewFlags}
+      retryHref={retryHref}
+    >
       <SessionFilters
         days={data.days}
         selectedSchoolId={data.applied_filters.school_id}
@@ -86,6 +118,8 @@ export default async function MobileSessionsPage({
         </div>
       </div>
 
+      {exportPanel}
+
       <EAHeatmap
         dates={data.ea_heatmap.dates}
         eas={toHeatmapDisplayRows(data.ea_heatmap.eas)}
@@ -95,7 +129,6 @@ export default async function MobileSessionsPage({
           session.role,
           "mobile.user_health.read"
         )}
-        exportFilenamePrefix="zazi-ea-activity"
       />
 
       <SessionsSchoolTable
