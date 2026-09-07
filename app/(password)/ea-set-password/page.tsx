@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { captureProofLink, createProofJourney } from "@/lib/ea-set-password/proof-journey";
 
 import { createPasswordSupabaseClient } from "@/lib/ea-set-password/browser-supabase";
 import { bootstrapPasswordJourney } from "@/lib/ea-set-password/bootstrap";
@@ -29,6 +30,8 @@ function resultMessage(result: PasswordJourneyResult): string {
 
 export default function EaSetPasswordPage() {
   const journeyRef = useRef<PasswordJourney | null>(null);
+  const proofRef = useRef<ReturnType<typeof createProofJourney> | null>(null);
+  const [awaitingRedemption, setAwaitingRedemption] = useState(false);
   const activeRef = useRef(false);
   const submitInFlightRef = useRef(false);
   const [result, setResult] = useState<PasswordJourneyResult | null>(null);
@@ -39,10 +42,42 @@ export default function EaSetPasswordPage() {
   useEffect(() => {
     let cancelled = false;
     activeRef.current = true;
+    function leaveDocument() {
+      cancelled = true;
+      activeRef.current = false;
+      const journey = journeyRef.current;
+      journeyRef.current = null;
+      proofRef.current = null;
+      // BFCache can preserve a document without unmounting React. Clear DOM
+      // values immediately as well as scheduling the matching React state.
+      document.querySelectorAll<HTMLInputElement>('input[type="password"]').forEach(input => { input.value = ""; });
+      setPassword(""); setConfirmation(""); setAwaitingRedemption(false);
+      setResult({kind:"terminal_error",code:"invalid_link",message:SAFE_MESSAGES.invalidLink});
+      void journey?.dispose();
+    }
+    function restored(event:PageTransitionEvent) { if (event.persisted) leaveDocument(); }
+    window.addEventListener("pagehide",leaveDocument);
+    window.addEventListener("pageshow",restored);
     // React replays effects in Strict Mode. Let the cancelled setup expire before
     // consuming the one-use URL; a real setup still scrubs before client creation.
     void Promise.resolve().then(() => {
       if (cancelled) return;
+      if (new URLSearchParams(window.location.hash.slice(1)).has("token_hash")) {
+        const link = captureProofLink(window.location.href, () => window.history.replaceState(null, "", "/ea-set-password"));
+        if (!link) { setResult({kind:"terminal_error",code:"invalid_link",message:SAFE_MESSAGES.invalidLink}); return; }
+        const proof = createProofJourney(link, async (action, body, bearer) => {
+          const response = await fetch(`/api/mobile/password-setup/${action}`, {
+            method:"POST", cache:"no-store", credentials:"omit", referrerPolicy:"no-referrer", keepalive:action==="discard",
+            headers:{"Content-Type":"application/json", ...(bearer ? {Authorization:`Bearer ${bearer}`} : {})},
+            body:JSON.stringify(body),
+          });
+          return response.json();
+        });
+        proofRef.current = proof;
+        journeyRef.current = {dispose:proof.dispose,submit:proof.submit,capture:async()=>({kind:"ready"})};
+        setAwaitingRedemption(true);
+        return;
+      }
       const bootstrap = bootstrapPasswordJourney({
         href: window.location.href,
         scrubOriginalCallbackUrl: () =>
@@ -92,6 +127,8 @@ export default function EaSetPasswordPage() {
       }
     });
     return () => {
+      window.removeEventListener("pagehide",leaveDocument);
+      window.removeEventListener("pageshow",restored);
       cancelled = true;
       activeRef.current = false;
       const journey = journeyRef.current;
@@ -99,6 +136,18 @@ export default function EaSetPasswordPage() {
       void journey?.dispose();
     };
   }, []);
+
+  async function redeemLink() {
+    if (!proofRef.current || submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+    setSubmitting(true);
+    const next = await proofRef.current.redeem();
+    submitInFlightRef.current = false;
+    if (!activeRef.current) return;
+    setAwaitingRedemption(false);
+    setSubmitting(false);
+    setResult(next);
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -115,7 +164,6 @@ export default function EaSetPasswordPage() {
   }
 
   const canSubmit = result?.kind === "ready" || result?.kind === "recoverable_error";
-  const isSuccess = result?.kind === "success";
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-12 sm:px-6">
@@ -132,8 +180,14 @@ export default function EaSetPasswordPage() {
           className="mt-5 rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-700"
           aria-live="polite"
         >
-          {result ? resultMessage(result) : "Checking your secure password link…"}
+          {awaitingRedemption ? "Continue to securely open this password link." : result ? resultMessage(result) : "Checking your secure password link…"}
         </p>
+
+        {awaitingRedemption ? (
+          <button type="button" disabled={submitting} onClick={redeemLink} className="mt-6 w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
+            {submitting ? "Opening secure link…" : "Continue"}
+          </button>
+        ) : null}
 
         {canSubmit ? (
           <form className="mt-6 space-y-5" onSubmit={submit}>
@@ -183,13 +237,6 @@ export default function EaSetPasswordPage() {
               {submitting ? "Saving password…" : "Save password"}
             </button>
           </form>
-        ) : null}
-
-        {isSuccess ? (
-          <p className="mt-6 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-            Return to the Zazi iZandi mobile app and sign in with your new
-            password.
-          </p>
         ) : null}
 
         <p className="mt-6 text-center text-sm text-slate-600">

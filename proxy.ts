@@ -1,5 +1,5 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest, type NextFetchEvent } from "next/server";
 
 import type { Role } from "@/lib/mobile/capabilities";
 import { isPublicEaSetPasswordRoute } from "@/lib/routes/public-routes";
@@ -20,9 +20,8 @@ function protectedRouteFor(pathname: string): [string, Role[]] | undefined {
   );
 }
 
-export default clerkMiddleware(async (auth, req) => {
+const staffProxy = clerkMiddleware(async (auth, req) => {
   const pathname = req.nextUrl.pathname;
-  if (isPublicEaSetPasswordRoute(pathname)) return;
 
   const protectedRoute = protectedRouteFor(pathname);
   if (!protectedRoute) return;
@@ -47,6 +46,15 @@ export default clerkMiddleware(async (auth, req) => {
     );
   }
 });
+
+export default function proxy(request:NextRequest, event:NextFetchEvent) {
+  const pathname=request.nextUrl.pathname;
+  if (isPublicEaSetPasswordRoute(pathname) || [
+    "/api/mobile/password-setup/redeem", "/api/mobile/password-setup/submit",
+    "/api/mobile/password-setup/discard", "/api/mobile/password-completion",
+  ].includes(pathname)) return NextResponse.next();
+  return staffProxy(request,event);
+}
 
 export const config = {
   matcher: [

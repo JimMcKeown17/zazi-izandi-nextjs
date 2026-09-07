@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Roboto, Open_Sans } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Analytics } from "@vercel/analytics/next";
-import "./globals.css";
+import "../globals.css";
 
 const roboto = Roboto({
   weight: ['300', '400', '500', '700'],

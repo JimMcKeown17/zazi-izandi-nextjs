@@ -18,7 +18,7 @@ const source = (relativePath: string) =>
   fs.readFileSync(path.join(process.cwd(), relativePath), "utf8");
 
 test("the Teaching Overview page streams recent and historical reads independently", () => {
-  const page = source("app/pm/education-assistants/page.tsx");
+  const page = source("app/(site)/pm/education-assistants/page.tsx");
   assert.match(page, /getAuthenticatedMobileSession/);
   assert.match(page, /hasCapability\([\s\S]*"mobile\.sessions\.read"/);
   assert.match(page, /canReadRecentTeaching \? \([\s\S]*<RecentTeachingSection/);

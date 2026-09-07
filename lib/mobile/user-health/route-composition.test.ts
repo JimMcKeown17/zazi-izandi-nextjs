@@ -8,7 +8,7 @@ const read = (...segments: string[]) =>
   fs.readFileSync(path.join(root, ...segments), "utf8");
 
 test("the default Overview route does not fetch or render sync receipts", () => {
-  const page = read("app", "mobile-app", "user-health", "page.tsx");
+  const page = read("app", "(site)", "mobile-app", "user-health", "page.tsx");
 
   assert.doesNotMatch(page, /getMobileSyncIncidents/);
   assert.doesNotMatch(page, /SyncIncidentAlerts/);
@@ -17,7 +17,7 @@ test("the default Overview route does not fetch or render sync receipts", () => 
 
 test("Sync diagnostics has a route-backed page and owns its forensic fetch", () => {
   const page = read(
-    "app",
+    "app", "(site)",
     "mobile-app",
     "user-health",
     "sync-diagnostics",
@@ -32,7 +32,7 @@ test("Sync diagnostics has a route-backed page and owns its forensic fetch", () 
 test("only Sync diagnostics opts into the versioned receipt endpoint", () => {
   const api = read("lib", "mobile", "api.ts");
   const action = read(
-    "app",
+    "app", "(site)",
     "mobile-app",
     "user-health",
     "sync-incident-actions.ts"
@@ -60,7 +60,7 @@ test("the Overview route defaults to seven calendar days and accepts Today", () 
 });
 
 test("operational report panels do not inherit the global marketing section padding", () => {
-  const overview = read("app", "mobile-app", "user-health", "page.tsx");
+  const overview = read("app", "(site)", "mobile-app", "user-health", "page.tsx");
   const content = read(
     "components",
     "mobile-app",

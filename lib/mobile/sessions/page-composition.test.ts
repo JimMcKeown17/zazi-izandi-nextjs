@@ -110,7 +110,7 @@ test("a transient report failure exposes an exact retry and support reference", 
 
 test("the page passes the selected school type to the independent review-alert loader", () => {
   const source = fs.readFileSync(
-    path.join(process.cwd(), "app/mobile-app/sessions/page.tsx"),
+    path.join(process.cwd(), "app/(site)/mobile-app/sessions/page.tsx"),
     "utf8"
   );
   assert.match(
@@ -126,7 +126,7 @@ test("the export panel remains available when the rolling report fails", () => {
 
 test("the page capability-gates new exports and removes the misleading heatmap CSV", () => {
   const source = fs.readFileSync(
-    path.join(process.cwd(), "app/mobile-app/sessions/page.tsx"),
+    path.join(process.cwd(), "app/(site)/mobile-app/sessions/page.tsx"),
     "utf8"
   );
   assert.match(source, /hasCapability\(session\.role, "mobile\.csv\.export"\)/);
@@ -137,7 +137,7 @@ test("the page capability-gates new exports and removes the misleading heatmap C
 
 test("the successful report places exports after the charts and immediately before the heatmap", () => {
   const source = fs.readFileSync(
-    path.join(process.cwd(), "app/mobile-app/sessions/page.tsx"),
+    path.join(process.cwd(), "app/(site)/mobile-app/sessions/page.tsx"),
     "utf8"
   );
   const successMarkup = source.split("const { data } = result;")[1];

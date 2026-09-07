@@ -27,7 +27,7 @@ test("the shared Users header capability-gates the EA groups action", () => {
 });
 
 test("the Users page resolves cached auth in parallel and keeps the header on errors", () => {
-  const page = read("app", "mobile-app", "users", "page.tsx");
+  const page = read("app", "(site)", "mobile-app", "users", "page.tsx");
 
   assert.match(page, /Promise\.all/);
   assert.match(page, /getAuthenticatedMobileSession/);
@@ -36,7 +36,7 @@ test("the Users page resolves cached auth in parallel and keeps the header on er
 });
 
 test("the route explicitly delegates EA groups to the behavior-tested handler", () => {
-  const route = read("app", "mobile-app", "exports", "[kind]", "route.ts");
+  const route = read("app", "(site)", "mobile-app", "exports", "[kind]", "route.ts");
   const handler = read("lib", "mobile", "ea-groups-export", "handler.ts");
   const transport = read("lib", "mobile", "ea-groups-export", "transport.ts");
 

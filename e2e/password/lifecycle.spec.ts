@@ -20,7 +20,7 @@ test.beforeAll(async () => {
       contents: `
         import React, { StrictMode } from 'react';
         import { createRoot } from 'react-dom/client';
-        import Page from './app/ea-set-password/page';
+        import Page from './app/(password)/ea-set-password/page';
         const root = createRoot(document.getElementById('root'));
         window.unmountPasswordPage = () => root.unmount();
         root.render(<StrictMode><Page /></StrictMode>);
@@ -94,7 +94,7 @@ test("Strict Mode retains one ready journey after scrub and completes self-servi
   await page.getByLabel("New password", { exact: true }).fill("synthetic-password");
   await page.getByLabel("Confirm new password").fill("synthetic-password");
   await page.getByRole("button", { name: "Save password" }).click();
-  await expect(page.getByText("Return to the Zazi iZandi mobile app", { exact: false })).toBeVisible();
+  await expect(page.getByText("You can now sign in to the Zazi iZandi app.", { exact: false })).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as PasswordFixtureWindow).probe)).toEqual({
     captures: 1, updates: 1, signOuts: 1, hasSession: false, completions: 0,
   });
@@ -149,4 +149,52 @@ test("unconfirmed operation completion discards the session and offers no succes
   expect(await page.evaluate(() => (window as unknown as PasswordFixtureWindow).probe)).toEqual({
     captures: 1, updates: 1, signOuts: 1, hasSession: false, completions: 1,
   });
+});
+
+test('exact proof link waits for recipient, scrubs URL and records invitation password without activation claim',async({page})=>{
+ const calls:string[]=[];
+ await page.route('**/api/mobile/password-setup/*',async route=>{
+  const action=new URL(route.request().url()).pathname.split('/').pop()!;
+  calls.push(action);
+  expect(page.url()).toBe(origin+'/ea-set-password');
+  if(action==='redeem')return route.fulfill({json:{kind:'ready',access_token:'temporary-proof'}});
+  if(action==='submit'){
+   expect(route.request().headers().authorization).toBe('Bearer temporary-proof');
+   expect(route.request().postDataJSON()).toEqual({operation_id:'123e4567-e89b-42d3-a456-426614174000',password:'synthetic-password'});
+   return route.fulfill({json:{kind:'password_accepted',journey:'invite'}});
+  }
+  return route.fulfill({json:{kind:'discarded'}});
+ });
+ await page.goto(origin+'/ea-set-password#operation_id=123e4567-e89b-42d3-a456-426614174000&token_hash='+'b'.repeat(56));
+ await expect(page.getByRole('button',{name:'Continue',exact:true})).toBeVisible();
+ expect(calls).toEqual([]);
+ await expect(page).toHaveURL(origin+'/ea-set-password');
+ await page.getByRole('button',{name:'Continue',exact:true}).click();
+ await page.getByLabel('New password',{exact:true}).fill('synthetic-password');
+ await page.getByLabel('Confirm new password').fill('synthetic-password');
+ await page.getByRole('button',{name:'Save password'}).click();
+ await expect(page.getByText('Your programme manager will confirm when your account is ready.',{exact:false})).toBeVisible();
+ await expect(page.getByText('Return to the Zazi iZandi mobile app',{exact:false})).toHaveCount(0);
+ expect(calls).toEqual(['redeem','submit','discard']);
+ expect(await page.evaluate(()=>Object.keys(localStorage).length+Object.keys(sessionStorage).length)).toBe(0);
+});
+
+test('pagehide clears password fields and prevents BFCache restoration from retaining a usable journey',async({page})=>{
+ const calls:string[]=[];
+ await page.route('**/api/mobile/password-setup/*',async route=>{
+  const action=new URL(route.request().url()).pathname.split('/').pop()!;calls.push(action);
+  return route.fulfill({json:action==='redeem'?{kind:'ready',access_token:'temporary-proof'}:{kind:'discarded'}});
+ });
+ await page.goto(origin+'/ea-set-password#operation_id=123e4567-e89b-42d3-a456-426614174000&token_hash='+'b'.repeat(56));
+ await page.getByRole('button',{name:'Continue',exact:true}).click();
+ await page.getByLabel('New password',{exact:true}).fill('synthetic-password');
+ const values=await page.evaluate(()=>{
+  window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));
+  return [...document.querySelectorAll<HTMLInputElement>('input[type=password]')].map(input=>input.value);
+ });
+ expect(values.every(value=>value==='')).toBe(true);
+ await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
+ await expect(page.getByText('This password link is no longer valid.',{exact:false})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Save password'})).toHaveCount(0);
+ await expect.poll(()=>calls).toEqual(['redeem','discard']);
 });

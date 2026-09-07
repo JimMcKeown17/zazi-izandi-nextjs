@@ -3,8 +3,8 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import PMLayout from "@/app/pm/layout";
-import PMLoading from "@/app/pm/loading";
+import PMLayout from "@/app/(site)/pm/layout";
+import PMLoading from "@/app/(site)/pm/loading";
 
 test("the PM route renders an accessible, visible loading state", () => {
   const html = renderToStaticMarkup(React.createElement(PMLoading));

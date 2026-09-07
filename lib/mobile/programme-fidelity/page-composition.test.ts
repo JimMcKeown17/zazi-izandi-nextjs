@@ -23,7 +23,7 @@ import {
 
 test("the server route guards capability and parallelizes independent aggregate/detail reads", () => {
   const page = fs.readFileSync(
-    path.join(process.cwd(), "app/mobile-app/programme-fidelity/page.tsx"),
+    path.join(process.cwd(), "app/(site)/mobile-app/programme-fidelity/page.tsx"),
     "utf8"
   );
   assert.match(page, /requireMobileSessionsSession/);

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useReducer, useRef } from "react";
 
-import { loadNextMobileSyncIncidentPage } from "@/app/mobile-app/user-health/sync-incident-actions";
+import { loadNextMobileSyncIncidentPage } from "@/app/(site)/mobile-app/user-health/sync-incident-actions";
 import { SyncIncidentList } from "./sync-incident-alerts";
 import {
   createPagerState,
