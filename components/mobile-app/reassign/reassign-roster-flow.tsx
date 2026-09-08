@@ -77,6 +77,7 @@ export function MobileReassignRosterFlow({ candidates }: { candidates: MobileRea
   const searchParams = useSearchParams();
   const requestedJobId = getMobileReassignJobId(searchParams);
   const loadedJobIdRef = useRef<string | null>(null);
+  const mountedRef = useRef(false);
   const [query, setQuery] = useState("");
   const [fromEa, setFromEa] = useState("");
   const [toEa, setToEa] = useState("");
@@ -87,6 +88,7 @@ export function MobileReassignRosterFlow({ candidates }: { candidates: MobileRea
   const [reason, setReason] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [job, setJob] = useState<MobileHandoverJobResponse | null>(null);
+  const [previousJobUrl, setPreviousJobUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [repreview, setRepreview] = useState<MobileReassignRosterPreview | null>(null);
@@ -104,15 +106,33 @@ export function MobileReassignRosterFlow({ candidates }: { candidates: MobileRea
   const selectedClassOptions = preview?.classes ?? [];
   const allUnresolvedDecided = preview?.unresolved.every((entity) => decisions[entity.entity_id]) ?? true;
   const recoveringSavedJob = Boolean(
-    requestedJobId && job?.job.id !== requestedJobId && error === null
+    requestedJobId && job?.job.id !== requestedJobId
   );
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      loadedJobIdRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!requestedJobId || loadedJobIdRef.current === requestedJobId) return;
+    let current = true;
     loadedJobIdRef.current = requestedJobId;
+    setError(null);
+    setPreview(null);
+    setRepreview(null);
+    setConfirmOpen(false);
     void loadMobileReassignment(requestedJobId).then((result) => {
+      if (!current) return;
       if (!result.ok) {
         setError(result.message);
+        return;
+      }
+      if (result.data.job.id !== requestedJobId) {
+        setError("The saved handover did not match this link. Reload the page to try again.");
         return;
       }
       setJob(result.data);
@@ -122,82 +142,148 @@ export function MobileReassignRosterFlow({ candidates }: { candidates: MobileRea
       setScopeClassId(result.data.job.scope_class_id);
       setReason(result.data.job.reason);
     }).catch(() => {
-      setError("The saved handover could not be loaded.");
+      if (current) setError("The saved handover could not be loaded. Reload the page to try again.");
     });
+    return () => {
+      current = false;
+      if (loadedJobIdRef.current === requestedJobId) loadedJobIdRef.current = null;
+    };
   }, [requestedJobId]);
 
+  function startAnotherHandover() {
+    if (!job || !isMobileHandoverTerminal(job) || busy || recoveringSavedJob) return;
+    setPreviousJobUrl(getMobileReassignJobUrl(pathname, searchParams, job.job.id));
+    const nextQuery = new URLSearchParams(searchParams.toString());
+    nextQuery.delete("job");
+    router.replace(nextQuery.size ? `${pathname}?${nextQuery}` : pathname);
+    loadedJobIdRef.current = null;
+    setJob(null);
+    setQuery("");
+    resetDraft("");
+  }
+
+  function resetDraft(nextFromEa: string) {
+    setFromEa(nextFromEa);
+    setToEa("");
+    setScope("roster");
+    setScopeClassId(null);
+    setPreview(null);
+    setRepreview(null);
+    setDecisions({});
+    setReason("");
+    setConfirmOpen(false);
+    setError(null);
+  }
+
   async function loadPreview(nextScope = scope, nextClassId = scopeClassId) {
+    if (busy || job || recoveringSavedJob) return;
     if (!fromEa) return setError("Choose the departing EA before previewing the roster.");
     if (!UUID_PATTERN.test(fromEa)) return setError("Enter a valid departing EA UUID.");
     setBusy(true);
     setError(null);
+    setPreview(null);
     setRepreview(null);
-    const result = await previewMobileReassignRoster({
-      fromEa,
-      scope: nextScope,
-      scopeClassId: nextClassId,
-    });
-    setBusy(false);
-    if (!result.ok) return setError(result.message);
-    setScope(nextScope);
-    setScopeClassId(nextClassId);
-    setPreview(result.data);
-    setDecisions({});
+    setConfirmOpen(false);
+    try {
+      const result = await previewMobileReassignRoster({ fromEa, scope: nextScope, scopeClassId: nextClassId });
+      if (!result.ok) return setError(result.message);
+      if (result.data.from_ea !== fromEa.toLowerCase() || result.data.scope !== nextScope || result.data.scope_class_id !== nextClassId) {
+        return setError("The preview did not match the requested roster. Please preview it again.");
+      }
+      setScope(nextScope);
+      setScopeClassId(nextClassId);
+      setPreview(result.data);
+      setDecisions({});
+    } catch {
+      setError("The roster could not be loaded. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function createJob() {
-    if (!preview || !fromEa || !toEa) return;
+    if (busy || job || recoveringSavedJob || !preview || !fromEa || !toEa) return;
     if (!UUID_PATTERN.test(fromEa) || !UUID_PATTERN.test(toEa)) {
       return setError("Enter valid departing and receiving EA UUIDs.");
     }
+    const sourceJobId = loadedJobIdRef.current;
     setBusy(true);
     setError(null);
-    const result = await createMobileReassignment({
-      fromEa,
-      toEa,
-      scope,
-      scopeClassId,
-      reason,
-      unresolvedDecisions: preview.unresolved.map((entity) => ({
-        entityKind: entity.entity_kind,
-        entityId: entity.entity_id,
-        decision: decisions[entity.entity_id]!,
-      })),
-    });
-    setBusy(false);
-    setConfirmOpen(false);
-    if (!result.ok) {
-      if (result.code === "handover_job_already_active") {
-        return setError("A handover for one of these EAs is already active. Recover the existing job from its handover link (the URL containing ?job=...) before starting another.");
+    try {
+      const result = await createMobileReassignment({
+        fromEa,
+        toEa,
+        scope,
+        scopeClassId,
+        reason,
+        unresolvedDecisions: preview.unresolved.map((entity) => ({
+          entityKind: entity.entity_kind,
+          entityId: entity.entity_id,
+          decision: decisions[entity.entity_id]!,
+        })),
+      });
+      if (!mountedRef.current || loadedJobIdRef.current !== sourceJobId) return;
+      if (!result.ok) {
+        if (result.code === "handover_job_already_active") {
+          return setError("A handover for one of these EAs is already active. Recover the existing job from its handover link (the URL containing ?job=...) before starting another.");
+        }
+        return setError(result.message);
       }
-      return setError(result.message);
+      setJob(result.data);
+      loadedJobIdRef.current = result.data.job.id;
+      router.replace(getMobileReassignJobUrl(pathname, searchParams, result.data.job.id));
+      await runContinuations(result.data);
+    } catch {
+      if (mountedRef.current && loadedJobIdRef.current === sourceJobId) setError("The server response was lost. Check for an existing handover before trying to create another.");
+    } finally {
+      if (mountedRef.current) { setBusy(false); setConfirmOpen(false); }
     }
-    setJob(result.data);
-    loadedJobIdRef.current = result.data.job.id;
-    router.replace(getMobileReassignJobUrl(pathname, searchParams, result.data.job.id));
-    await runContinuations(result.data);
   }
 
   async function runContinuations(initial: MobileHandoverJobResponse) {
+    const jobId = initial.job.id;
+    if (loadedJobIdRef.current !== jobId) return;
     setBusy(true);
     setError(null);
-    const result = await runMobileHandoverContinuations(
-      initial,
-      executeMobileReassignment,
-      setJob
-    );
-    if (result.error) setError(result.error.message);
-    setBusy(false);
+    try {
+      const result = await runMobileHandoverContinuations(
+        initial,
+        async (id) => {
+          if (loadedJobIdRef.current !== jobId) {
+            return { ok: false, status: 409, code: "invalid_handover_request", message: "The selected handover changed." };
+          }
+          return executeMobileReassignment(id);
+        },
+        (updated) => { if (loadedJobIdRef.current === jobId) setJob(updated); }
+      );
+      if (loadedJobIdRef.current === jobId && result.error) setError(result.error.message);
+    } catch {
+      if (loadedJobIdRef.current === jobId) setError("The handover response was lost. Keep this link and refresh to check its progress before continuing.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function confirmEmptyRoster() {
-    if (!fromEa) return;
+    if (!job || busy || recoveringSavedJob) return;
+    const jobId = job.job.id;
+    const sourceEa = job.job.from_ea_user_id;
     setBusy(true);
     setError(null);
-    const result = await previewMobileReassignRoster({ fromEa, scope: "roster" });
-    setBusy(false);
-    if (!result.ok) return setError(result.message);
-    setRepreview(result.data);
+    setRepreview(null);
+    try {
+      const result = await previewMobileReassignRoster({ fromEa: sourceEa, scope: "roster" });
+      if (loadedJobIdRef.current !== jobId) return;
+      if (!result.ok) return setError(result.message);
+      if (result.data.from_ea !== sourceEa || result.data.scope !== "roster" || result.data.scope_class_id !== null) {
+        return setError("The refreshed preview did not match the departing roster. Please try again.");
+      }
+      setRepreview(result.data);
+    } catch {
+      if (loadedJobIdRef.current === jobId) setError("The departing roster could not be rechecked. Keep this handover link and try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -210,6 +296,8 @@ export function MobileReassignRosterFlow({ candidates }: { candidates: MobileRea
         </p>
       </header>
 
+      {previousJobUrl ? <p className="text-sm text-slate-600"><a href={previousJobUrl} className="font-medium text-primary underline">Previous handover</a> — keep this link to return to its results.</p> : null}
+
       {error ? <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -218,14 +306,14 @@ export function MobileReassignRosterFlow({ candidates }: { candidates: MobileRea
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <input id="ea-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search EA name, school, or UUID" className="w-full rounded-md border border-slate-300 py-2 pl-9 pr-3 text-sm" />
         </div>
-        <select aria-label="Departing EA" value={fromEa} onChange={(event) => { setFromEa(event.target.value); setPreview(null); setJob(null); }} className="mt-3 w-full rounded-md border border-slate-300 bg-white p-2 text-sm">
+        <select aria-label="Departing EA" disabled={busy || recoveringSavedJob || Boolean(job)} value={fromEa} onChange={(event) => resetDraft(event.target.value)} className="mt-3 w-full rounded-md border border-slate-300 bg-white p-2 text-sm">
           <option value="">Choose the departing EA</option>
           {filteredCandidates.map((candidate) => <option key={candidate.userId} value={candidate.userId}>{candidate.displayName} — {candidate.school}</option>)}
         </select>
-        <p className="mt-2 text-xs text-slate-500">If their Clerk account is already deactivated and absent from this list, paste their UUID below.</p>
-        <input aria-label="Departing EA UUID" value={fromEa} onChange={(event) => { setFromEa(event.target.value); setPreview(null); setJob(null); }} placeholder="Departing EA UUID" className="mt-1 w-full rounded-md border border-slate-300 p-2 font-mono text-xs" />
+        <p className="mt-2 text-xs text-slate-500">If the EA is missing from this list, paste their mobile app user UUID below.</p>
+        <input aria-label="Departing EA UUID" disabled={busy || recoveringSavedJob || Boolean(job)} value={fromEa} onChange={(event) => resetDraft(event.target.value)} placeholder="Departing EA UUID" className="mt-1 w-full rounded-md border border-slate-300 p-2 font-mono text-xs" />
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button type="button" onClick={() => void loadPreview()} disabled={busy || recoveringSavedJob || !fromEa}>{busy || recoveringSavedJob ? "Loading…" : "Preview roster"}</Button>
+          <Button type="button" onClick={() => void loadPreview()} disabled={busy || recoveringSavedJob || Boolean(job) || !fromEa}>{busy || recoveringSavedJob ? "Loading…" : "Preview roster"}</Button>
           {preview?.classes.length ? <select aria-label="Roster scope" value={scope === "class" ? scopeClassId ?? "" : "roster"} onChange={(event) => { const value = event.target.value; void loadPreview(value === "roster" ? "roster" : "class", value === "roster" ? null : value); }} className="rounded-md border border-slate-300 bg-white px-3 text-sm" disabled={busy}>
             <option value="roster">Whole roster</option>
             {selectedClassOptions.map((entity) => <option key={entity.entity_id} value={entity.entity_id}>One class: {entity.name || entity.entity_id}</option>)}
@@ -233,7 +321,7 @@ export function MobileReassignRosterFlow({ candidates }: { candidates: MobileRea
         </div>
       </section>
 
-      {preview ? <>
+      {preview && !job ? <>
         <section className="rounded-xl border border-blue-200 bg-blue-50 p-4">
           <h2 className="font-semibold text-slate-900">Preview for {preview.from_ea_name || fromCandidate?.displayName || preview.from_ea}</h2>
           <p className="mt-1 text-sm text-slate-700">{preview.counts.classes} classes · {preview.counts.groups} groups · {preview.counts.children} children · {preview.counts.scalar_only} scalar-only records · {preview.counts.unresolved} unresolved</p>
@@ -276,9 +364,12 @@ export function MobileReassignRosterFlow({ candidates }: { candidates: MobileRea
         <ul className="mt-4 space-y-2">
           {job.items.map((item) => <li key={`${item.entity_kind}:${item.entity_id}`} className="rounded-md border border-slate-200 p-3 text-sm"><span className="font-medium text-slate-900">{item.entity_kind}: {item.entity_id}</span><span className="ml-2 text-slate-600">{item.state}</span><p className="mt-1 text-slate-600">{REFUSAL_COPY[item.refusal_code] ?? item.message}</p>{item.remaining_foreign_claims && item.remaining_foreign_claims > 0 ? <p className="mt-1 text-amber-800">This child still has {item.remaining_foreign_claims} foreign claim{item.remaining_foreign_claims === 1 ? "" : "s"}.</p> : null}</li>)}
         </ul>
-        {!isMobileHandoverTerminal(job) ? <div className="mt-4"><Button type="button" onClick={() => void runContinuations(job)} disabled={busy || job.job.in_flight}><RefreshCw className="mr-2 h-4 w-4" />Continue handover</Button>{job.job.in_flight ? <p className="mt-2 text-xs text-slate-500">Another continuation is currently running. Refresh shortly to recover its latest state.</p> : null}</div> : null}
-        {isMobileHandoverTerminal(job) ? <div className="mt-5 rounded-lg border border-blue-200 bg-blue-50 p-4"><h3 className="flex items-center gap-2 font-semibold text-blue-950"><CheckCircle2 className="h-5 w-5" />Confirm the departing roster is now empty</h3><p className="mt-1 text-sm text-blue-900">Re-run the whole-roster preview. This catches any child that briefly had no assignment history when this job was created.</p><Button type="button" variant="outline" className="mt-3" onClick={() => void confirmEmptyRoster()} disabled={busy}>Re-run roster preview</Button>{repreview ? <p className="mt-3 text-sm text-blue-950">The refreshed preview contains {repreview.counts.classes + repreview.counts.groups + repreview.counts.children + repreview.counts.scalar_only + repreview.counts.unresolved} record{repreview.counts.classes + repreview.counts.groups + repreview.counts.children + repreview.counts.scalar_only + repreview.counts.unresolved === 1 ? "" : "s"}. {repreview.counts.classes + repreview.counts.groups + repreview.counts.children + repreview.counts.scalar_only + repreview.counts.unresolved === 0 ? "The roster is empty." : "Create a follow-up job for any remaining records."}</p> : null}</div> : null}
-        <p className="mt-5 text-sm text-slate-600">If this EA is leaving permanently, also deactivate their account in <a href="https://dashboard.clerk.com" target="_blank" rel="noreferrer" className="font-medium text-primary underline">Clerk</a>.</p>
+        {!isMobileHandoverTerminal(job) ? <div className="mt-4"><Button type="button" onClick={() => void runContinuations(job)} disabled={busy || recoveringSavedJob || job.job.in_flight}><RefreshCw className="mr-2 h-4 w-4" />Continue handover</Button>{job.job.in_flight ? <p className="mt-2 text-xs text-slate-500">Another continuation is currently running. Refresh shortly to recover its latest state.</p> : null}</div> : null}
+        {isMobileHandoverTerminal(job) ? <div className="mt-5 rounded-lg border border-blue-200 bg-blue-50 p-4"><h3 className="flex items-center gap-2 font-semibold text-blue-950"><CheckCircle2 className="h-5 w-5" />Confirm the departing roster is now empty</h3><p className="mt-1 text-sm text-blue-900">Re-run the whole-roster preview. This catches any child that briefly had no assignment history when this job was created.</p><Button type="button" variant="outline" className="mt-3" onClick={() => void confirmEmptyRoster()} disabled={busy || recoveringSavedJob}>Re-run roster preview</Button>{repreview ? <p className="mt-3 text-sm text-blue-950">The refreshed preview contains {repreview.counts.classes + repreview.counts.groups + repreview.counts.children + repreview.counts.scalar_only + repreview.counts.unresolved} record{repreview.counts.classes + repreview.counts.groups + repreview.counts.children + repreview.counts.scalar_only + repreview.counts.unresolved === 1 ? "" : "s"}. {repreview.counts.classes + repreview.counts.groups + repreview.counts.children + repreview.counts.scalar_only + repreview.counts.unresolved === 0 ? "The roster is empty." : "Create a follow-up job for any remaining records."}</p> : null}</div> : null}
+        {isMobileHandoverTerminal(job) ? <Button type="button" variant="outline" className="mt-4" onClick={startAnotherHandover} disabled={busy || recoveringSavedJob}>Start another handover</Button> : null}
+        <p className="mt-5 text-sm text-slate-600">{job.job.status === "complete"
+          ? "This handover does not retire the departing EA’s mobile account. Before an administrator retires it, re-check that the departing roster is empty and confirm the successor can sign in and see the transferred roster in the mobile app."
+          : "Keep the departing EA’s mobile account active while this handover needs attention."}</p>
       </section> : null}
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
