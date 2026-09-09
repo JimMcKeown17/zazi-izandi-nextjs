@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 
+import { PasswordRecoveryPanel } from "@/components/mobile-app/user-profile/password-recovery-panel";
+import { getAuthenticatedMobileSession } from "@/lib/mobile/auth";
+import { passwordRecoveryEnabledFor } from "@/lib/mobile/password-recovery-access";
+import { hasCapability } from "@/lib/mobile/capabilities";
+import { validateProfileUserId } from "@/lib/mobile/user-profile/request";
+
 import { ClockHistoryTable } from "@/components/mobile-app/user-profile/clock-history-table";
 import { EvidencePanel } from "@/components/mobile-app/user-profile/evidence-panel";
 import { LifetimeSummary } from "@/components/mobile-app/user-profile/lifetime-summary";
@@ -56,6 +62,9 @@ export default async function MobileUserProfilePage({
   }
 
   const profile = result.data;
+  if (profile.user_id !== validateProfileUserId(id)) return <ProfileDataQuality />;
+  const session = await getAuthenticatedMobileSession();
+  const canRecover = hasCapability(session.role, "mobile.accounts.recover") && passwordRecoveryEnabledFor(profile.user_id);
 
   return (
     <div
@@ -70,6 +79,12 @@ export default async function MobileUserProfilePage({
       </Link>
 
       <ProfileHeader profile={profile} />
+      {canRecover ? (
+        <PasswordRecoveryPanel
+          userId={profile.user_id}
+          displayName={profile.identity?.display_name ?? profile.email ?? "this EA"}
+        />
+      ) : null}
       <EvidencePanel profile={profile} />
       <LifetimeSummary totals={profile.lifetime.totals} />
       <ProfileWeeklyTrends series={profile.weekly} />

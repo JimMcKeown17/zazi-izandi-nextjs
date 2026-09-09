@@ -13,7 +13,8 @@
     "test:e2e:teaching-overview": "node scripts/run-teaching-overview-e2e.mjs",
     "seed:eas": "tsx scripts/seed-clerk-eas.ts",
     "test:e2e:ea-set-password": "playwright test --config playwright.password.config.ts",
-    "test:reassign:component": "node --test e2e/reassign/component.test.mjs"
+    "test:reassign:component": "node --test e2e/reassign/component.test.mjs",
+    "test:password-recovery": "node --test e2e/password-recovery/*.test.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.53",
