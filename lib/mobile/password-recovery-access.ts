@@ -10,3 +10,8 @@ export function passwordRecoveryEnabledFor(userId: string): boolean {
   const scope = process.env.ZZ_PASSWORD_RECOVERY_SCOPE;
   return scope === "all" || (typeof scope === "string" && canonicalOperationId(scope) === userId);
 }
+
+/** The controlled test page is unavailable during a general rollout. */
+export function controlledPasswordRecoveryUserId(): string | null {
+  return canonicalOperationId(process.env.ZZ_PASSWORD_RECOVERY_SCOPE);
+}

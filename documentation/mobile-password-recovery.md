@@ -21,11 +21,18 @@ password is accepted.
 - `all`: permit the reviewed general rollout, still subject to both capability
   checks. Do not configure this before the controlled hosted journey passes.
 
-No scope value was configured or deployed by this local build. Before the first
-hosted test, prepare the approved synthetic account through the legacy authority
-guard and verify its test marker, exact UUID and empty programme graph. Configure
-only that UUID, deploy the reviewed Next source, and use the tester's ordinary
-Clerk-authenticated browser. Do not manufacture a staff bearer from a service key
+The original profile panel is for eligible real reporting profiles. Django
+deliberately excludes synthetic accounts before the profile RPC, and handover
+successor eligibility relies on that filter. The controlled synthetic check uses
+`/mobile-app/password-recovery-test`: it independently requires the recovery
+capability, takes only the server-configured canonical UUID, and is unavailable
+for unset/invalid or `all` scope. It does not read a reporting profile or relax
+reporting/successor exclusion. Its page load performs no recovery request.
+
+Before the first hosted test, prepare the approved synthetic account through the
+legacy authority guard and verify its test marker, exact UUID and empty programme
+graph. Configure only that UUID, deploy the reviewed source, and use the tester's
+ordinary Clerk-authenticated browser at the controlled test route. Do not manufacture a staff bearer from a service key
 or write synthetic Clerk provenance into a hosted password operation.
 
 ## Request and delivery behavior
@@ -63,3 +70,8 @@ Actual Clerk-authenticated Server Action transport, hosted SMTP/inbox delivery,
 redemption/password completion and ordinary installed-mobile login remain separate
 controlled checks. This surface creates a recovery operation for an existing
 account only; it does not prove the future provisioning saga or registry activation.
+
+The original 42-test receipt is source-scoped to commit `4acfaae`. The additional
+controlled-page receipt records the ten new page tests and final 52-test suite.
+Its tests execute the real capability/auth helper with Clerk/navigation boundaries
+controlled and reject any reporting API dependency.
