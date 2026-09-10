@@ -42,6 +42,19 @@ test("clock reads include junior staff but GPS-bearing exports do not", () => {
   }
 });
 
+test("session downloads are available to all reporting staff only", () => {
+  for (const role of ALL_MOBILE_ROLES) {
+    assert.equal(
+      hasCapability(role, "mobile.sessions.export"),
+      ["junior_staff", "senior_staff", "admin", "zz_data_manager"].includes(role),
+      role
+    );
+  }
+  for (const role of [undefined, null, "unknown_role"]) {
+    assert.equal(hasCapability(role, "mobile.sessions.export"), false);
+  }
+});
+
 test("the email-bearing health board is limited to senior operational roles", () => {
   for (const role of ["senior_staff", "admin", "zz_data_manager"]) {
     assert.equal(hasCapability(role, "mobile.user_health.read"), true, role);

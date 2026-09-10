@@ -124,7 +124,7 @@ export async function handleSessionExport(
   const session = await dependencies.getSession();
   if (!session.userId) return jsonResponse({ error: "authentication required" }, 401);
   const role = session.sessionClaims?.metadata?.role;
-  if (!hasCapability(role, "mobile.csv.export")) {
+  if (!hasCapability(role, "mobile.sessions.export")) {
     return jsonResponse({ error: "insufficient role" }, 403);
   }
   const filters = parseFilters(request, dependencies.today?.() ?? getSastToday());

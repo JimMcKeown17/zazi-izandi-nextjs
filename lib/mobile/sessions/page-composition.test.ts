@@ -129,7 +129,7 @@ test("the page capability-gates new exports and removes the misleading heatmap C
     path.join(process.cwd(), "app/(site)/mobile-app/sessions/page.tsx"),
     "utf8"
   );
-  assert.match(source, /hasCapability\(session\.role, "mobile\.csv\.export"\)/);
+  assert.match(source, /hasCapability\(session\.role, "mobile\.sessions\.export"\)/);
   assert.match(source, /<SessionExportsPanel/);
   assert.match(source, /exportPanel=/);
   assert.doesNotMatch(source, /exportFilenamePrefix=/);

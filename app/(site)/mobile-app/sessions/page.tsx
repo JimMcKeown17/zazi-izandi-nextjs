@@ -59,7 +59,7 @@ export default async function MobileSessionsPage({
     getMobileSessionsActivity({ days, schoolId, schoolType }),
     getMobileSessionReviewFlags({ schoolId, schoolType }),
   ]);
-  const exportPanel = hasCapability(session.role, "mobile.csv.export") ? (
+  const exportPanel = hasCapability(session.role, "mobile.sessions.export") ? (
     <SessionExportsPanel
       today={getSastToday()}
       schoolId={schoolId}

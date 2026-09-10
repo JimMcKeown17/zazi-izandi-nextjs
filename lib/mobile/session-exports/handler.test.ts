@@ -23,7 +23,7 @@ function request(
 }
 
 function session(
-  role: "senior_staff" | "admin" | "zz_data_manager" | "junior_staff",
+  role: "senior_staff" | "admin" | "zz_data_manager" | "junior_staff" | "funder" | "ea" | "teacher",
   userId: string | null = "staff_1",
   onToken?: () => void
 ): SessionExportSession {
@@ -84,7 +84,7 @@ function successHeaders(
 }
 
 test("authorization and local range validation happen before token or Django", async () => {
-  for (const currentSession of [session("senior_staff", null), session("junior_staff")]) {
+  for (const currentSession of [session("senior_staff", null), session("funder"), session("ea"), session("teacher")]) {
     let upstreamCalls = 0;
     const response = await handleSessionExport(request(), PAYROLL_EXPORT_KIND, {
       getSession: async () => currentSession,
@@ -118,36 +118,38 @@ test("authorization and local range validation happen before token or Django", a
 });
 
 test("authorized requests preserve filters and accept only fully attested CSV", async () => {
-  for (const kind of [PAYROLL_EXPORT_KIND, DETAIL_EXPORT_KIND] as const) {
-    let path = "";
-    let authorization = "";
-    const response = await handleSessionExport(
-      request(kind, "start_date=2026-02-20&end_date=2026-02-21&school_type=primary"),
-      kind,
-      {
-        getSession: async () => session("senior_staff"),
-        fetchUpstream: async (nextPath, init) => {
-          path = nextPath;
-          authorization = new Headers(init.headers).get("Authorization") ?? "";
-          return upstreamSuccess(kind);
-        },
-        today: () => "2026-03-20",
-      }
-    );
-    assert.equal(response.status, 200);
-    assert.match(path, new RegExp(`/api/mobile/exports/sessions/${sessionExportConfig(kind).djangoSlug}/`));
-    assert.match(path, /start_date=2026-02-20/);
-    assert.match(path, /end_date=2026-02-21/);
-    assert.match(path, /school_type=primary/);
-    assert.equal(authorization, "Bearer signed-token");
-    assert.equal(response.headers.get("X-Zazi-Data-As-Of"), timestamp);
-    assert.equal(response.headers.get("Cache-Control"), "private, no-store, max-age=0");
-    assert.deepEqual(
-      new Uint8Array(await response.arrayBuffer()),
-      new TextEncoder().encode(
-        kind === PAYROLL_EXPORT_KIND ? payrollCsv() : detailCsv()
-      )
-    );
+  for (const role of ["junior_staff", "senior_staff", "admin", "zz_data_manager"] as const) {
+    for (const kind of [PAYROLL_EXPORT_KIND, DETAIL_EXPORT_KIND] as const) {
+      let path = "";
+      let authorization = "";
+      const response = await handleSessionExport(
+        request(kind, "start_date=2026-02-20&end_date=2026-02-21&school_type=primary"),
+        kind,
+        {
+          getSession: async () => session(role),
+          fetchUpstream: async (nextPath, init) => {
+            path = nextPath;
+            authorization = new Headers(init.headers).get("Authorization") ?? "";
+            return upstreamSuccess(kind);
+          },
+          today: () => "2026-03-20",
+        }
+      );
+      assert.equal(response.status, 200);
+      assert.match(path, new RegExp(`/api/mobile/exports/sessions/${sessionExportConfig(kind).djangoSlug}/`));
+      assert.match(path, /start_date=2026-02-20/);
+      assert.match(path, /end_date=2026-02-21/);
+      assert.match(path, /school_type=primary/);
+      assert.equal(authorization, "Bearer signed-token");
+      assert.equal(response.headers.get("X-Zazi-Data-As-Of"), timestamp);
+      assert.equal(response.headers.get("Cache-Control"), "private, no-store, max-age=0");
+      assert.deepEqual(
+        new Uint8Array(await response.arrayBuffer()),
+        new TextEncoder().encode(
+          kind === PAYROLL_EXPORT_KIND ? payrollCsv() : detailCsv()
+        )
+      );
+    }
   }
 });
 

@@ -12,6 +12,7 @@ export type Role = (typeof ALL_MOBILE_ROLES)[number];
 
 export type MobileCapability =
   | "mobile.sessions.read"
+  | "mobile.sessions.export"
   | "mobile.time_entries.read"
   | "mobile.csv.export"
   | "mobile.user_health.read"
@@ -34,9 +35,14 @@ const MOBILE_ACCOUNT_ADMIN_CAPABILITIES = [
 ] as const satisfies readonly MobileCapability[];
 
 export const ROLE_CAPABILITIES = {
-  junior_staff: ["mobile.sessions.read", "mobile.time_entries.read"],
+  junior_staff: [
+    "mobile.sessions.read",
+    "mobile.sessions.export",
+    "mobile.time_entries.read",
+  ],
   senior_staff: [
     "mobile.sessions.read",
+    "mobile.sessions.export",
     "mobile.time_entries.read",
     "mobile.csv.export",
     "mobile.user_health.read",
@@ -44,6 +50,7 @@ export const ROLE_CAPABILITIES = {
   ],
   admin: [
     "mobile.sessions.read",
+    "mobile.sessions.export",
     "mobile.time_entries.read",
     "mobile.csv.export",
     "mobile.user_health.read",
@@ -53,6 +60,7 @@ export const ROLE_CAPABILITIES = {
   ],
   zz_data_manager: [
     "mobile.sessions.read",
+    "mobile.sessions.export",
     "mobile.time_entries.read",
     "mobile.csv.export",
     "mobile.user_health.read",

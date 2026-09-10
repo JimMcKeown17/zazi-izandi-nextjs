@@ -23,6 +23,7 @@ All pages follow the same pattern: `<Header /> <main className="pt-20"> ... </ma
 | `/mobile-app/attendance` | `app/mobile-app/attendance/page.tsx` | Shift-level Clock In/Out activity, open/automatic-clock-out evidence, duration totals, and current-roster school filters | Protected: `mobile.time_entries.read` | Dynamic, uncached Django API |
 | `/mobile-app/user-health` | `app/mobile-app/user-health/page.tsx` | Row-level onboarding and operational-health evidence for youth identity, login, device signal, expected data, and app activity | Protected: `mobile.user_health.read` | Dynamic, uncached Django API |
 | `/mobile-app/exports/time-entries` | `app/mobile-app/exports/[kind]/route.ts` | Same-origin CSV download proxy for filtered clock entries, including restricted operational coordinates | Protected: `mobile.csv.export` | Dynamic, uncached Django API |
+| `/mobile-app/exports/sessions-payroll-summary` and `/mobile-app/exports/sessions-detail` | `app/(site)/mobile-app/exports/[kind]/route.ts` | Payroll summary and session-detail CSV downloads; available to junior staff, senior staff, admins, and data managers | Protected: `mobile.sessions.export` | Dynamic, uncached Django API |
 
 ## Protected Routes
 
