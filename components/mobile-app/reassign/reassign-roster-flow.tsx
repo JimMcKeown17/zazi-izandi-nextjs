@@ -71,7 +71,10 @@ function RosterList({ title, entities }: { title: string; entities: MobileReassi
   );
 }
 
-export function MobileReassignRosterFlow({ candidates }: { candidates: MobileReassignEaOption[] }) {
+export function MobileReassignRosterFlow({ candidates, candidatesUnavailable = false }: {
+  candidates: MobileReassignEaOption[];
+  candidatesUnavailable?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -300,6 +303,12 @@ export function MobileReassignRosterFlow({ candidates }: { candidates: MobileRea
 
       {error ? <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
 
+      {candidatesUnavailable ? <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <p className="font-semibold">The EA list could not be loaded.</p>
+        <p className="mt-1">Try again to load the list, or use a known mobile app user UUID below. Saved handovers can still be opened using their links.</p>
+        <Button type="button" variant="outline" className="mt-3" onClick={() => router.refresh()} disabled={busy || recoveringSavedJob}>Retry EA list</Button>
+      </div> : null}
+
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <label className="block text-sm font-semibold text-slate-800" htmlFor="ea-search">Find the departing EA</label>
         <div className="relative mt-2">
@@ -310,6 +319,11 @@ export function MobileReassignRosterFlow({ candidates }: { candidates: MobileRea
           <option value="">Choose the departing EA</option>
           {filteredCandidates.map((candidate) => <option key={candidate.userId} value={candidate.userId}>{candidate.displayName} — {candidate.school}</option>)}
         </select>
+        {!candidatesUnavailable && filteredCandidates.length === 0 ? <p role="status" className="mt-2 text-sm text-slate-600">
+          {candidates.length === 0
+            ? "No EAs are available in the current reporting list."
+            : "No EAs match this search. Try another name, school, or UUID."}
+        </p> : null}
         <p className="mt-2 text-xs text-slate-500">If the EA is missing from this list, paste their mobile app user UUID below.</p>
         <input aria-label="Departing EA UUID" disabled={busy || recoveringSavedJob || Boolean(job)} value={fromEa} onChange={(event) => resetDraft(event.target.value)} placeholder="Departing EA UUID" className="mt-1 w-full rounded-md border border-slate-300 p-2 font-mono text-xs" />
         <div className="mt-4 flex flex-wrap gap-2">

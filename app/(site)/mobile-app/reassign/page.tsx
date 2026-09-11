@@ -14,5 +14,5 @@ export default async function MobileReassignRosterPage() {
       }))
     : [];
 
-  return <MobileReassignRosterFlow candidates={candidates} />;
+  return <MobileReassignRosterFlow candidates={candidates} candidatesUnavailable={!result.ok} />;
 }

@@ -21,7 +21,7 @@ const listeners=new Set();
 window.navigateQuery=query=>{window.query=query;listeners.forEach(fn=>fn());};
 export function usePathname(){return '/mobile-app/reassign';}
 export function useSearchParams(){return new URLSearchParams(useSyncExternalStore(fn=>{listeners.add(fn);return()=>listeners.delete(fn)},()=>window.query));}
-export function useRouter(){return {replace(url){window.calls.navigation.push(url);const query=url.split('?')[1]||'';if(window.deferNavigation){window.finishNavigation=()=>window.navigateQuery(query);return;}window.navigateQuery(query);}};}
+export function useRouter(){return {refresh(){window.calls.refresh++;},replace(url){window.calls.navigation.push(url);const query=url.split('?')[1]||'';if(window.deferNavigation){window.finishNavigation=()=>window.navigateQuery(query);return;}window.navigateQuery(query);}};}
 `;
 const entry=`
 import React from 'react';import {createRoot} from 'react-dom/client';
@@ -31,8 +31,8 @@ window.fixtureJob=structuredClone(VALID_REASSIGN_JOB_PAYLOAD);
 window.fixtureJob.job.status=window.jobStatus;window.fixtureJob.job.retryable=window.jobStatus==='running';
 window.fixtureJob.items[0].state=window.jobStatus==='complete'?'transferred':'pending';
 window.fixturePreview=structuredClone(VALID_REASSIGN_ROSTER_PAYLOAD);window.fixturePreview.from_ea_name='EA A';
-window.calls={load:[],preview:[],create:[],execute:[],navigation:[]};window.pendingPreviews=[];window.pendingLoads=[];
-const root=createRoot(document.getElementById('root'));window.unmount=()=>root.unmount();const element=(<MobileReassignRosterFlow candidates={[
+window.calls={load:[],preview:[],create:[],execute:[],navigation:[],refresh:0};window.pendingPreviews=[];window.pendingLoads=[];
+const root=createRoot(document.getElementById('root'));window.unmount=()=>root.unmount();const element=(<MobileReassignRosterFlow candidatesUnavailable={window.candidatesUnavailable} candidates={window.emptyCandidates?[]:[
  {userId:'${EA_A}',displayName:'EA A',school:'Fixture school',employmentStatus:'active'},
  {userId:'${EA_B}',displayName:'EA B',school:'Fixture school',employmentStatus:'active'}
 ]}/>);root.render(window.strictMode?<React.StrictMode>{element}</React.StrictMode>:element);
@@ -46,12 +46,12 @@ before(async()=>{
  }}]});bundle=built.outputFiles[0].text;browser=await chromium.launch({headless:true});
 });
 after(async()=>{await browser?.close()});
-async function mount(t,{query='',jobStatus='complete',deferLoads=false,deferNavigation=false,strictMode=false}={}){
+async function mount(t,{query='',jobStatus='complete',deferLoads=false,deferNavigation=false,strictMode=false,candidatesUnavailable=false,emptyCandidates=false}={}){
  const page=await browser.newPage();page.setDefaultTimeout(3000);let requests=0;
  await page.route('**/*',route=>{requests++;return route.abort()});
  t.after(async()=>{await page.close();assert.equal(requests,0,'No hosted/browser network allowed')});
  await page.goto('about:blank');await page.setContent('<div id="root"></div>');
- await page.evaluate(v=>Object.assign(window,v),{query,jobStatus,deferLoads,deferNavigation,strictMode});await page.addScriptTag({content:bundle});
+ await page.evaluate(v=>Object.assign(window,v),{query,jobStatus,deferLoads,deferNavigation,strictMode,candidatesUnavailable,emptyCandidates});await page.addScriptTag({content:bundle});
  await page.getByRole('heading',{name:'EA left — reassign roster'}).waitFor();return page;
 }
 async function resolvePreview(page,index=0){
@@ -212,4 +212,32 @@ test('unmount after creating a job stops subsequent automatic continuation passe
  await page.evaluate(()=>{const data=structuredClone(window.twoItemJob);data.job.status='running';data.job.retryable=true;data.job.progress_cursor=0;data.items[0].state='transferred';window.pendingExecs[0].resolve({ok:true,data});});
  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
  assert.equal(await page.evaluate(()=>window.calls.execute.length),1);
+});
+
+
+test('unavailable EA list is explicit and retry preserves draft and saved-job recovery',async t=>{
+ const page=await mount(t,{candidatesUnavailable:true,emptyCandidates:true});
+ await page.getByRole('alert').filter({hasText:'The EA list could not be loaded.'}).waitFor();
+ await page.getByLabel('Departing EA UUID',{exact:true}).fill(EA_A);
+ await page.getByRole('button',{name:'Retry EA list',exact:true}).click();
+ assert.equal(await page.evaluate(()=>window.calls.refresh),1);
+ assert.equal(await page.getByLabel('Departing EA UUID',{exact:true}).inputValue(),EA_A);
+ await page.getByRole('button',{name:'Preview roster',exact:true}).click();await resolvePreview(page);
+ await page.getByText('Preview for EA A',{exact:true}).waitFor();
+ const saved=await mount(t,{query:`job=${JOB}`,candidatesUnavailable:true,emptyCandidates:true});
+ await saved.getByText('Handover complete',{exact:true}).waitFor();
+ await saved.getByRole('button',{name:'Retry EA list',exact:true}).click();
+ assert.equal(await saved.evaluate(()=>window.query),`job=${JOB}`);
+ assert.equal(await saved.evaluate(()=>window.calls.load.length),1);
+ assert.equal(await saved.getByText('Handover complete',{exact:true}).isVisible(),true);
+});
+
+test('a loaded empty EA list and an empty search have distinct non-error explanations',async t=>{
+ const empty=await mount(t,{emptyCandidates:true});
+ await empty.getByText('No EAs are available in the current reporting list.',{exact:true}).waitFor();
+ assert.equal(await empty.getByRole('alert').count(),0);
+ assert.equal(await empty.getByRole('button',{name:'Retry EA list',exact:true}).count(),0);
+ const searched=await mount(t);await searched.getByLabel('Find the departing EA',{exact:true}).fill('No fixture matches');
+ await searched.getByText('No EAs match this search. Try another name, school, or UUID.',{exact:true}).waitFor();
+ assert.equal(await searched.getByRole('alert').count(),0);
 });
