@@ -10,6 +10,7 @@ All pages follow the same pattern: `<Header /> <main className="pt-20"> ... </ma
 | `/methodology` | `app/methodology/page.tsx` | Program overview, DoE partnership, TaRL, EA training, EGRA, games/videos | Public | Static |
 | `/media` | `app/media/page.tsx` | Videos, news/press coverage, testimonials, photo gallery | Public | Static |
 | `/resources` | `app/resources/page.tsx` | Open-source training guides (EN/isiXhosa/Afrikaans), games, activities, datasets | Public | Static |
+| `/resources/mobile-app` | `app/(site)/resources/mobile-app/page.tsx` | Public marketing page for the Zazi iZandi app: AI coach hero, one-way vs two-way loop animation, model comparison, platform screenshots | Public | Static |
 | `/support` | `app/support/page.tsx` | Mobile app support, troubleshooting, and escalation guidance | Public | Static |
 | `/privacy` | `app/privacy/page.tsx` | Mobile app privacy notice and POPIA request channel | Public | Static |
 | `/terms` | `app/terms/page.tsx` | Terms governing authorised use of the mobile app | Public | Static |

@@ -115,6 +115,12 @@ const NAV_GROUPS: NavGroup[] = [
         description: "Tools and materials we've published",
         icon: FolderOpen,
       },
+      {
+        name: "Mobile App",
+        href: "/resources/mobile-app",
+        description: "A coach in every EA's pocket",
+        icon: Smartphone,
+      },
     ],
   },
   {
@@ -167,8 +173,21 @@ export default function Header() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  /* An item is active only if it is the longest nav href matching the current
+     path, so "/resources/mobile-app" highlights Mobile App and not Materials. */
+  const isActiveItem = (href: string) => {
+    if (!(pathname === href || pathname.startsWith(href + "/"))) return false;
+    return !NAV_GROUPS.some((g) =>
+      g.items.some(
+        (other) =>
+          other.href.length > href.length &&
+          (pathname === other.href || pathname.startsWith(other.href + "/"))
+      )
+    );
+  };
+
   const isGroupActive = (group: NavGroup) =>
-    group.items.some((item) => pathname.startsWith(item.href));
+    group.items.some((item) => isActiveItem(item.href));
 
   const toggleGroup = (label: string) => {
     setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
@@ -216,7 +235,7 @@ export default function Header() {
                             <Link
                               href={item.href}
                               className={`block select-none rounded-md p-3 no-underline outline-none transition-colors hover:bg-gray-50 ${
-                                pathname.startsWith(item.href)
+                                isActiveItem(item.href)
                                   ? "bg-primary/5"
                                   : ""
                               }`}
@@ -228,7 +247,7 @@ export default function Header() {
                                 <div>
                                   <div
                                     className={`text-sm font-semibold leading-none mb-1 ${
-                                      pathname.startsWith(item.href)
+                                      isActiveItem(item.href)
                                         ? "text-primary"
                                         : "text-gray-800"
                                     }`}
@@ -331,7 +350,7 @@ export default function Header() {
                         href={item.href}
                         onClick={() => setMobileMenuOpen(false)}
                         className={`flex items-center gap-2 py-2 text-sm transition-colors duration-200 ${
-                          pathname.startsWith(item.href)
+                          isActiveItem(item.href)
                             ? "text-primary font-semibold"
                             : "text-gray-600 hover:text-primary"
                         }`}
