@@ -10,20 +10,6 @@ export const metadata = {
 
 const guides = [
   {
-    title: "Teaching Assistant Guide — English",
-    description:
-      "Comprehensive guide for teaching assistants delivering the Zazi iZandi programme in English. Covers letter-sound instruction, daily routines, and assessment procedures.",
-    href: "/open-source/guides/Zazi Zandi Teaching Assistant Guide 1.0_June2025_English.pdf",
-    language: "English",
-  },
-  {
-    title: "Teaching Assistant Guide — isiXhosa",
-    description:
-      "The full teaching assistant guide translated into isiXhosa for mother-tongue delivery of the programme.",
-    href: "/open-source/guides/Zazi Zandi Teaching Assistant Guide 1.0_June2025_isiXhosa.pdf",
-    language: "isiXhosa",
-  },
-  {
     title: "Teaching Assistant Guide w/ Blending — isiXhosa",
     description:
       "Extended teaching assistant guide in isiXhosa that includes blending instruction for combining letter sounds into syllables and words.",
@@ -31,7 +17,28 @@ const guides = [
     language: "isiXhosa",
   },
   {
-    title: "Teaching Assistant Guide — Afrikaans",
+    title: "Teaching Assistant Guide w/ Blending — English",
+    description:
+      "Extended teaching assistant guide in English that includes blending instruction for combining letter sounds into syllables and words.",
+    href: "/open-source/guides/Zazi iZandi Teaching Assistant Guide w Blending - English.pdf",
+    language: "English",
+  },
+  {
+    title: "Teaching Assistant Guide (Letters Only) — English",
+    description:
+      "Comprehensive guide for teaching assistants delivering the Zazi iZandi programme in English. Covers letter-sound instruction, daily routines, and assessment procedures.",
+    href: "/open-source/guides/Zazi Zandi Teaching Assistant Guide 1.0_June2025_English.pdf",
+    language: "English",
+  },
+  {
+    title: "Teaching Assistant Guide (Letters Only) — isiXhosa",
+    description:
+      "The full teaching assistant guide translated into isiXhosa for mother-tongue delivery of the programme.",
+    href: "/open-source/guides/Zazi Zandi Teaching Assistant Guide 1.0_June2025_isiXhosa.pdf",
+    language: "isiXhosa",
+  },
+  {
+    title: "Teaching Assistant Guide (Letters Only) — Afrikaans",
     description:
       "The full teaching assistant guide translated into Afrikaans for delivery in Afrikaans-medium classrooms.",
     href: "/open-source/guides/Zazi Zandi Teaching Assistant Guide 1.0_June2025_Afrikaans.pdf",
