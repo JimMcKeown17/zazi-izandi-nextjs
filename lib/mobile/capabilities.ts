@@ -18,6 +18,7 @@ export type MobileCapability =
   | "mobile.user_health.read"
   | "mobile.sync_incidents.read"
   | "mobile.assignments.reassign"
+  | "mobile.coach.manage_plus"
   | "mobile.accounts.read"
   | "mobile.accounts.provision"
   | "mobile.accounts.provision_seeded"
@@ -41,6 +42,7 @@ export const ROLE_CAPABILITIES = {
     "mobile.time_entries.read",
   ],
   senior_staff: [
+    "mobile.coach.manage_plus",
     "mobile.sessions.read",
     "mobile.sessions.export",
     "mobile.time_entries.read",
@@ -49,6 +51,7 @@ export const ROLE_CAPABILITIES = {
     "mobile.sync_incidents.read",
   ],
   admin: [
+    "mobile.coach.manage_plus",
     "mobile.sessions.read",
     "mobile.sessions.export",
     "mobile.time_entries.read",

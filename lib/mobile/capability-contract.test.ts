@@ -9,7 +9,7 @@ test("the pinned capability-contract digest matches Django's canonical capabilit
   const canonical = JSON.stringify(contract.capabilities, Object.keys(contract.capabilities).sort());
   const digest = `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
 
-  assert.equal(contract.digest, "sha256:688523a85a11c0bd39cb983c0124aeac2d6abd37656ac3b577d0410628ac7d38");
+  assert.equal(contract.digest, "sha256:a06704c19a33b3404f2dde49df61d8e9755dc98444f9ac7e966490ed05df2d69");
   assert.equal(contract.digest, digest);
 });
 
