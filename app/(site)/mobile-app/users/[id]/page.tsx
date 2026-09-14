@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 
+import { getMobileCoachPlus } from "@/app/(site)/mobile-app/users/actions";
+import { CoachPlusPanel } from "@/components/mobile-app/user-profile/coach-plus-panel";
 import { PasswordRecoveryPanel } from "@/components/mobile-app/user-profile/password-recovery-panel";
 import { getAuthenticatedMobileSession } from "@/lib/mobile/auth";
 import { passwordRecoveryEnabledFor } from "@/lib/mobile/password-recovery-access";
@@ -66,6 +68,9 @@ export default async function MobileUserProfilePage({
   const session = await getAuthenticatedMobileSession();
   const canRecover = hasCapability(session.role, "mobile.accounts.recover") && passwordRecoveryEnabledFor(profile.user_id);
 
+  const canManagePlus = hasCapability(session.role, "mobile.coach.manage_plus");
+  const plusState = canManagePlus ? await getMobileCoachPlus(profile.user_id) : null;
+
   return (
     <div
       data-testid="mobile-user-profile-success"
@@ -84,6 +89,9 @@ export default async function MobileUserProfilePage({
           userId={profile.user_id}
           displayName={profile.identity?.display_name ?? profile.email ?? "this EA"}
         />
+      ) : null}
+      {canManagePlus && plusState ? (
+        <CoachPlusPanel userId={profile.user_id} displayName={profile.identity?.display_name ?? profile.email ?? "this EA"} initial={plusState} />
       ) : null}
       <EvidencePanel profile={profile} />
       <LifetimeSummary totals={profile.lifetime.totals} />

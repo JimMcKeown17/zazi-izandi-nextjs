@@ -14,6 +14,9 @@ const mockedProgrammeFidelityDjango =
 const mockedTeachingOverviewDjango =
   process.env.E2E_TEACHING_OVERVIEW_DJANGO_MOCKED === "1";
 
+const mockedCoachPlusDjango =
+  process.env.E2E_COACH_PLUS_DJANGO_MOCKED === "1";
+
 const mockModes = [
   mockedReassignDjango
     ? {
@@ -39,6 +42,15 @@ const mockModes = [
         command: "node e2e/teaching-overview-django-mock.mjs",
         healthUrl: "http://127.0.0.1:4012/health",
         djangoUrl: "http://127.0.0.1:4012",
+        coldFetchCache: true,
+      }
+    : null,
+  mockedCoachPlusDjango
+    ? {
+        name: "coach-plus",
+        command: "node --import tsx e2e/coach-plus-django-mock.mjs",
+        healthUrl: "http://127.0.0.1:4013/health",
+        djangoUrl: "http://127.0.0.1:4013",
         coldFetchCache: true,
       }
     : null,
