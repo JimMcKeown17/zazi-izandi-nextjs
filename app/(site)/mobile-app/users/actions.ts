@@ -2,7 +2,8 @@
 
 import { requireMobileCapability } from "@/lib/mobile/auth";
 import { passwordRecoveryEnabledFor } from "@/lib/mobile/password-recovery-access";
-import { djangoPost } from "@/lib/django-fetch";
+import { djangoFetch, djangoPost } from "@/lib/django-fetch";
+import { decodeCoachPlusResponse, isCanonicalUserId, type CoachPlusState } from "@/lib/mobile/coach-plus";
 import { canonicalOperationId } from "@/lib/ea-set-password/contract";
 
 export type PasswordRecoveryResult = {
@@ -60,5 +61,39 @@ export async function requestMobilePasswordReset(
     return { kind: "unconfirmed" };
   } catch {
     return { kind: "unconfirmed" };
+  }
+}
+
+async function readBody(response: Response): Promise<unknown> {
+  try { return await response.json(); } catch { return null; }
+}
+
+export async function getMobileCoachPlus(userId: string): Promise<CoachPlusState> {
+  const session = await requireMobileCapability("mobile.coach.manage_plus");
+  if (!isCanonicalUserId(userId)) return { kind: "refused" };
+  try {
+    const token = await session.getToken();
+    if (!token) return { kind: "unauthorized" };
+    const response = await djangoFetch(`/api/mobile/coach/entitlements/?user_id=${encodeURIComponent(userId)}`, {
+      headers: { Authorization: `Bearer ${token}` }, redirect: "manual", signal: AbortSignal.timeout(10000), cache: "no-store",
+    });
+    return decodeCoachPlusResponse(response.status, await readBody(response));
+  } catch {
+    return { kind: "unavailable" };
+  }
+}
+
+export async function setMobileCoachPlus(input: { userId: string; enabled: boolean; note?: string }): Promise<CoachPlusState> {
+  const session = await requireMobileCapability("mobile.coach.manage_plus");
+  if (!input || !isCanonicalUserId(input.userId) || typeof input.enabled !== "boolean") return { kind: "refused" };
+  try {
+    const token = await session.getToken();
+    if (!token) return { kind: "unauthorized" };
+    const response = await djangoPost("/api/mobile/coach/entitlements/", {
+      user_id: input.userId, enabled: input.enabled, note: (input.note ?? "").slice(0, 200),
+    }, { headers: { Authorization: `Bearer ${token}` }, redirect: "manual", signal: AbortSignal.timeout(15000) });
+    return decodeCoachPlusResponse(response.status, await readBody(response));
+  } catch {
+    return { kind: "unavailable" };
   }
 }
